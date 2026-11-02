@@ -1,6 +1,6 @@
 # Building and exporting Superset dashboards
 
-Outline only. Step 6 fills this in, when the charts are embedded. Access rules stay in [ACCESS.md](../ACCESS.md). Metric formulas stay in [METRICS.md](../METRICS.md).
+Outline. Step 2 fills this in, with the first dashboard. In v1, Superset dashboards are the whole screen staff use. Access rules stay in [ACCESS.md](../ACCESS.md). Metric formulas stay in [METRICS.md](../METRICS.md).
 
 ## Who builds charts
 
@@ -8,11 +8,13 @@ Only the system admin. SQL Lab and the chart editor are off for everyone else. C
 
 ## What a chart is allowed to do
 
-Sum, count, average, or divide columns the view already computed. Filter with the shared school year, school, grade, and gender fields. A chart does not re-code attendance or behavior, and a named chart does not add a race column. The equity chart uses the equity view, which has group totals and no student names.
+Sum, count, average, or divide columns the view already computed. A chart does not re-code attendance or behavior, and a table chart of named students does not add a race column. The equity chart uses the equity view, which has group totals and no student names.
 
-## How a chart gets onto the page
+A single headline number is a big-number chart. A list of students is a table chart.
 
-Django reserves the slot and asks for a guest token. The token carries the person's school limits and the current filter bar. The chart uses Superset's built-in theme, with little or no custom CSS, so an upgrade is less likely to break the look.
+## Native filters
+
+Every dashboard gets the same native filters: school year, school, grade, and gender. Filters only narrow what the person's row-level security already allows. Charts use Superset's own theme settings, with no custom CSS.
 
 ## Export to the district repo
 
@@ -20,8 +22,8 @@ How the system admin exports a dashboard to files and commits those files in the
 
 ## Downloads
 
-Staff download named rows from the Django modal, which writes the audit log. Superset's own download is off for those roles. The system-admin exception stays as decision 24 in the metrics doc until Austin answers it.
+Superset's own CSV download is on for the system admin only. Whether district admins and school admins may download from a table chart, and whether downloads need to be logged, is decision 24 in [METRICS.md](../METRICS.md). The custom Django export with a view log is parked.
 
 ## A new chart, later
 
-The path from the plan: try the query in the testing sandbox, turn it into a reporting view with a hand-checked test, ship the view in a release, then turn the chart on. The sandbox is not production.
+The path from the plan: try the query in the testing sandbox, turn it into a reporting view with a hand-checked test, ship the view in a release, then build the chart. The sandbox is not production.

@@ -1,58 +1,76 @@
 # CampusView v1 plan
 
-Approved by Austin on November 1, 2026. This is the source of truth for v1. The other documents explain how to build it. If they disagree with this plan, this plan wins.
+This is the source of truth for v1. Austin approved the first version on November 1, 2026. Later that day he changed it to plain Apache Superset with no Django customizations, and he confirmed that on November 2, 2026. The other documents explain how to build it. If they disagree with this plan, this plan wins. The reasons for each change are in [DECISIONS.md](DECISIONS.md).
 
 ## What it is
 
 CampusView is a self-hosted, district-agnostic K-12 reporting platform. It loads student-information-system extracts every night, turns them into attendance, behavior, and 504/IEP reporting, and shows dashboards to district and school staff. Each person sees only the schools they cover.
 
-Nothing organization-specific belongs in the code. The installer supplies names, schools, code values, branding, and years.
+Nothing organization-specific belongs in the code. Names, schools, code values, branding, and years are supplied at install time or kept in the district repo.
 
 - The first student information system is Infinite Campus, via CSV extracts dropped on SFTP. Another system is supported by writing a mapping to CampusView's own standard file layouts: students, enrollments, attendance, incidents and referrals, 504/IEP plans, schools, and calendar. v1 builds and tests only the Infinite Campus mapping, plus docs on how to write another mapping.
 - The district may not allow a direct connection to the student information system. Files are the only way data comes in.
 - Loads run nightly. How much history to keep is a setting. The default is the current school year plus one prior year. Older data is purged on load.
-- Sign-in is Google OAuth for now. ClassLink is parked.
-- The install is on-premises, in containers, with no license costs.
+- The install is on-premises, installed directly on an Ubuntu or Debian server (no containers), with no license costs.
 - No student data in code, tests, examples, or commits. Fake data only.
+
+## The screen staff use: plain Superset
+
+Staff open Apache Superset dashboards. v1 uses only what Superset already has: dashboards, charts, native filters, theme settings, roles, and row-level security. There are no custom Django pages.
+
+The custom pieces from the first draft are deferred, not cancelled: the custom filter bar, clickable cards that open a modal table with export and print, student profile pages, card admin screens, per-user preferences, and the custom view log. Each comes back only if using the base install shows a real need. They are listed in the [parking lot](../FEATURES.md#parking-lot).
+
+Why: a small team should own as little custom AI-written code as possible. Superset's roles, row-level security, and no-code dashboards are already battle-tested.
 
 ## Data flow
 
-SIS extracts (CSV on SFTP) go to an SIS mapping, then to a validated loader. The loader checks every file before loading. Each table loads all or nothing. The loader writes a raw schema: the standard layouts, with explicit columns, and without free-text narratives or highly sensitive identifiers.
+SIS extracts (CSV on SFTP) go to an SIS mapping, then to a validated loader. The loader checks every file before loading. Each load is all or nothing. The loader writes a raw schema: the standard layouts, with explicit columns, and without free-text narratives or highly sensitive identifiers.
 
-Reporting views in PostgreSQL sit on top of the raw schema. All metric logic lives in those views. The views use installer-supplied code-mapping tables. Every view can be filtered by school and school year. No view filters itself.
+Reporting views in PostgreSQL sit on top of the raw schema. All metric logic lives in those views, and the SQL for every view is kept in this repo. The views use code-mapping tables from the district repo. Every view can be filtered by school and school year. No view filters itself.
 
-Both Superset charts and Django pages read those views.
+Superset dashboards read those views. For each reporting page: first the PostgreSQL view, then the Superset dashboard on top of it.
+
+SFTP and the loader are not built yet.
 
 ## Stack
 
+The base install, all at default settings:
+
+| Piece | Version and setup | Listens on |
+| --- | --- | --- |
+| PostgreSQL | 17, from the official PostgreSQL apt repo. Three databases: `superset_meta` (Superset's own settings), `django_app` (Django's own tables), `campusview_data` (the warehouse) | 127.0.0.1:5432 |
+| Apache Superset | 6.1.0 on Python 3.12 (managed with `uv`), under gunicorn. Installed with Superset's own tested package list (`requirements/base.txt` from the 6.1.0 release) as pip constraints | 127.0.0.1:8088 |
+| Django | 6.1.2 on the same Python 3.12, in its own Python environment, under gunicorn. A default `startproject campusview_base` on the `django_app` database | 127.0.0.1:8000 |
+
 - **PostgreSQL** is the warehouse. It holds the raw schema and the reporting schema. A view is materialized only after a query is proven slow.
-- **Django** owns the pages staff open. That includes one filter bar, clickable KPI cards that open a modal with the filtered rows (export CSV and print), student profile pages, the single access list, the view and export audit log, admin screens, per-user preferences (default school, theme, saved filters, card order), and card config (which cards, their order, and on or off). All page styling lives in Django.
-- **Apache Superset** charts are built by the system admin and embedded in Django pages with Superset's embedded SDK and guest tokens. The charts obey the same filter bar and the same per-person school limits. Charts match the page through Superset's built-in theme, with minimal custom CSS. Dashboards are exported to the district repo as files.
-- **Celery and Redis** are present only because Superset needs them. The nightly load is a simple timed Django management command.
-- **The installer** is one script. It installs Docker if Docker is missing, asks for settings, starts everything, and runs upgrades.
+- **Apache Superset** is the screen staff use. The system admin builds the charts and dashboards. Dashboards are exported to the district repo as files.
+- **Django** has no role in v1 features. It is installed as a default project so it is ready if a thin front door is needed later.
+- **No Redis and no Celery.** There is no Redis server, no Celery, and no Superset worker or beat process. The `celery` and `redis` Python libraries are present only because Superset's package list installs them.
+- **No reverse proxy, no SFTP, no example data, and no theming** in the base install yet.
+- **The installer** is one script, `install.sh`, with a step-by-step wizard that asks for every setting it needs. The CampusView Engineer is building and testing it on clean Ubuntu and Debian machines.
 
 ## Access control
 
-Roles have installer-defined defaults. They can be renamed and extended. Nothing about role names is fixed in code.
+Three starter roles. They are Superset roles, managed in Superset.
 
-- **System admin:** everything. This is the only role that builds dashboards and manages users and settings.
+- **System admin:** everything. This is the only role that builds dashboards, uses SQL Lab, and manages users and settings.
 - **District admin:** views all schools and changes nothing.
 - **School admin:** views only the assigned school IDs.
 
 Rules:
 
 1. Default deny. No role, or no school, means no rows.
-2. Django holds the one access list. A sync job writes Superset roles and row-level filters on school ID. Superset is never hand-edited for access.
-3. Django pages, modals, exports, and profiles use one shared query path. That path applies the same school rules everywhere.
-4. SQL Lab and chart building are off for every role except system admin.
-5. Opening a student profile, or exporting named rows, is written to an append-only log.
-6. A permissions test checks every role against every place data can be reached. It runs in CI.
+2. School limits use Superset's row-level security on `school_id`.
+3. SQL Lab and chart building are off for every role except system admin.
+4. A permissions test checks every role against every place data can be reached in Superset.
+
+The Django access list, the Django-to-Superset sync, guest tokens, and the shared Django query path are deferred along with the Django pages. Details are in [ACCESS.md](ACCESS.md).
 
 ## Repos and releases
 
-- **Product repo** `adukes40/campusview`: generic code only. Build branches merge to `main` when CI passes. Releases are tags such as `v1.3.0`. The live server pulls tags and never pulls raw `main`.
+- **Product repo** `adukes40/campusview`: generic code and SQL only. Build branches merge to `main` when CI passes. Releases are tags such as `v1.3.0`. The live server pulls tags and never pulls raw `main`.
 - **Private district repo** `adukes40/campusview-district`: that district's settings, code mappings, branding, and exported dashboards. Upgrades never overwrite it. It holds no secrets.
-- **Testing install:** the same release, loaded with fake data. It also serves as an AI query sandbox. The AI gets its own database user that can read raw tables and build views in a scratch schema only. Finished views become migrations with hand-checked tests and ship through releases. They are never copy-pasted to production.
+- **Testing install:** the same release, loaded with fake data. It also serves as an AI query sandbox. The AI gets its own database user that can read raw tables and build views in a scratch schema only. Finished views become SQL in the repo with hand-checked tests and ship through releases. They are never copy-pasted to production.
 
 ## Build order
 
@@ -60,33 +78,23 @@ One pull request per step. Merge when CI is green.
 
 | Step | Work | Done when |
 | --- | --- | --- |
-| 0 | Docs: standard file layouts, metric definitions, access model, house rules, and the architecture, decisions, invariants, metrics, and plan documents | Austin approves |
-| 1 | Proof tests: one Django card that opens a modal table; one embedded Superset chart that obeys the same filter bar and school limits; Google sign-in | Each one works on fake data, or a fallback is chosen |
-| 2 | Skeleton and installer: containers, migrations, sign-in, default deny, CI, and the fake-data generator | CI does a fresh install and an upgrade from the previous release |
-| 3 | Loader, raw schema, and the Infinite Campus mapping | Bad files are rejected, and each load is all or nothing |
-| 4 | Code mappings and reporting views | Every metric matches a hand-checked answer on fake data |
-| 5 | Access list, sync to Superset, and the permissions test | Each role sees exactly its schools, before any dashboard |
-| 6 | Card system and the Overview, Attendance, and Behavior dashboards | Checked in a browser as each role. Cards reorder from admin screens |
-| 7 | Modal tables with export and print, student profiles, and the view log | Exports match the filtered screen exactly |
-| 8 | Nightly schedule and history purge | The schedule and the purge both run |
-| 9 | Adversarial review and fixes | Each fix has a test |
+| 0 | Docs, plus the bare-bones base install: PostgreSQL 17, plain Superset 6.1.0, default Django 6.1.2, and the `install.sh` wizard. **In progress.** | Austin approves the docs, and `install.sh` brings up the base install on a clean Ubuntu or Debian machine |
+| 1 | Getting data in: the SFTP drop, the raw schema, the validated loader, the Infinite Campus mapping, and the fake-data generator | Bad files are rejected, each load is all or nothing, and a good fake-data drop loads |
+| 2 | The first reporting view in PostgreSQL and the first Superset dashboard on it, with the three roles and school row-level security set up and checked | Each role sees exactly its schools on that dashboard, and the view's numbers match a hand-checked answer on fake data |
+
+Later steps, in an order Austin will set: the rest of the reporting views and the Overview, Attendance, and Behavior dashboards; the nightly schedule and the history purge; and an adversarial review with fixes. Each new number gets a view and a hand-checked test before it gets a chart.
 
 ## Dashboard design
 
-- v1 KPI cards are plain Django cards: a value, plus a click-through to a modal with the filtered rows, export, and print. Trend lines, and change-from-last-year on cards, are parked.
-- Card layout is set in admin screens: which cards, their order, and on or off. It is saved with the district settings. Drag-and-drop is parked.
-- A new card is built by writing the query in the sandbox, turning it into a tested view, and then turning the card on.
-- The absence card names the school day it counts.
+These are the numbers and charts v1 aims for. In plain Superset, a "card" is a big-number chart and a list is a table chart.
+
+- Overview: year-to-date attendance rate, absent on the last school day (the chart names the day), referrals not yet processed, average days to resolve or action, active 504s and IEPs with counts of those expiring in 30 days, top 10 referred students, top 10 behavior types, and the open referrals list.
+- Behavior: trends by month, grade, location, and time; a heatmap of location by time of day; consequences; repeat referrals; equity.
+- Attendance: rates and a monthly trend against last year; chronic absenteeism rate by grade; unexcused absences; tardies.
 - Top behavior types are horizontal bars, largest first.
 - The open referrals list is color-coded by days open. Named working lists have no race column.
 - Equity is rates per 100 students per group, totals only.
-- Attendance shows a monthly trend against last year, and the chronic absenteeism rate by grade.
-- Behavior shows a heatmap of location by time of day.
-- Overview metrics for v1: year-to-date attendance rate, absent on the last school day, referrals not yet processed, average days to resolve or action, active 504s and IEPs with counts of those expiring in 30 days, top 10 referred students, top 10 behavior types, and the open referrals list.
-- Behavior page: trends by month, grade, location, and time; consequences; repeat referrals; equity.
-- Attendance page: rates and trends, chronic absenteeism, unexcused absences, and tardies.
-- Clicking a student opens a profile with attendance, behavior, and plan info.
-- Filters: school year, school, grade, and gender.
+- Filters are Superset native filters: school year, school, grade, and gender.
 
 ## Fake data
 
@@ -101,8 +109,19 @@ One small seeded generator, and it is deterministic. It builds 1 high school, 1 
 
 ## Docs built as we go
 
-A step is not done until its docs are. The guides are: server requirements; install and upgrade; Google Cloud project, OAuth client, and sign-in setup; accounts, roles, and school assignments; SFTP and extract setup, plus writing a mapping for another SIS; building and exporting dashboards in Superset; backups and restore.
+A step is not done until its docs are. The guides are: server requirements; install and upgrade; sign-in setup; accounts, roles, and school assignments; SFTP and extract setup, plus writing a mapping for another SIS; building and exporting dashboards in Superset; backups and restore.
+
+## Open questions
+
+Not answered yet. Nobody should guess these; Austin decides.
+
+1. **School assignments.** Without the Django-to-Superset sync, how does each school admin's list of schools get kept up to date in Superset's roles and row-level security? By hand in Superset, or some other way?
+2. **Google sign-in.** The first draft had Google sign-in through Django. Plain Superset uses its own login. Whether and when to turn on Google sign-in in Superset is not decided.
+3. **Downloads and a view log.** With the Django exports and the custom view log deferred, should staff be able to download rows from Superset, and is any record of who looked at named rows needed in v1? (This is decision 24 in [METRICS.md](METRICS.md).)
+4. **Reaching it from the network.** The base install listens only on the server itself. When a reverse proxy and TLS are added, so staff can open Superset from their own computers, is not decided yet.
+
+The 25 Decisions for Austin in [METRICS.md](METRICS.md) and the 18 TO CONFIRM extract questions in [DATA_CONTRACT.md](DATA_CONTRACT.md) are kept, but they are **deferred**: they do not block step 0 or the base install.
 
 ## Parked for later
 
-Emailed scheduled reports. ClassLink sign-in. Caseload-based access. Small-group hiding for totals-only roles. Mappings for other student information systems. Drag-and-drop card layout. Trend lines and change-from-last-year on cards.
+Everything in the [parking lot](../FEATURES.md#parking-lot): the deferred Django pages and screens, Redis and Celery (async queries, alerts and reports, caching), emailed scheduled reports, ClassLink sign-in, caseload-based access, small-group hiding for totals-only roles, mappings for other student information systems, drag-and-drop card layout, and trend lines and change-from-last-year on cards.

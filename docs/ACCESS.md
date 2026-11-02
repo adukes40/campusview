@@ -1,121 +1,81 @@
 # Access
 
-Who can see which students, and how that rule is enforced in every place data can leak. The mechanics of the sync and the guest token are in [ARCHITECTURE.md](ARCHITECTURE.md). This document is the rule book.
+Who can see which students, and how that rule is enforced. In v1, access lives entirely in Apache Superset: its roles and its row-level security. Row-level security is a rule Superset adds to every query, so a chart only returns rows for the schools that rule allows. This document is the rule book.
 
-Default deny is the starting point. A person with no role sees no rows. A person with a role and no schools sees no rows. A request for a school they do not have returns no rows. Missing data is an empty result, never someone else's school.
+Default deny is the starting point. A person with no role sees no rows. A person with a role and no schools sees no rows. Missing data is an empty result, never someone else's school.
 
 ## Roles
 
-Role names are data. The installer seeds three roles. A district may rename them or add a role by copying one of these capability sets. Code does not branch on the English name.
+The install sets up three Superset roles. A district may rename them, or add a role by copying one of these. Nothing in CampusView depends on the English name.
 
 | Capability | System admin | District admin | School admin |
 | --- | --- | --- | --- |
-| See data | All schools, including a school added later | All schools, including a school added later | Only the school ids granted to that user |
-| Change users, roles, grants, settings, card config | Yes | No | No |
-| Build Superset charts and use SQL Lab | Yes | No | No |
-| Open dashboards, modals, exports, profiles | Yes | Yes | Yes, inside the grant |
-| Read the audit log | Yes | No | No |
+| See data | All schools, including a school added later | All schools, including a school added later | Only the schools in their row-level security rule |
+| Manage Superset users, roles, and row-level security | Yes | No | No |
+| Build charts and dashboards, use SQL Lab | Yes | No | No |
+| Open dashboards | Yes | Yes | Yes, inside their schools |
+| Superset's own CSV download | Yes | No | No, until decision 24 says otherwise |
 
-A new role with an empty capability set sees nothing and changes nothing. That is the safe default when someone adds a role and forgets the checkboxes.
+A new role with no permissions sees nothing and changes nothing. That is the safe default when someone adds a role and forgets the checkboxes.
 
-School grants are per user. A school admin may hold more than one school id. "All schools" is a capability on the role, not a row that must be updated when a school opens. Granting a school id to a district admin does not matter; the all-schools capability already covers it. Taking away schools from a school admin takes effect on the next page load for Django and for embedded charts, and on the next successful sync for a direct Superset login.
+"All schools" means the role has no school rule, so a new school shows up with no extra step. A school admin may have more than one school. Taking a school away is a change to that person's row-level security rule in Superset, and it applies to their next query.
 
-Preferences never grant access. A default school, a saved filter, or a card order can only narrow what the grant already allows. A saved school the user no longer has is ignored.
+Native filters never grant access. A school picked in a filter can only narrow what row-level security already allows.
 
-## What Django stores
+## How school limits work in Superset
 
-The access list is Django's. Superset is a copy.
+- System admin and district admin roles have no row-level security rule on school.
+- A school admin gets a rule of the form `school_id IN (...)` listing their schools.
+- Superset applies row-level security per role. So a school admin's rule has to live on a role that only they (or only people with the same schools) hold, such as one role per school or one role per person.
+- A person with the school admin role and no school rule must see nothing. How that is set up in Superset is checked in step 2.
+- Every Superset dataset is a reporting view from [METRICS.md](METRICS.md), and every one has `school_id`. A dataset without `school_id` is not published.
 
-- A user: email from Google, display name, one role, active or not.
-- A role: name plus the capabilities above.
-- A school grant: user, `school_id`. Used for roles that do not have all schools.
-- An audit event, append-only.
+**Open question: how school assignments get maintained.** The first draft kept the list of who has which schools in Django and synced it to Superset. That sync is parked. Without it, someone has to keep Superset's roles and school rules matching real staff assignments, including when staff change schools or leave, and when a new school appears in the extract. Who does that and how is not decided. See [PLAN.md](PLAN.md).
 
-Sign-in is Google OAuth. The Google account must match an active user the system admin already created. An unknown Google account gets no session and no rows. There is no open registration.
+## Sign-in
 
-Every route requires a session, except the sign-in page, the OAuth callback, and static files. A failed session check redirects to sign-in. It does not render an empty dashboard.
+The base install uses Superset's own user accounts, created by the system admin. There is no open registration: self-signup stays off.
 
-## Sync to Superset
+**Open question: Google sign-in.** The approved plan said staff sign in with Google. Superset can be set up for Google sign-in through its config file, but that is not in the base install, and whether and when to turn it on is not decided. See [guides/google-oauth.md](guides/google-oauth.md).
 
-Superset access is written only by the sync. Nobody edits Superset roles or row-level filters by hand. A hand edit would be overwritten, and it is a bug if a deploy depends on one.
+Deactivating a user in Superset stops their sign-in.
 
-The sync:
+## View and export log
 
-- Matches Superset users to CampusView users by email.
-- Gives all-schools roles a viewer role with no school predicate.
-- Gives everyone else a personal role whose filter is their school ids.
-- Gives a user with zero schools a filter that matches nothing.
-- Publishes only the reporting views in [METRICS.md](METRICS.md). Each of those views has `school_id`. The sync refuses to publish a dataset that lacks `school_id`.
-- Turns SQL Lab, chart editing, and Superset CSV download off for every role except system admin.
-- Runs when a grant is saved. If Superset rejects the update, the grant save fails and the old grant stays.
-- Runs again after each successful load, and on a slow timer, to repair drift.
-
-Deactivating a user removes their Superset session rights on the next sync. Django rejects the sign-in as soon as the user is inactive.
-
-## One query path
-
-Pages, modals, CSV export, student profiles, and the guest-token builder call one function. That function applies the user's schools and then the filter bar. There is no second helper that skips the school rule.
-
-CSV export runs that function with the filters on the screen and writes the audit log. The file matches those filters. Print prints the modal already on screen, which was filled by the same function.
-
-Embedded charts get a guest token whose school clause is built by the same scope rules. The token is short-lived. The browser cannot add a school to it. Year, grade, and gender travel as filters. They are not permissions.
-
-A student profile also checks that the student has a primary enrollment in a granted school for the selected year. An id typed into the address bar, for a student outside the grant, returns nothing.
-
-## Audit log
-
-The log is append-only. The application database user can insert and read. Update and delete are revoked in the database, not only hidden in the screen.
-
-An event is written when:
-
-- Someone opens a student profile, including a profile that returns nothing because the student is outside the grant.
-- Someone exports named rows from a Django modal.
-
-The event records when, which user, which role, the action, the student id or the export, the school scope, the filter values, the row count, and the page. It does not store the exported file itself.
-
-System admin reads the log in the app. District admin and school admin do not. Whether the system admin's own download inside Superset is logged is open: see decision 24 in [METRICS.md](METRICS.md). Django exports and profile views are logged for the system admin too.
-
-The history purge does not delete audit rows. They are not student-information-system history.
+**Deferred.** The first draft had an append-only log of profile views and exports of named rows from Django pages. Those pages are parked, so the log is parked with them (see [FEATURES.md](../FEATURES.md#parking-lot)). Whether downloads inside Superset need to be logged is decision 24 in [METRICS.md](METRICS.md).
 
 ## Database users
 
 | Database user | Allowed | Not allowed |
 | --- | --- | --- |
-| Django web | `SELECT` on reporting views. Read and write app tables. Insert and select on the audit log. | Raw tables. Update or delete on the audit log. |
-| Loader | Write raw, mapping tables, and load history. | Grants, users, audit updates. |
-| Superset | `SELECT` on reporting views. | Raw tables, app tables, audit. |
+| Superset (settings) | Owns `superset_meta`, Superset's own settings and users. | Student data. |
+| Superset (warehouse) | `SELECT` on reporting views in `campusview_data`. | Raw tables, mapping tables, load history. |
+| Django | Owns `django_app`, Django's default tables. | `campusview_data`. Django has no v1 role. |
+| Loader (step 1) | Write raw, mapping tables, and load history in `campusview_data`. | Superset's and Django's databases. |
 | Sandbox (testing install only) | `SELECT` on raw and reporting. Create objects in the scratch schema. | Production. The production database does not have this user. |
 
-SQL Lab for the system admin uses the Superset database user, so it can see reporting views and cannot see raw tables. Exploring raw data is a testing-sandbox task.
+**To fix when the warehouse is set up:** the base install currently makes the Superset database user the owner of `campusview_data`. That gives Superset more than `SELECT` on reporting. Step 1 should give the loader its own owner user and connect Superset to the warehouse with a separate read-only user.
 
-## Permissions-test matrix
+SQL Lab for the system admin uses the Superset warehouse user, so it can see reporting views and cannot see raw tables. Exploring raw data is a testing-sandbox task.
 
-CI runs this matrix. A failure is a broken build. School-admin cases are run twice: once for a granted school, and once asking for a school that was not granted. The second ask must return no rows on every data path.
+## Permissions check
 
-"Own schools" means only the granted school ids. "All schools" means every school in the snapshot. "Nothing" means no student rows and no aggregates.
+Step 2 checks this table by hand in a browser, on fake data, as each role. School admin cases are run twice: once for one of their schools, and once trying a school that is not theirs. The second try must return no rows.
+
+"Own schools" means only that person's schools. "All schools" means every school in the snapshot. "Nothing" means no student rows and no totals.
 
 | Data path | Signed out | Signed in, no role or no schools | School admin | District admin | System admin |
 | --- | --- | --- | --- | --- | --- |
 | Sign-in page | Allowed | Allowed | Allowed | Allowed | Allowed |
-| Dashboard card numbers | Redirect to sign-in | Nothing | Own schools | All schools | All schools |
-| Card modal rows | Redirect | Nothing | Own schools, no race column | All schools, no race column | All schools, no race column |
-| CSV export of a modal | Redirect | Nothing | Own schools, and an audit row | All schools, and an audit row | All schools, and an audit row |
-| Print of a modal | Redirect | Nothing | Same rows as the modal | Same rows as the modal | Same rows as the modal |
-| Student profile in scope | Redirect | Nothing | Own schools, and an audit row | All schools, and an audit row | All schools, and an audit row |
-| Student profile outside the grant, by typed id | Redirect | Nothing | Nothing, and an audit row | Not applicable (all schools) | Not applicable (all schools) |
-| Filter or saved preference naming an ungranted school | Redirect | Nothing | Nothing from that school | Not applicable | Not applicable |
-| Embedded Superset chart | No token | No token, empty state | Own schools inside the guest token | All schools | All schools |
-| Direct Superset login | No account | Account with a match-nothing filter | Own schools via the synced filter | All schools | All schools |
+| Dashboard charts | Redirect to sign-in | Nothing | Own schools | All schools | All schools |
+| School native filter set to a school not theirs | Redirect | Nothing | Nothing from that school | Not applicable | Not applicable |
 | SQL Lab | No | No | No | No | Yes, reporting views only |
 | Chart and dashboard editing | No | No | No | No | Yes |
 | Superset's own CSV download | No | No | No | No | Yes, until decision 24 says otherwise |
 | Raw tables through Superset | No | No | No | No | No |
-| User, grant, and card admin screens | Redirect | Forbidden | Forbidden | Forbidden | Allowed |
-| Audit log screen | Redirect | Forbidden | Forbidden | Forbidden | Allowed |
+| Users, roles, and row-level security screens | Redirect | Forbidden | Forbidden | Forbidden | Allowed |
 | Equity chart | Redirect | Nothing | Own schools, group totals, no names | All schools, group totals, no names | All schools, group totals, no names |
 
-The equity path is called out because that view is the only one built from race or ethnicity, and the test checks that the result has no student id and no name.
+The equity path is called out because that view is the only one built from race or ethnicity, and the check confirms that the result has no student id and no name.
 
-The test also checks the database grants: the Superset user's `SELECT` on a raw table fails, and the Django user's `UPDATE` on the audit table fails.
-
-Step 5 builds this test, before the dashboards exist, so a later chart cannot become the first place a school boundary is tried.
+The check also covers the database grants: the Superset warehouse user's `SELECT` on a raw table fails.

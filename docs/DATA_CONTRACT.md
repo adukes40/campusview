@@ -32,7 +32,7 @@ One row per school. Key: `school_id`.
 
 | Column | Type | Required | Rules |
 | --- | --- | --- | --- |
-| `school_id` | text | yes | Primary key. The id used on every other file and in the access list. |
+| `school_id` | text | yes | Primary key. The id used on every other file and in Superset's row-level security. |
 | `school_name` | text | yes | 1 to 120 characters. |
 | `school_level` | text | no | Blank, or one of `ES`, `MS`, `HS`, `K8`, `OTHER`. |
 | `is_active` | boolean | no | Blank means `true`. Inactive schools can still appear in history. |
@@ -275,12 +275,12 @@ The mapper does not invent codes and does not decide that a code is excused. It 
 
 ## TO CONFIRM
 
-For Austin, before the Infinite Campus mapping is written. The working text above is general product knowledge, not a claim about this district's files.
+**Deferred, not blocking step 0.** For Austin, before the Infinite Campus mapping is written in step 1. The working text above is general product knowledge, not a claim about this district's files.
 
 1. Which export will actually be scheduled onto SFTP: an Ad Hoc filter CSV, the data-extract utility, or another report. CampusView will not connect to the Infinite Campus database.
 2. That each nightly file set is a full snapshot of every school year that should be kept (current year and the prior year, by default), not a file of changes since the previous night.
 3. The student number to use as `student_id`: the number staff see on the student record. Confirm the extract will omit the internal person id, the SSN, and any state identifier.
-4. The school identifier to use as `school_id`, so the same value can be used in the access list.
+4. The school identifier to use as `school_id`, so the same value can be used in Superset's row-level security rules.
 5. How the calendar's school year is stored, including an end-year number if that is what Infinite Campus shows, so the mapping can write `YYYY-YYYY`.
 6. Whether secondary schools record period attendance, elementary schools record daily attendance, or both already have a daily result. The standard file is one row per student per date.
 7. The local rule that turns periods into a full-day or half-day absence, or confirmation that Infinite Campus already calculates a daily attendance value the extract should take instead.

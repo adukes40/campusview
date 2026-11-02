@@ -1,12 +1,12 @@
 # Metrics
 
-Exact definitions for the v1 dashboard list in [PLAN.md](PLAN.md). Each metric names its formula, its denominator, the edge cases, the reporting view that owns the logic, and the card or chart that shows it.
+Exact definitions for the v1 dashboard list in [PLAN.md](PLAN.md). Each metric names its formula, its denominator, the edge cases, the reporting view that owns the logic, and the Superset chart that shows it. In v1 every number is a plain Superset chart: a big-number chart for a headline, a table chart for a list of students.
 
-The body uses one working proposal for each choice so later steps have a single target. Those choices are **not approved yet**. They are listed again under [Decisions for Austin](#decisions-for-austin). If Austin approves this document without changing an item, that item's proposal becomes the definition. Until then, do not treat the list as settled.
+The body uses one working proposal for each choice so later steps have a single target. Those choices are **not approved yet**. They are listed again under [Decisions for Austin](#decisions-for-austin), which are deferred and do not block step 0. If Austin approves this document without changing an item, that item's proposal becomes the definition. Until then, do not treat the list as settled.
 
-Views do the classifying. A page or a chart may only sum, count, average, or divide columns the view already computed. Filter columns are `school_year`, `school_id`, `grade`, and `gender` unless a metric says otherwise. "The filter" means those four, after the access rules have already limited the schools.
+Views do the classifying. A chart may only sum, count, average, or divide columns the view already computed. Filter columns are `school_year`, `school_id`, `grade`, and `gender` unless a metric says otherwise. "The filter" means the four Superset native filters, after row-level security has already limited the schools.
 
-The preview's sparklines and the "versus last year" text on the cards themselves are parked. They are not metrics in v1. The absence card does name the day it counts. That part is in scope.
+The preview's sparklines and the "versus last year" text on the headline numbers are parked. They are not metrics in v1. The absence number does name the day it counts. That part is in scope.
 
 A hand-checked test, when the views are built, uses the fake-data generator and a known answer for each formula below. The test reads the view. It does not reimplement the formula in Python.
 
@@ -43,9 +43,9 @@ A student has 100 membership days of weight 1, plus one half instructional day (
 
 The half instructional day contributes 0.5 to the denominator even though the student was absent, because the day itself was only half a day.
 
-## Overview cards
+## Overview headline numbers
 
-Six Django cards. Each opens a modal of the rows behind the number. The modal and the CSV export use the same view and the same filters. Named modals have no race column.
+Six headline numbers, each a Superset big-number chart on its view. The rows behind a number can be a Superset table chart on the same view, with the same filters. A table of named students has no race column. The first draft's clickable cards that open a modal table, with CSV export and print, are parked.
 
 ### Year-to-date attendance rate
 
@@ -54,8 +54,8 @@ Six Django cards. Each opens a modal of the rows behind the number. The modal an
 | Shows | A percent, one decimal. |
 | View | `reporting.v_attendance_student_day` |
 | Formula | Sum of `present_portion × day_value`, divided by sum of `day_value`, among rows in the filter and in the year-to-date window. Multiply by 100 for display. |
-| Denominator | Sum of `day_value` for those membership days. If the denominator is 0, the card shows no number, not zero percent. |
-| Modal columns | Student id, name, school, grade, membership days, absence-day equivalents, attendance percent. One row per student. Days are the sums of that student's filtered day rows. |
+| Denominator | Sum of `day_value` for those membership days. If the denominator is 0, the chart shows no number, not zero percent. |
+| Table columns | Student id, name, school, grade, membership days, absence-day equivalents, attendance percent. One row per student. Days are the sums of that student's filtered day rows. |
 
 Mid-year enrollment: days before `start_date` and after `end_date` are not membership. A student who arrives in October is rated only on days from October on. A student enrolled at two schools in the year contributes days to each school; a single-school filter sees only that school's days.
 
@@ -63,12 +63,12 @@ Mid-year enrollment: days before `start_date` and after `end_date` are not membe
 
 | | |
 | --- | --- |
-| Shows | A count of students. The card title names the day, for example the weekday and date, when every selected school shares one last day. When the schools differ, the title says that each school uses its own last day. |
+| Shows | A count of students. The chart title names the day, for example the weekday and date, when every selected school shares one last day. When the schools differ, the title says that each school uses its own last day. |
 | View | `reporting.v_last_school_day_absence` |
 | Last school day | For each school, the latest `is_school_day` date in the selected year that is on or before today. Schools with different calendars can have different dates. |
 | Who counts | A student enrolled on that school's last day whose `absence_portion` that day is 0.5 or greater. |
 | Denominator | None. This is a headcount. |
-| Modal columns | Student id, name, school, grade, the date counted, absence portion. |
+| Table columns | Student id, name, school, grade, the date counted, absence portion. |
 
 The view is an ordinary view, because the date depends on today. No attendance row on that day means present, so the student is not in the list (same unmarked-day rule as the rate).
 
@@ -80,7 +80,7 @@ The view is an ordinary view, because the date depends on today. No attendance r
 | View | `reporting.v_incident`, rows with `is_processed` false. Cancelled rows are already gone. |
 | Formula | Count of those rows in the filter. The incident's school, year, grade, and the student's gender are the filter columns. Grade is the student's grade on their primary enrollment at that school in that year. |
 | Denominator | None. |
-| Modal columns | Student id, name, school, grade, behavior labels, days open. No race. |
+| Table columns | Student id, name, school, grade, behavior labels, days open. No race. |
 
 "Not yet processed" is narrower than "open". A referral that has been acted on and is still open is not in this count. It is on the open list.
 
@@ -88,12 +88,12 @@ The view is an ordinary view, because the date depends on today. No attendance r
 
 | | |
 | --- | --- |
-| Shows | A number, one decimal. The plan's name for this card is average days to resolve or action. The working definition uses the first action. |
+| Shows | A number, one decimal. The plan's name for this number is average days to resolve or action. The working definition uses the first action. |
 | View | `reporting.v_incident`, rows where `days_to_action` is not null. |
 | Formula | Average of `days_to_action`. That column is the calendar-day difference from `incident_date` to `action_date`. |
 | Denominator | The count of referrals in the filter that have an action date. Referrals with no action yet are excluded, not treated as still running. |
 | Edge | Same-day action is 0. A negative span fails the load, so it never enters the average. |
-| Modal columns | Student id, name, school, incident date, action date, days. |
+| Table columns | Student id, name, school, incident date, action date, days. |
 
 ### Active 504 plans
 
@@ -105,15 +105,15 @@ The view is an ordinary view, because the date depends on today. No attendance r
 | School | The school of the student's primary enrollment in the selected year. A plan whose student has no primary enrollment in that year is not on the view. |
 | Expiring | Among the active rows, `review_due_date` falls from today through the next 30 days, including today. If `review_due_date` is blank, `end_date` is used the same way. If both are blank, the plan is not expiring. |
 | Denominator | None. Two active 504s for one student count as two. |
-| Modal columns | Student id, name, school, grade, plan type, review due date, end date, and whether it expires in 30 days. |
+| Table columns | Student id, name, school, grade, plan type, review due date, end date, and whether it expires in 30 days. |
 
 ### Active IEPs
 
-Same definition as active 504 plans, with `plan_type` `IEP`. It is its own card and its own expiring count.
+Same definition as active 504 plans, with `plan_type` `IEP`. It is its own number and its own expiring count.
 
 ## Overview charts
 
-These are embedded Superset charts. They read the view named here and apply the same filter bar and the same school scope.
+These are Superset charts on the dashboard. They read the view named here and use the same native filters and the same row-level security.
 
 ### Top 10 referred students
 
@@ -143,7 +143,7 @@ These are embedded Superset charts. They read the view named here and apply the 
 | Sort | Days open descending, then student id. |
 | Columns | Name, school, grade, behavior labels, days open. No race. |
 
-## Behavior page
+## Behavior dashboard
 
 ### Trends by month, grade, and location
 
@@ -191,9 +191,9 @@ These are embedded Superset charts. They read the view named here and apply the 
 | Small groups | v1 shows every group. Hiding small groups is parked. |
 | Grade on this view | The grade on the student's primary enrollment at that school in that year. The contract already allows only one such grade. |
 
-## Attendance page
+## Attendance dashboard
 
-The year-to-date rate card lives on Overview. The attendance page uses the same rate definition for its trend.
+The year-to-date rate number lives on Overview. The Attendance dashboard uses the same rate definition for its trend.
 
 ### Monthly trend versus last year
 
@@ -213,7 +213,7 @@ The year-to-date rate card lives on Overview. The attendance page uses the same 
 | A student is chronic | At that school, in that year, absence-day equivalents are at least 10% of membership days, and membership days are at least 10. Excused and unexcused absences both count. Tardies count only through their absence portion. |
 | Rate | Students with `is_chronic` true, divided by students on the view in that grade, within the filter. The 10-day minimum means a student with fewer than 10 membership days at that school is not in the denominator. |
 | Across schools | Status is judged inside one school. When the filter includes two schools, a student who is chronic at both is counted in each school's students and can appear twice in a district total. |
-| Modal, if opened later | This v1 chart does not have a card. If a modal is added, it uses this view and has no race column. |
+| Table of students, if added later | This v1 chart has no headline number. If a table of students is added, it uses this view and has no race column. |
 
 ### Unexcused absences
 
@@ -235,7 +235,9 @@ The year-to-date rate card lives on Overview. The attendance page uses the same 
 | Excused | `excused_tardy_count` is on the view and is not in the headline. |
 | Rate effect | None, unless that code's `absence_portion` is greater than 0, in which case the attendance rate already reflects the portion. |
 
-## Student profile
+## Student profile (deferred)
+
+**Deferred 2026-11-01:** student profile pages are parked with the other custom Django pages. This section is kept for when the item is revisited.
 
 The profile is not its own formula. For the selected year it shows, through the shared query path:
 
@@ -243,7 +245,7 @@ The profile is not its own formula. For the selected year it shows, through the 
 - From `v_incident`, `v_behavior_event`, and `v_consequence`, that student's referrals, behaviors, and consequences.
 - From `v_plan`, that student's plans, review date, and expiring flag.
 
-Opening the profile writes the audit log. A student with no primary enrollment in a granted school, in the selected year, is not shown.
+Opening the profile would write a view log (also parked). A student with no primary enrollment in a granted school, in the selected year, is not shown.
 
 ## What each view computes
 
@@ -265,6 +267,8 @@ Short form of the columns that carry decisions. Filter columns are omitted here.
 
 ## Decisions for Austin
 
+**Deferred, not blocking.** Austin will answer these later. They do not block step 0 or the base install. Each needs an answer before the view it affects is built.
+
 Working proposals are in the body above. Each item below is the choice that would change a number or a screen. Extract questions that block the mapping are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md), not here.
 
 1. **No attendance mark.** When a student is enrolled on a school day and the file has no attendance row, v1 counts that day as present. Confirm, or say the day should be left out of both the numerator and the denominator.
@@ -275,7 +279,7 @@ Working proposals are in the body above. Each item below is the choice that woul
 
 4. **Tardies and the rate.** A tardy does not lower the attendance rate unless that code's absence portion is greater than zero. Confirm.
 
-5. **Last school day.** "Absent on the last school day" uses each school's own latest school day on or before today, in the district time zone. If the selected schools do not share that date, the card says so and still counts each student on their own school's date. Confirm, or say you want one shared date for the whole filter.
+5. **Last school day.** "Absent on the last school day" uses each school's own latest school day on or before today, in the district time zone. If the selected schools do not share that date, the chart title says so and still counts each student on their own school's date. Confirm, or say you want one shared date for the whole filter.
 
 6. **Who counts as absent that day.** A student counts when that day's absence portion is 0.5 or more. Confirm, or say any portion greater than zero, or a full day only.
 
@@ -283,7 +287,7 @@ Working proposals are in the body above. Each item below is the choice that woul
 
 8. **Chronic across schools.** v1 judges chronic status inside one school. A student who split the year between two schools is judged at each school and can be counted twice when both schools are selected. Confirm, or say a district view must count each student once.
 
-9. **Two referral lists.** "Not yet processed" means the status map says there has been no action. "Open" means the status map says the referral is not closed, including ones already acted on. The overview card counts the first. The list shows the second. Confirm these are two different lists in your office, or say they should be the same list.
+9. **Two referral lists.** "Not yet processed" means the status map says there has been no action. "Open" means the status map says the referral is not closed, including ones already acted on. The overview headline number counts the first. The list shows the second. Confirm these are two different lists in your office, or say they should be the same list.
 
 10. **Days to action.** The average is calendar days from the incident date to the first action date. Referrals with no action yet are left out. Same-day action is 0. Confirm, or say the clock should start on a different date and stop on the closed date, and whether referrals that are still waiting should count.
 
@@ -303,7 +307,7 @@ Working proposals are in the body above. Each item below is the choice that woul
 
 18. **Two active plans.** A plan is active when its status maps to active, it has started, and it has not ended. Two active plans of the same type for one student count as two. Confirm.
 
-19. **Grade filter.** The filter offers All, or one grade (K, 1, 2, and so on through 12). The preview's bands (K-5, 6-8, 9-12) are not in v1. A student may have only one grade per school per year; otherwise the enrollment file is rejected. Confirm the filter, and confirm that a mid-year grade change does not need to be represented.
+19. **Grade native filter.** The Superset native filter for grade offers All, or one grade (K, 1, 2, and so on through 12), read from the `grade` column on each view. The preview's bands (K-5, 6-8, 9-12) are not in v1. A student may have only one grade per school per year; otherwise the enrollment file is rejected. Confirm a single-grade native filter is enough, and confirm that a mid-year grade change does not need to be represented.
 
 20. **Blank gender.** A gender code that is not in the gender map fails the load. A blank gender is allowed, stays inside All, and is not counted under a named gender. Confirm blanks should be allowed.
 
@@ -313,6 +317,6 @@ Working proposals are in the body above. Each item below is the choice that woul
 
 23. **Heatmap buckets.** The heatmap is location by clock hour. Referrals with no time are left off the heatmap and still count on the other behavior charts. Confirm hourly buckets are the breakdown you want.
 
-24. **Superset download and the audit log.** Staff cannot download named rows from Superset. The system admin still can, and that download is not written to the CampusView audit log. Profile opens and Django exports are logged for every role, including system admin. Confirm, or say the system admin's Superset download should be turned off too.
+24. **Downloads in plain Superset.** In v1, Superset's own CSV download is on for the system admin only. District admins and school admins can view table charts but cannot download them. There is no CampusView view or export log in v1; the custom Django export and its log are parked. Confirm, or say which roles should be able to download from Superset, and whether downloads need to be logged.
 
 25. **One time zone.** A single district time zone, set in the district config, defines today, the last school day, the 30-day window, and the heatmap hour. Confirm one zone is enough.

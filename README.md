@@ -1,20 +1,20 @@
 # CampusView
 
-CampusView is a self-hosted reporting platform for K-12 districts. Each night it reads CSV extracts from the student information system, checks them, and loads them into PostgreSQL. Staff open Django pages for attendance, behavior, and 504/IEP dashboards. Charts drawn by Apache Superset are embedded in those pages. A person sees only the schools they cover.
+CampusView is a self-hosted reporting platform for K-12 districts. Each night it reads CSV extracts from the student information system, checks them, and loads them into PostgreSQL. Staff open plain Apache Superset dashboards for attendance, behavior, and 504/IEP numbers. Superset's roles and row-level security limit each person to the schools they cover.
 
 Nothing in this repository is specific to one district. Names, schools, local codes, branding, and exported dashboards belong in that district's own repo. The live server runs a release tag, not an unreleased branch.
 
-This is step 0: documentation and architecture. The application is not built yet. [FEATURES.md](FEATURES.md) lists the later steps. New ideas go to the parking lot there; only Austin promotes them.
+This is step 0: documentation and the base install. The base install is PostgreSQL 17, Apache Superset 6.1.0, and a default Django 6.1.2 project, all on Python 3.12 and installed directly on Ubuntu or Debian, with no containers, no Redis, and no Celery. The `install.sh` setup wizard is being built. SFTP and the loader are not built yet. [FEATURES.md](FEATURES.md) lists the later steps. New ideas go to the parking lot there; only Austin promotes them.
 
 ## Read these
 
 | Document | What it answers |
 | --- | --- |
 | [docs/PLAN.md](docs/PLAN.md) | The approved v1 plan. If another doc disagrees, the plan wins. |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How a file becomes a page, and how the containers fit together. |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How a file becomes a dashboard, and how the installed pieces fit together. |
 | [docs/DATA_CONTRACT.md](docs/DATA_CONTRACT.md) | The CSV layouts, and how an Infinite Campus extract maps onto them. |
 | [docs/METRICS.md](docs/METRICS.md) | What each dashboard number means, and the choices still open for Austin. |
-| [docs/ACCESS.md](docs/ACCESS.md) | Roles, school grants, and the permissions test. |
+| [docs/ACCESS.md](docs/ACCESS.md) | Superset roles, row-level security by school, and the permissions check. |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Choices already made, and the alternatives that were set aside. |
 | [docs/INVARIANTS.md](docs/INVARIANTS.md) | Rules later changes must not break. |
 | [FEATURES.md](FEATURES.md) | The build, step by step, plus the parking lot. |

@@ -1,6 +1,6 @@
 # SFTP and extracts
 
-Outline only. Step 3 fills this in, when the loader and the Infinite Campus mapping exist. Column layouts stay in [DATA_CONTRACT.md](../DATA_CONTRACT.md). This guide is the operator's version.
+Outline only. Step 1 fills this in, when the SFTP drop, the loader, and the Infinite Campus mapping exist. None of them are built yet. Column layouts stay in [DATA_CONTRACT.md](../DATA_CONTRACT.md). This guide is the operator's version.
 
 ## The drop folder
 
@@ -20,7 +20,7 @@ How to schedule the extracts this district confirmed in the TO CONFIRM list, whi
 
 ## When a load fails
 
-Where the system admin looks (the load history screen and the loader logs). What they will see: file name, row number, and rule, not the cell value. That the dashboards keep showing the last good snapshot.
+Where the system admin looks (the load history table, `ops.load_batch`, and the loader logs). What they will see: file name, row number, and rule, not the cell value. That the dashboards keep showing the last good snapshot.
 
 ## Writing a mapping for another student information system
 

@@ -4,9 +4,9 @@ Rules that must not be broken by a later change. If a pull request needs to brea
 
 ## Metric logic lives only in reporting views
 
-What counts as present, absent, chronic, open, processed, or expiring is defined in a PostgreSQL view in the `reporting` schema. Django and Superset may filter those views and may sum, count, average, or divide columns the view already computed. They may not re-code a local attendance or behavior value.
+What counts as present, absent, chronic, open, processed, or expiring is defined in a PostgreSQL view in the `reporting` schema, and that view's SQL is in this repo. Superset may filter those views and may sum, count, average, or divide columns the view already computed. It may not re-code a local attendance or behavior value.
 
-A new number on a dashboard gets a view, then a hand-checked test, and only then a card or a chart.
+A new number on a dashboard gets a view, then a hand-checked test, and only then a chart.
 
 ## Fake data lives only outside production
 
@@ -14,11 +14,9 @@ Production loads district extracts. It does not run the fake-data generator. Tes
 
 The testing install runs the same release tag as production. It is the only place the sandbox database user exists.
 
-## Superset access changes only through the sync
+## Access lives in Superset roles and row-level security
 
-Django holds the access list. The sync writes Superset users, roles, and school filters. Nobody edits those by hand, and no deploy depends on a hand edit. A dataset without a `school_id` column is not published. Staff charts read reporting views.
-
-Embedded charts get a guest token built from that same access list. The token cannot grant a school the user does not have.
+Superset's roles and row-level security on `school_id` are the only access control in v1. A dataset without a `school_id` column is not published. Staff charts read reporting views, never raw tables. A native filter is never a permission.
 
 ## Production pulls tags only
 
@@ -26,9 +24,9 @@ The live server runs a release tag such as `v1.3.0`. It does not pull `main` and
 
 ## District config lives in the district repo
 
-Settings, code mappings, branding, and exported dashboards belong to `adukes40/campusview-district`. The product repo stays generic. An upgrade replaces the application and runs migrations. It does not overwrite the district repo or the mounted config.
+Settings, code mappings, branding, and exported dashboards belong to `adukes40/campusview-district`. The product repo stays generic. An upgrade replaces the application and runs migrations. It does not overwrite the district repo.
 
-Secrets are not in the district repo. They live in the server environment or in Docker secrets.
+Secrets are not in either repo. They live only in config files on the server, outside git, readable only by the account that runs CampusView.
 
 ## No student data and no org-specific values in the product repo
 
@@ -43,9 +41,8 @@ CI installs the release on a clean machine and upgrades a machine that was on th
 These follow from the same plan and are just as binding.
 
 - **Default deny.** No role, or no school, means no rows.
-- **One query path.** Cards, modals, exports, profiles, and guest tokens apply school limits in one place.
 - **Files are the only ingest.** There is no direct connection to the student information system.
-- **The audit log is append-only.** Profile views and Django exports of named rows are inserted. Rows are not updated or deleted. The history purge does not touch the log.
-- **Loads do not use Celery.** The nightly job is a timed Django management command.
+- **No Celery and no Redis in v1.** Loads run as a timed job on the server. The `celery` and `redis` Python libraries come with Superset but nothing runs them.
+- **Services listen on the server only.** PostgreSQL, Superset, and Django listen on 127.0.0.1 until a proxy is decided.
 - **Agents do not edit exported dashboards.** Those files live in the district repo and stay as the system admin exported them.
-- **Parked work stays parked.** New ideas are written into the parking lot in [FEATURES.md](../FEATURES.md). Only Austin promotes one into a step.
+- **Parked work stays parked.** New ideas are written into the parking lot in [FEATURES.md](../FEATURES.md). Only Austin promotes one into a step. That includes the custom Django pages and the view and export log, which are parked.
