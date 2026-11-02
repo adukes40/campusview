@@ -12,7 +12,7 @@ Open metric questions are not listed here. They are the Decisions for Austin lis
 
 **Who:** Austin's decision, relayed by the CampusView Engineer.
 
-**Status:** The clean-install check on 3.12 is pending.
+**Status:** Verified. Clean installs on Debian 12, Ubuntu 24.04, and Ubuntu 22.04 ran on Python 3.12.16.
 
 **Alternatives:** Superset on Python 3.11 with Django on Python 3.13 in a separate environment. Set aside: two Python versions to install and keep patched.
 

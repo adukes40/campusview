@@ -180,8 +180,8 @@ flowchart LR
 
 | Process | What it is | Listens on |
 | --- | --- | --- |
-| PostgreSQL 17 | Three databases: `superset_meta` (Superset's own settings and users), `django_app` (Django's default tables), `campusview_data` (the warehouse) | 127.0.0.1:5432 |
-| Superset web | Apache Superset 6.1.0, Python 3.12, gunicorn. Installed with Superset's tested package list (`requirements/base.txt` from the 6.1.0 release) as pip constraints | 127.0.0.1:8088 |
+| PostgreSQL 17 | From the PGDG apt repo, added over https with its signing key. `listen_addresses = '127.0.0.1'`. Three databases: `superset_meta` (Superset's own settings and users), `django_app` (Django's default tables), `campusview_data` (the warehouse) | 127.0.0.1:5432 |
+| Superset web | Apache Superset 6.1.0, Python 3.12 (verified on 3.12.16), gunicorn. Installed with Superset's tested package list (`requirements/base.txt` from the 6.1.0 release) as pip constraints | 127.0.0.1:8088 |
 | Django | A default `startproject campusview_base` on Django 6.1.2, Python 3.12, in its own Python environment, gunicorn. No role in v1 features | 127.0.0.1:8000 |
 
 Not in the base install:
@@ -191,13 +191,13 @@ Not in the base install:
 - **No SFTP or loader yet.** Those are step 1.
 - **No example data and no theming.**
 
-Secrets (database passwords, the Superset secret key, the Django secret key) live only in server-side config files outside both git repos, such as `superset_config.py` and Django's settings, readable only by the account that runs CampusView. They are never in either git repo.
+Secrets (the database passwords and the Superset secret key) live in one server file outside both git repos, `/etc/campusview/campusview.env`: mode 600, owned by the account that runs CampusView, in a folder with mode 700. systemd (`EnvironmentFile=`) or `start.sh` loads it. `superset_config.py` and Django's `settings.py` read those values from the environment and contain no passwords. The one exception is Django's own generated `SECRET_KEY`, which stays in `settings.py`, so that file is mode 600. Secrets are never in either git repo.
 
 The district repo holds code mappings, branding, exported dashboards, display name, time zone, and history length. Upgrades do not replace it. Student extracts live in the SFTP drop on the server disk, which is outside both git repos.
 
 ## Installer and releases
 
-`install.sh` is one script with a step-by-step wizard. It asks for every setting the base install needs, installs the pieces above, creates the three databases and their users, and sets up the first Superset admin. The CampusView Engineer is building it and testing it on clean Ubuntu and Debian machines. Until it lands, follow the manual steps in [guides/install-and-upgrade.md](guides/install-and-upgrade.md). Non-secret district settings live in the district repo, not in the product repo.
+`install.sh` is one script with a step-by-step wizard. It asks for every setting the base install needs, installs the pieces above, creates the three databases and their users, and sets up the first Superset admin. The CampusView Engineer built it, and it passed clean installs and re-runs on Debian 12, Ubuntu 24.04, and Ubuntu 22.04. Austin is reviewing it. Until he approves it, follow the manual steps in [guides/install-and-upgrade.md](guides/install-and-upgrade.md). Non-secret district settings live in the district repo, not in the product repo.
 
 The product repo builds a release only as a tag such as `v1.3.0`. The live server pulls a tag. CI for a release installs that tag on a clean machine and upgrades a machine that was on the previous tag. The testing install runs the same tag and may load fake data. Production refuses the fake-data command.
 

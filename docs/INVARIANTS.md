@@ -26,7 +26,7 @@ The live server runs a release tag such as `v1.3.0`. It does not pull `main` and
 
 Settings, code mappings, branding, and exported dashboards belong to `adukes40/campusview-district`. The product repo stays generic. An upgrade replaces the application and runs migrations. It does not overwrite the district repo.
 
-Secrets are not in either repo. They live only in config files on the server, outside git, readable only by the account that runs CampusView.
+Secrets are not in either repo. They live only on the server, outside git, in `/etc/campusview/campusview.env`: mode 600, owned by the account that runs CampusView, in a folder with mode 700. systemd (`EnvironmentFile=`) or `start.sh` loads the file. `superset_config.py` and Django's `settings.py` read secrets from the environment and never contain a password. The only exception is Django's own generated `SECRET_KEY`, which stays in `settings.py`, so `settings.py` is mode 600.
 
 ## No student data and no org-specific values in the product repo
 
@@ -43,6 +43,6 @@ These follow from the same plan and are just as binding.
 - **Default deny.** No role, or no school, means no rows.
 - **Files are the only ingest.** There is no direct connection to the student information system.
 - **No Celery and no Redis in v1.** Loads run as a timed job on the server. The `celery` and `redis` Python libraries come with Superset but nothing runs them.
-- **Services listen on the server only.** PostgreSQL, Superset, and Django listen on 127.0.0.1 until a proxy is decided.
+- **Services listen on the server only.** PostgreSQL, Superset, and Django listen on 127.0.0.1 until a proxy is decided. PostgreSQL uses `listen_addresses = '127.0.0.1'`, not `localhost`, which also opens `[::1]`.
 - **Agents do not edit exported dashboards.** Those files live in the district repo and stay as the system admin exported them.
 - **Parked work stays parked.** New ideas are written into the parking lot in [FEATURES.md](../FEATURES.md). Only Austin promotes one into a step. That includes the custom Django pages and the view and export log, which are parked.
