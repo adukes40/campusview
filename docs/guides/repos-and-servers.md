@@ -2,9 +2,9 @@
 
 CampusView uses two git repos and at least two servers. This guide shows how to set them up for any district. It uses fake names throughout: the district `example-district`, the GitHub account `example-district`, and servers under `example.org`. Use your own names in their place.
 
-Parts of this guide describe work that is not built yet. Those parts are marked **Not built yet**. One choice is still open, and it is marked **Pending Austin's decision**.
+Parts of this guide describe work that is not built yet. Those parts are marked **Not built yet**. 
 
-The release flow here comes from Austin (relayed by CampusView Engineer, 2026-11-03). Some older docs still say production runs a release tag. Those rules have not been changed yet. Until they are, [INVARIANTS.md](../INVARIANTS.md) and [DECISIONS.md](../DECISIONS.md) are the record.
+The release flow here comes from Austin (relayed by CampusView Engineer, 2026-11-03): production pins a release tag cut from `main`, and the dev server follows `dev`. Production pinning tags is the CampusView Engineer's reading of Austin's reply. The rules themselves are in [INVARIANTS.md](../INVARIANTS.md) and [DECISIONS.md](../DECISIONS.md). Until PR #8 merges, `main` still has the older wording there.
 
 ## What goes where
 
@@ -21,10 +21,10 @@ A district does not fork the product repo. Every district runs the same public c
 
 | Name | Follows | Who uses it |
 | --- | --- | --- |
-| The builder's computer | Any working branch | The builder builds and tests here. |
+| The builder's computer | Any working branch | The builder builds and tests here. This is the testing install, with the fictional training-database files. A separate fake-data server can be added later. |
 | `dev` branch | `main` plus the changes being tried | Holds the next changes until Austin approves them. |
-| Dev server, for example `cv-dev.example.org` | The `dev` branch | Austin checks changes here. It is set up like production, so it behaves almost the same. |
-| Production server, for example `cv.example.org` | `main`, or a tag cut from `main`. **Pending Austin's decision.** | Staff. |
+| Dev server, for example `cv-dev.example.org` | The `dev` branch | Austin checks changes here. It holds real district data and follows production rules for data and access: no sandbox database user, no training files, and no agent access. |
+| Production server, for example `cv.example.org` | A release tag cut from `main`, such as `v1.3.0` | Staff. |
 
 **Not built yet:** the product repo has no `dev` branch, no release tags, and no CI workflow today.
 
@@ -34,7 +34,10 @@ A district does not fork the product repo. Every district runs the same public c
 2. The builder pushes the change to the `dev` branch. `dev` is `main` plus the new changes.
 3. The dev server pulls `dev` and is updated. Austin checks it.
 4. If it looks good, Austin merges `dev` into `main`.
-5. Austin updates the production server. Whether production then follows `main` directly, or a tag cut from `main`, is **Pending Austin's decision**.
+5. A release tag is cut from `main`, as in [Tag a release](#tag-a-release). The CampusView Engineer reminds Austin to do this after each merge.
+6. Austin moves the production server to that tag.
+
+No server follows `main`. Production never follows a branch.
 
 ## Set up the product repo
 
@@ -174,9 +177,10 @@ Do this once for the dev server and once for production. Each district sets up i
 
 1. Pick a server that meets [Server requirements](server-requirements.md).
 2. Run the installer as in [Install and upgrade](install-and-upgrade.md). Each server makes its own passwords and secret key. Do not copy the password file from one server to another.
-3. Choose how people reach it. Plain HTTP is only for a test server that is on-prem and not on the internet. Production uses HTTPS.
+3. Choose how people reach it. Production and the dev server both hold real data, and real student data needs HTTPS. Plain HTTP is only for an on-prem test machine with fake data that is not on the internet. Whether the dev server may use plain HTTP is an open question for Austin.
 4. Give the server read access to the district repo and clone it, as above.
-5. On the dev server, set it to follow `dev`. On production, set it to follow `main` or a tag. **Not built yet**, and the production choice is **Pending Austin's decision**.
+5. On the dev server, set it to follow `dev`. On production, set it to a release tag. **Not built yet:** the setting for the branch or tag (step 1).
+6. Do not add the sandbox database user or training files to production or the dev server. They belong only on the testing install.
 
 Today the installer is fetched from `main` as a single file. It does not clone the product repo, does not read a branch or a tag, and does not know about the district repo.
 
@@ -188,6 +192,31 @@ Today the installer is fetched from `main` as a single file. It does not clone t
 - pull the district repo with `--ff-only`
 - run migrations, then restart the services
 - leave the password file, the district repo's history, and the SFTP drop alone
+
+## Tag a release
+
+Cut a tag after Austin merges `dev` into `main` and the change looks right on the dev server. Tags look like `v1.3.0`: raise the last number for a fix, the middle number for new features, and the first number for a change that needs extra steps on upgrade.
+
+Before you tag, check that CI passed on that `main` commit, and that the release installs on a clean machine and upgrades a machine on the previous tag. **Not built yet:** CI, and the clean-install and upgrade checks in CI.
+
+On your own computer, with write access to the product repo:
+
+```bash
+git switch main
+git pull
+git tag -a v1.3.0 -m "CampusView v1.3.0"
+git push origin v1.3.0
+```
+
+To see the tags that exist:
+
+```bash
+git tag --list 'v*' --sort=-v:refname
+```
+
+Do not move or delete a tag after it is pushed. If a release has a problem, fix it on `dev`, merge, and cut the next tag.
+
+Then move production to the new tag with the update command. **Not built yet** (step 1).
 
 ## Keep secrets out of both repos
 
