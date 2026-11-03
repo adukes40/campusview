@@ -217,7 +217,7 @@ A missing file, a bad header, or a bad value fails the load before anything is w
 
 An extract value with no map row warns, and the load still passes. The warning names the extract file, the column, the number of rows, and the first line. It does not include the value. A blank cell does not warn. Keys are the local codes exactly as they appear in the extracts.
 
-The warning checks these columns. `map_grades` uses `enrollment.grade`. `map_genders` uses `identity.gender`. `map_locations` uses `behavior_incident.location`. `map_referral_statuses` uses `behavior_incident.status`. `map_behavior_types` uses `behavior_type.code`. `map_consequences` uses `behavior_res_type.code`. `map_race_groups` uses `race_ethnicity.code`. `map_plan_types` uses `plan_type.type`. `map_plan_statuses` uses `plan.status`. `map_attendance_codes` counts `attendance.csv` rows whose excuse code, from `attendance_excuse.code`, is missing. The warning names `attendance.csv` column `excuseID`. An excuse code that no attendance row uses does not warn.
+The warning checks these columns. `map_grades` uses `enrollment.grade`. `map_genders` uses `identity.gender`. `map_locations` uses `behavior_incident.location`. `map_referral_statuses` uses `behavior_incident.status`. `map_behavior_types` uses `behavior_type.code`. `map_consequences` uses `behavior_res_type.code`. `map_race_groups` uses `race_ethnicity.code`. `map_plan_types` uses `plan_type.type`. `map_plan_statuses` uses `plan.status`. `map_attendance_codes` counts `attendance.csv` rows whose excuse code, from `attendance_excuse.code`, is missing. The warning says `attendance.csv` excuse code. An excuse code that no attendance row uses does not warn.
 
 ### map_attendance_codes.csv
 

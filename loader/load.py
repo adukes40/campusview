@@ -95,7 +95,7 @@ def load_drop(folder: Path, district: Path) -> tuple[bool, bool, str]:
         report = render(ok, phrase, lines, warnings)
         return ok, save_report(conn, report, ok, fault, started), report
     except psycopg.Error as exc:
-        report = render(False, "extract", [copy_failure(exc, copy_name)], [])
+        report = render(False, "the extract", [copy_failure(exc, copy_name)], [])
         return False, save_report(conn, report, False, "extract", started), report
     finally:
         conn.close()

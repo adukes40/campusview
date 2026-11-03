@@ -159,7 +159,8 @@ def replace_maps(conn, loaded):
         count, first = conn.execute(_warning_query(spec)).fetchone()
         if count:
             noun = "row" if count == 1 else "rows"
-            notes.append(f"Warning: {spec[1]}.csv column {spec[2]}: {count} {noun}, no map row (first line {first}).")
+            place = "excuse code" if spec[0] == "map_attendance_codes.csv" else f"column {spec[2]}"
+            notes.append(f"Warning: {spec[1]}.csv {place}: {count} {noun}, no map row (first line {first}).")
     return lines, notes
 
 

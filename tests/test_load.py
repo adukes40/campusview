@@ -164,6 +164,7 @@ def test_bad_file_keeps_previous_rows(db, tmp_path):
     (tmp_path / "person.csv").write_text(header + "\n1,,001,,,,NOT-A-CELL\n")
     ok, saved, report = load_drop(tmp_path, EXAMPLES)
     assert not ok and saved
+    assert "problem with the extract." in report
     assert "person.csv: fail. Line 2:" in report
     assert "NOT-A-CELL" not in report
     assert stored('SELECT "stateID" FROM raw.person') == [("001",)]
@@ -456,7 +457,7 @@ def test_unknown_code_warns_for_codes_that_are_used(db, tmp_path):
     )
     ok, saved, report = load_drop(tmp_path, EXAMPLES)
     assert ok and saved
-    assert "Warning: attendance.csv column excuseID: 1 row, no map row (first line 2)." in report
+    assert "Warning: attendance.csv excuse code: 1 row, no map row (first line 2)." in report
     assert "Warning: enrollment.csv column grade: 1 row, no map row (first line 2)." in report
     assert report.count("no map row") == 2
     assert "NOMAP-USED" not in report
