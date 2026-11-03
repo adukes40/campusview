@@ -9,6 +9,7 @@ import psycopg
 from psycopg import sql
 
 from loader.contract import FILES
+from loader.maps import MapFault, read_maps
 from loader.typed import replace_ic
 
 LOCK = 814202611
@@ -16,17 +17,24 @@ EXTRACT_CUTOFF_DATE = "2025-07-01"
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 2:
-        sys.stderr.write("Usage: python -m loader FOLDER\n")
+    if len(argv) != 3:
+        sys.stderr.write("Usage: python -m loader FOLDER DISTRICT\n")
         return 2
-    ok, saved, report = load_drop(Path(argv[1]))
+    ok, saved, report = load_drop(Path(argv[1]), Path(argv[2]))
     sys.stdout.write(report)
     return 0 if ok and saved else 1
 
 
-def load_drop(folder: Path) -> tuple[bool, bool, str]:
+def load_drop(folder: Path, district: Path) -> tuple[bool, bool, str]:
     started = datetime.now(UTC)
     fault, lines, ready = check_folder(folder)
+    found = read_maps(district, check_header)
+    if isinstance(found, MapFault):
+        lines = [*lines, *found.lines]
+        if fault == "server" or found.fault == "server":
+            fault = "server"
+        elif not fault:
+            fault = found.fault
     if not os.environ.get("CV_OWNER_DB_PASSWORD"):
         if not fault:
             fault, lines = "server", ["CV_OWNER_DB_PASSWORD is not set."]
@@ -62,6 +70,10 @@ def load_drop(folder: Path) -> tuple[bool, bool, str]:
                         f"Warning: calendar {calendar_id} has enrollments and no Day rows."
                         for calendar_id in day_warnings(conn)
                     )
+                    # Assigning fault here would commit the snapshot. replace raises instead.
+                    passed, notes = found.replace(conn)
+                    lines.extend(passed)
+                    warnings.extend(notes)
                     fault = None
         ok = fault is None
         report = render(ok, fault, lines, warnings)

@@ -1,6 +1,7 @@
 import csv
 import os
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 
 import psycopg
@@ -8,7 +9,7 @@ import pytest
 from psycopg import sql
 
 from loader.contract import FILES
-from loader.load import EXTRACT_CUTOFF_DATE, check_folder, check_header, load_drop
+from loader.load import EXTRACT_CUTOFF_DATE, check_folder, check_header, load_drop, main
 from loader.maps import MapBatch, MapFault, read_maps
 
 PASSWORD = "throwaway"
@@ -102,7 +103,7 @@ def test_text_blanks_quotes_and_cutoff(db, tmp_path):
     quoted = {"currentIdentityID": '""', "personID": "1", "stateID": "001", "studentNumber": "STU-001"}
     person_line = ",".join(quoted.get(column, "") for column in person_header)
     (tmp_path / "person.csv").write_text(",".join(person_header) + "\n" + person_line + "\n")
-    ok, saved, report = load_drop(tmp_path)
+    ok, saved, report = load_drop(tmp_path, EXAMPLES)
     assert ok and saved
     assert stored('SELECT "stateID", "currentIdentityID" FROM raw.person') == [("001", None)]
     assert stored("SELECT name, address FROM raw.school") == [("School A, North", 'say "hi"')]
@@ -152,10 +153,10 @@ def test_missing_file(tmp_path):
 
 def test_bad_file_keeps_previous_rows(db, tmp_path):
     loadable(tmp_path, **{"person.csv": [cells("person.csv", personID="1", stateID="001")]})
-    assert load_drop(tmp_path)[0]
+    assert load_drop(tmp_path, EXAMPLES)[0]
     person = tmp_path / "person.csv"
     person.write_text(person.read_text().replace("personID", "personId", 1))
-    ok, saved, report = load_drop(tmp_path)
+    ok, saved, report = load_drop(tmp_path, EXAMPLES)
     assert not ok and saved
     assert "person.csv: fail. Unknown column personId." in report
     assert "att_day_aggregation.csv" not in report
@@ -163,7 +164,7 @@ def test_bad_file_keeps_previous_rows(db, tmp_path):
     assert stored('SELECT "stateID" FROM ic.person') == [("001",)]
     header = ",".join(FILES["person.csv"])
     (tmp_path / "person.csv").write_text(header + "\n1,,001,,,,NOT-A-CELL\n")
-    ok, saved, report = load_drop(tmp_path)
+    ok, saved, report = load_drop(tmp_path, EXAMPLES)
     assert not ok and saved
     assert "person.csv: fail. Line 2:" in report
     assert "NOT-A-CELL" not in report
@@ -181,9 +182,9 @@ def test_zero_byte_file_is_not_also_empty(tmp_path):
 
 def test_empty_calendar_keeps_previous_person(db, tmp_path):
     loadable(tmp_path, **{"person.csv": [cells("person.csv", personID="1", stateID="001")]})
-    assert load_drop(tmp_path)[0]
+    assert load_drop(tmp_path, EXAMPLES)[0]
     write_csv(tmp_path / "calendar.csv", FILES["calendar.csv"], [])
-    ok, saved, report = load_drop(tmp_path)
+    ok, saved, report = load_drop(tmp_path, EXAMPLES)
     assert not ok and saved
     assert "calendar.csv: fail. The file has no data rows." in report
     assert "Nothing was loaded." in report
@@ -193,9 +194,10 @@ def test_empty_calendar_keeps_previous_person(db, tmp_path):
 
 def test_header_only_day_warns(db, tmp_path):
     loadable(tmp_path)
-    ok, saved, report = load_drop(tmp_path)
+    ok, saved, report = load_drop(tmp_path, EXAMPLES)
     assert ok and saved
     assert "day.csv: pass, 0 rows." in report
+    assert "map_grades.csv: pass, 2 rows." in report
     assert "Warning: day.csv has no data rows." in report
     assert stored("SELECT count(*) FROM ic.day") == [(0,)]
 
@@ -211,7 +213,7 @@ def test_full_timestamp_and_bad_date(db, tmp_path):
             "period.csv": [cells("period.csv", periodID="1", startTime="1900-01-01 07:30:00.000")],
         },
     )
-    ok, saved, report = load_drop(tmp_path)
+    ok, saved, report = load_drop(tmp_path, EXAMPLES)
     assert ok and saved
     assert "Warning: day.csv column date: 1 row, bad timestamp (first line 2)." in report
     assert "2015-02-30" not in report
@@ -234,13 +236,13 @@ def _enroll(enrollment_id, grade):
 
 def test_two_grades(db, tmp_path):
     loadable(tmp_path, **{"enrollment.csv": [_enroll("1", "01"), _enroll("2", "1")]})
-    ok, saved, report = load_drop(tmp_path)
+    ok, saved, report = load_drop(tmp_path, EXAMPLES)
     assert ok and saved
     assert stored("SELECT grade FROM ic.enrollment ORDER BY grade") == [("01",), ("1",)]
     assert "Warning: enrollment.csv: 2 rows, two grades for the same student, school, and year." in report
     assert "P1" not in report
     write_csv(tmp_path / "enrollment.csv", FILES["enrollment.csv"], [_enroll("1", "01"), _enroll("2", "01")])
-    ok, saved, report = load_drop(tmp_path)
+    ok, saved, report = load_drop(tmp_path, EXAMPLES)
     assert ok and saved
     assert "two grades" not in report
 
@@ -257,7 +259,7 @@ def test_action_date_before_incident(db, tmp_path):
             ],
         },
     )
-    ok, saved, report = load_drop(tmp_path)
+    ok, saved, report = load_drop(tmp_path, EXAMPLES)
     assert ok and saved
     assert "Warning: behavior_resolution.csv: 1 row, action date before the incident was entered." in report
     write_csv(
@@ -265,7 +267,7 @@ def test_action_date_before_incident(db, tmp_path):
         FILES["behavior_resolution.csv"],
         [cells("behavior_resolution.csv", resolutionID="1", roleID="1", discassignDate="2026-01-02 08:00:00.000")],
     )
-    ok, saved, report = load_drop(tmp_path)
+    ok, saved, report = load_drop(tmp_path, EXAMPLES)
     assert ok and saved
     assert "action date before the incident was entered" not in report
 
@@ -278,7 +280,7 @@ def test_attendance_outside_enrollment(db, tmp_path):
             "attendance.csv": [cells("attendance.csv", attendanceID="1", personID="P1", calendarID="1", date="2026-07-15 00:00:00.000")],
         },
     )
-    ok, saved, report = load_drop(tmp_path)
+    ok, saved, report = load_drop(tmp_path, EXAMPLES)
     assert ok and saved
     assert stored('SELECT "date" FROM ic.attendance') == [(datetime(2026, 7, 15),)]
     assert "Warning: attendance.csv: 1 row, attendance outside enrollment." in report
@@ -288,7 +290,7 @@ def test_attendance_outside_enrollment(db, tmp_path):
         FILES["attendance.csv"],
         [cells("attendance.csv", attendanceID="1", personID="P1", calendarID="1", date="2026-08-01 00:00:00.000")],
     )
-    ok, saved, report = load_drop(tmp_path)
+    ok, saved, report = load_drop(tmp_path, EXAMPLES)
     assert ok and saved
     assert "attendance outside enrollment" not in report
 
@@ -304,7 +306,7 @@ def test_bad_cells_warn_without_values(db, tmp_path):
             "calendar.csv": [cells("calendar.csv", calendarID="1", schoolID="1", endYear="2025-2026")],
         },
     )
-    ok, saved, report = load_drop(tmp_path)
+    ok, saved, report = load_drop(tmp_path, EXAMPLES)
     assert ok and saved
     assert stored('SELECT "schoolID", name, exclude FROM ic.school ORDER BY exclude NULLS LAST') == [
         (None, "School A", True),
@@ -608,4 +610,231 @@ def test_map_csv_in_the_drop_is_rejected(tmp_path):
     fault, lines, _ready = check_folder(tmp_path)
     assert fault == "extract"
     assert lines == ["map_grades.csv: fail. This file is not in the extract contract."]
+
+
+def test_main_requires_the_drop_and_the_district(capsys):
+    assert main(["loader"]) == 2
+    assert main(["loader", "drop"]) == 2
+    assert main(["loader", "drop", "district", "extra"]) == 2
+    assert capsys.readouterr().err == "Usage: python -m loader FOLDER DISTRICT\n" * 3
+
+
+def test_bad_sort_order_names_the_rule(tmp_path, monkeypatch):
+    monkeypatch.delenv("CV_OWNER_DB_PASSWORD", raising=False)
+    loadable(tmp_path)
+    district = copy_district(tmp_path)
+    text = (district / "map_grades.csv").read_text()
+    (district / "map_grades.csv").write_text(text.replace(",0\n", ",01\n", 1))
+    ok, saved, report = load_drop(tmp_path, district)
+    assert not ok and not saved
+    assert "map_grades.csv: fail. Line 2: sort_order: not an integer." in report
+    assert "01" not in report
+    assert "Nothing was loaded." in report
+
+
+def test_extract_and_server_faults_merge(tmp_path, monkeypatch):
+    monkeypatch.delenv("CV_OWNER_DB_PASSWORD", raising=False)
+    loadable(tmp_path)
+    (tmp_path / "day.csv").unlink()
+    ok, saved, report = load_drop(tmp_path, tmp_path / "missing-district")
+    assert not ok and not saved
+    assert "day.csv: fail. The file is missing from the folder." in report
+    assert "The folder is not on this machine." in report
+    assert "problem with the server." in report
+    assert "Nothing was loaded." in report
+
+
+def _ref_snapshot():
+    found = read_maps(EXAMPLES, check_header)
+    assert isinstance(found, MapBatch)
+    return {
+        name: stored(
+            sql.SQL("SELECT * FROM ref.{} ORDER BY 1").format(sql.Identifier(name.removesuffix(".csv")))
+        )
+        for name in found.files
+    }
+
+
+def test_rerun_replaces_ref_rows(db, tmp_path):
+    loadable(tmp_path)
+    ok, saved, report = load_drop(tmp_path, EXAMPLES)
+    assert ok and saved
+    first = _ref_snapshot()
+    assert first["map_grades.csv"] == [
+        ("FAKE-1", "School A grade", 1),
+        ("FAKE-K", "School A kindergarten", 0),
+    ]
+    assert first["map_attendance_codes.csv"] == [
+        ("FAKE-A", "School A absent", "ABSENT_UNEXCUSED", Decimal("1")),
+        ("FAKE-P", "School A present", "PRESENT", Decimal("0")),
+    ]
+    assert first["map_consequences.csv"] == [("FAKE-C", "School A detention", False)]
+    assert first["map_plan_statuses.csv"] == [("FAKE-ON", True)]
+    assert first["map_referral_statuses.csv"] == [("FAKE-S", "School A status", True, False, False)]
+    for name in first:
+        assert f"{name}: pass," in report
+    ok, saved, _report = load_drop(tmp_path, EXAMPLES)
+    assert ok and saved
+    assert _ref_snapshot() == first
+
+    district = copy_district(tmp_path)
+    (district / "map_grades.csv").write_text("grade_code,label,sort_order\nFAKE-K,School A kindergarten,0\n")
+    ok, saved, report = load_drop(tmp_path, district)
+    assert ok and saved
+    assert "map_grades.csv: pass, 1 row." in report
+    assert stored("SELECT grade_code, label, sort_order FROM ref.map_grades ORDER BY grade_code") == [
+        ("FAKE-K", "School A kindergarten", 0),
+    ]
+    assert _ref_snapshot()["map_consequences.csv"] == first["map_consequences.csv"]
+
+
+def test_header_only_map_loads_zero_rows(db, tmp_path):
+    loadable(tmp_path)
+    district = copy_district(tmp_path)
+    header = (district / "map_plan_statuses.csv").read_text().splitlines()[0]
+    (district / "map_plan_statuses.csv").write_text(header + "\n")
+    ok, saved, report = load_drop(tmp_path, district)
+    assert ok and saved
+    assert "map_plan_statuses.csv: pass, 0 rows." in report
+    assert stored("SELECT count(*) FROM ref.map_plan_statuses") == [(0,)]
+    assert stored("SELECT count(*) FROM ref.map_grades") == [(2,)]
+
+
+def test_shuffled_header_stores_spec_order(db, tmp_path):
+    loadable(tmp_path)
+    district = copy_district(tmp_path)
+    (district / "map_grades.csv").write_text(
+        "sort_order,label,grade_code\n0,School A kindergarten,FAKE-K\n1,School A grade,FAKE-1\n"
+    )
+    ok, saved, _report = load_drop(tmp_path, district)
+    assert ok and saved
+    assert stored("SELECT grade_code, label, sort_order FROM ref.map_grades ORDER BY sort_order") == [
+        ("FAKE-K", "School A kindergarten", 0),
+        ("FAKE-1", "School A grade", 1),
+    ]
+
+
+def test_bad_map_keeps_previous_snapshot(db, tmp_path):
+    loadable(tmp_path, **{"person.csv": [cells("person.csv", personID="1", stateID="001")]})
+    district = copy_district(tmp_path)
+    ok, saved, _report = load_drop(tmp_path, district)
+    assert ok and saved
+    grades = stored("SELECT grade_code, label, sort_order FROM ref.map_grades ORDER BY sort_order")
+    text = (district / "map_grades.csv").read_text()
+    (district / "map_grades.csv").write_text(text.replace(",0\n", ",01\n", 1))
+    ok, saved, report = load_drop(tmp_path, district)
+    assert not ok and saved
+    assert "map_grades.csv: fail. Line 2: sort_order: not an integer." in report
+    assert "01" not in report
+    assert "Nothing was loaded." in report
+    assert stored("SELECT grade_code, label, sort_order FROM ref.map_grades ORDER BY sort_order") == grades
+    assert stored('SELECT "stateID" FROM raw.person') == [("001",)]
+    assert stored('SELECT "stateID" FROM ic.person') == [("001",)]
+
+
+def test_unknown_codes_warn_without_the_planted_text(db, tmp_path):
+    planted = {
+        "attendance": "NOMAP-ATT",
+        "behavior": "NOMAP-BEH",
+        "location": "NOMAP-LOC",
+        "consequence": "NOMAP-CON",
+        "gender": "NOMAP-GEN",
+        "grade": "NOMAP-GRD",
+        "race": "NOMAP-RACE",
+        "status": "NOMAP-STA",
+        "plan_type": "NOMAP-TYPE",
+        "plan": "NOMAP-PLAN",
+    }
+    loadable(
+        tmp_path,
+        **{
+            "attendance_excuse.csv": [cells("attendance_excuse.csv", excuseID="1", code=planted["attendance"])],
+            "behavior_type.csv": [cells("behavior_type.csv", typeID="1", code=planted["behavior"])],
+            "behavior_incident.csv": [
+                cells(
+                    "behavior_incident.csv",
+                    incidentID="1",
+                    location=planted["location"],
+                    status=planted["status"],
+                ),
+                cells("behavior_incident.csv", incidentID="2"),
+            ],
+            "behavior_res_type.csv": [cells("behavior_res_type.csv", typeID="1", code=planted["consequence"])],
+            "identity.csv": [
+                cells("identity.csv", identityID="1", gender=planted["gender"]),
+                cells("identity.csv", identityID="2"),
+            ],
+            "enrollment.csv": [cells("enrollment.csv", enrollmentID="1", grade=planted["grade"])],
+            "race_ethnicity.csv": [cells("race_ethnicity.csv", raceId="1", code=planted["race"])],
+            "plan_type.csv": [cells("plan_type.csv", typeID="1", type=planted["plan_type"])],
+            "plan.csv": [cells("plan.csv", planID="1", status=planted["plan"])],
+        },
+    )
+    ok, saved, report = load_drop(tmp_path, EXAMPLES)
+    assert ok and saved
+    expected = (
+        "Warning: attendance_excuse.csv column code: 1 row, no map row (first line 2).",
+        "Warning: behavior_type.csv column code: 1 row, no map row (first line 2).",
+        "Warning: behavior_incident.csv column location: 1 row, no map row (first line 2).",
+        "Warning: behavior_res_type.csv column code: 1 row, no map row (first line 2).",
+        "Warning: identity.csv column gender: 1 row, no map row (first line 2).",
+        "Warning: enrollment.csv column grade: 1 row, no map row (first line 2).",
+        "Warning: race_ethnicity.csv column code: 1 row, no map row (first line 2).",
+        "Warning: behavior_incident.csv column status: 1 row, no map row (first line 2).",
+        "Warning: plan_type.csv column type: 1 row, no map row (first line 2).",
+        "Warning: plan.csv column status: 1 row, no map row (first line 2).",
+    )
+    assert report.count("no map row") == len(expected)
+    positions = [report.index(line) for line in expected]
+    assert positions == sorted(positions)
+    for token in planted.values():
+        assert token not in report
+    assert stored('SELECT gender FROM ic.identity ORDER BY "identityID"') == [(planted["gender"],), (None,)]
+
+
+def test_connect_only_cannot_read_ref_or_ic(db, tmp_path):
+    loadable(tmp_path)
+    ok, saved, _report = load_drop(tmp_path, EXAMPLES)
+    assert ok and saved
+    reader = f"cv_reader_{os.getpid()}"
+    admin = psycopg.connect(
+        user=os.environ.get("USER", "postgres"),
+        dbname="postgres",
+        host="/var/run/postgresql",
+        autocommit=True,
+    )
+    created = False
+    try:
+        admin.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(reader)))
+        admin.execute(
+            sql.SQL("CREATE ROLE {} LOGIN PASSWORD {}").format(sql.Identifier(reader), sql.Literal(PASSWORD))
+        )
+        created = True
+        admin.execute(
+            sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(
+                sql.Identifier(os.environ["CV_PG_DATABASE"]),
+                sql.Identifier(reader),
+            )
+        )
+        conn = psycopg.connect(
+            host="127.0.0.1",
+            port=os.environ.get("CV_PG_PORT", "5432"),
+            dbname=os.environ["CV_PG_DATABASE"],
+            user=reader,
+            password=PASSWORD,
+            autocommit=True,
+        )
+        try:
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                conn.execute("SELECT 1 FROM ref.map_grades")
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                conn.execute("SELECT 1 FROM ic.school")
+        finally:
+            conn.close()
+    finally:
+        if created:
+            admin.execute(sql.SQL("DROP OWNED BY {}").format(sql.Identifier(reader)))
+            admin.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(reader)))
+        admin.close()
+
 
