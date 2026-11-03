@@ -30,16 +30,15 @@ def load_drop(folder: Path) -> tuple[bool, bool, str]:
     if not os.environ.get("CV_OWNER_DB_PASSWORD"):
         if not fault:
             fault, lines = "server", ["CV_OWNER_DB_PASSWORD is not set."]
-        return False, False, render(False, fault, lines, [], [])
+        return False, False, render(False, fault, lines, [])
     try:
         conn = connect()
     except psycopg.Error:
         if not fault:
             fault, lines = "server", ["The database could not be reached."]
-        return False, False, render(False, fault, lines, [], [])
+        return False, False, render(False, fault, lines, [])
     copy_name = None
-    calendar_ids = []
-    notes = []
+    warnings = []
     try:
         if not fault:
             with conn.transaction():
@@ -53,19 +52,22 @@ def load_drop(folder: Path) -> tuple[bool, bool, str]:
                         copy_name = name
                         lines.append(copy_file(conn, name, path, columns, header))
                     copy_name = None
-                    notes = [
+                    warnings = [
                         f"Warning: {name} has no data rows."
                         for name, _path, _columns, _header, has_data in ready
                         if not has_data
                     ]
-                    notes.extend(replace_ic(conn))
-                    calendar_ids = day_warnings(conn)
+                    warnings.extend(replace_ic(conn))
+                    warnings.extend(
+                        f"Warning: calendar {calendar_id} has enrollments and no Day rows."
+                        for calendar_id in day_warnings(conn)
+                    )
                     fault = None
         ok = fault is None
-        report = render(ok, fault, lines, calendar_ids, notes)
+        report = render(ok, fault, lines, warnings)
         return ok, save_report(conn, report, ok, fault, started), report
     except psycopg.Error as exc:
-        report = render(False, "extract", [copy_failure(exc, copy_name)], [], [])
+        report = render(False, "extract", [copy_failure(exc, copy_name)], [])
         return False, save_report(conn, report, False, "extract", started), report
     finally:
         conn.close()
@@ -115,13 +117,15 @@ def check_folder(folder: Path):
         if not path.is_file():
             problem(name, "The file is missing from the folder.")
             continue
-        reason, header, has_data = check_header(path, columns)
+        reason, header = check_header(path, columns)
         if reason:
             problem(name, reason)
-        elif name in ("school.csv", "calendar.csv") and not has_data:
+            continue
+        data = has_rows(path)
+        if name in ("school.csv", "calendar.csv") and not data:
             problem(name, "The file has no data rows.")
         else:
-            ready.append((name, path, columns, header, has_data))
+            ready.append((name, path, columns, header, data))
     for name in sorted(names):
         if name not in FILES:
             problem(name, "This file is not in the extract contract.")
@@ -130,32 +134,38 @@ def check_folder(folder: Path):
     return None, [], ready
 
 
+def has_rows(path: Path) -> bool:
+    with path.open(newline="", encoding="utf-8") as handle:
+        reader = csv.reader(handle)
+        next(reader, None)
+        return next(reader, None) is not None
+
+
 def check_header(path: Path, columns: tuple[str, ...]):
     try:
         with path.open(newline="", encoding="utf-8") as handle:
-            reader = csv.reader(handle)
-            header = next(reader, None)
-            if not header:
-                return "The file has no header row.", None, False
-            if any(name == "" for name in header):
-                return "A column has no name.", None, False
-            repeated = sorted({name for name in header if header.count(name) > 1})
-            if repeated:
-                return "Repeated column " + ", ".join(repeated) + ".", None, False
-            unknown = [name for name in header if name not in columns]
-            missing = [name for name in columns if name not in header]
-            parts = []
-            if unknown:
-                parts.append("Unknown column " + ", ".join(unknown) + ".")
-            if missing:
-                parts.append("Missing column " + ", ".join(missing) + ".")
-            if parts:
-                return " ".join(parts), None, False
-            return "", header, next(reader, None) is not None
+            header = next(csv.reader(handle), None)
     except UnicodeDecodeError:
-        return "The file is not UTF-8.", None, False
+        return "The file is not UTF-8.", None
     except OSError:
-        return "The server could not read this file.", None, False
+        return "The server could not read this file.", None
+    if not header:
+        return "The file has no header row.", None
+    if any(name == "" for name in header):
+        return "A column has no name.", None
+    repeated = sorted({name for name in header if header.count(name) > 1})
+    if repeated:
+        return "Repeated column " + ", ".join(repeated) + ".", None
+    unknown = [name for name in header if name not in columns]
+    missing = [name for name in columns if name not in header]
+    parts = []
+    if unknown:
+        parts.append("Unknown column " + ", ".join(unknown) + ".")
+    if missing:
+        parts.append("Missing column " + ", ".join(missing) + ".")
+    if parts:
+        return " ".join(parts), None
+    return "", header
 
 
 def connect():
@@ -220,14 +230,10 @@ def day_warnings(conn) -> list[str]:
     return [row[0] for row in rows]
 
 
-def render(ok: bool, fault, lines, calendar_ids, notes) -> str:
+def render(ok: bool, fault, lines, warnings) -> str:
     if ok:
         head = ["Load passed."]
-        lines = [
-            *lines,
-            *[f"Warning: calendar {calendar_id} has enrollments and no Day rows." for calendar_id in calendar_ids],
-            *notes,
-        ]
+        lines = [*lines, *warnings]
     else:
         where = "the extract" if fault == "extract" else "the server"
         head = [
