@@ -98,15 +98,15 @@ Logs and `ops.load_batch` may include file names, row counts, row numbers, and r
 
 These schemas live in the `campusview_data` database. Superset's own settings are in `superset_meta`, and Django's default tables are in `django_app`. Neither of those holds student data.
 
-**To fix when the warehouse is set up:** the base install currently makes the Superset database user the owner of `campusview_data`. The rule below is that Superset only reads `reporting`. When step 1 creates the schemas, the loader gets its own owner user, and Superset connects to `campusview_data` with a separate read-only user that can `SELECT` from `reporting` only.
+**Resolved 2026-11-02:** the installer creates two accounts for `campusview_data`. `campusview_owner` owns the database and the schemas `raw`, `ref`, and `reporting`; the loader writes as it in step 1. `campusview_reader` can connect and `SELECT` from `reporting` only, including anything added there later. Superset's data connection should use `campusview_reader`; the installer does not create that connection. `superset_user` owns only `superset_meta` and cannot connect to `campusview_data`. Upgrades rename an old `mapping` schema to `ref`. See [ACCESS.md](ACCESS.md) and [DECISIONS.md](DECISIONS.md).
 
 Schemas in `campusview_data`:
 
 | Schema | Holds | Who may read it |
 | --- | --- | --- |
-| `raw` | One table per standard file, plus load metadata columns (`load_id`, `loaded_at`) | Loader. Not Superset. |
-| `ref` | Code-mapping tables | Loader, and the reporting views |
-| `reporting` | Views | The Superset database user, `SELECT` only |
+| `raw` | One table per standard file, plus load metadata columns (`load_id`, `loaded_at`) | Loader (`campusview_owner`). Not Superset. |
+| `ref` | Code-mapping tables | Loader (`campusview_owner`), and the reporting views |
+| `reporting` | Views | `campusview_reader` (Superset's data connection), `SELECT` only |
 | `ops` | `load_batch` | Loader writes; system admin reads |
 | `scratch` | Empty on a normal install | Testing install only, and only the sandbox database user |
 
@@ -198,7 +198,7 @@ The district repo holds code mappings, branding, exported dashboards, display na
 
 ## Installer and releases
 
-`install.sh` is one script with a step-by-step wizard. It asks for every setting the base install needs, installs the pieces above, creates the three databases and their users, and sets up the first Superset admin. The CampusView Engineer built it, and it passed clean installs and re-runs on Debian 12, Ubuntu 24.04, and Ubuntu 22.04. Austin is reviewing it. Until he approves it, follow the manual steps in [guides/install-and-upgrade.md](guides/install-and-upgrade.md). Non-secret district settings live in the district repo, not in the product repo.
+`install.sh` is one script with a step-by-step wizard. It asks for every setting the base install needs, installs the pieces above, creates the three databases and their users, and sets up the first Superset admin. The CampusView Engineer built it, and it passed clean installs and re-runs on Debian 12, Ubuntu 24.04, and Ubuntu 22.04. It is merged to `main`. How to run it is in [guides/install-and-upgrade.md](guides/install-and-upgrade.md). Non-secret district settings live in the district repo, not in the product repo.
 
 The product repo builds a release only as a tag such as `v1.3.0`. The live server pulls a tag. CI for a release installs that tag on a clean machine and upgrades a machine that was on the previous tag. The testing install runs the same tag and may load fake data. Production refuses the fake-data command.
 

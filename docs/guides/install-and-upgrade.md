@@ -34,7 +34,7 @@ The installer always uses PostgreSQL 17 from postgresql.org. It does not ask whi
 
 Press Enter to accept the value shown in brackets. When you type a password, nothing appears on the screen. That is on purpose. If you type a password, you type it twice. If you press Enter on a password prompt on the first run, the installer makes a strong password for you. On a later run, Enter on a password that was already saved keeps the saved one.
 
-A password needs at least 8 characters. It cannot contain a space, a single quote (`'`), a double quote (`"`), or a backslash (`\`). The install folder may use only letters, digits, `.`, `_`, `-`, and `/`. The admin email must be a plain address, like `name@school.org`. If you break a rule, the installer says so and asks again. With an answers file, it stops and names the setting, and it changes nothing.
+A password needs at least 8 characters. It cannot contain a space, a single quote (`'`), a double quote (`"`), or a backslash (`\`). The install folder may use only letters, digits, `.`, `_`, `-`, and `/`. The admin email must be a plain address, like `name@school.org`. If you break a rule, the installer says so and asks again. With an answers file, it stops and names the setting, and it changes nothing. If a database command fails, the error it shows hides the password.
 
 ## Which account does what
 
