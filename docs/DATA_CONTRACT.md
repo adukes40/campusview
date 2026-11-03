@@ -16,7 +16,28 @@ The built loader (PR #10) reads the Infinite Campus files themselves, not the st
 - Every value in `raw` is stored as text. A blank cell, quoted or not, is stored as NULL. `school.csv` or `calendar.csv` with zero data rows fails the load. Any other header-only file warns and still loads.
 - A calendar with enrollments and no Day rows is a warning, not a failure. See [the extracts guide](guides/sftp-and-extracts.md).
 
-In the same transaction that replaces `raw`, the loader builds schema `ic`. Each raw table is copied to the same table name in `ic`. Date and time columns are timestamps. Infinite Campus writes them as `YYYY-MM-DD HH:MM:SS.fff`, including a time of day on columns whose names end in Date. A value PostgreSQL rejects becomes NULL and the report warns, with the file, the column, and the line. The three cross-row checks warn and keep the row. Those checks are two grades for the same student, school, and year, attendance outside enrollment, and an action date before the incident was entered. The loader does not check duplicate keys, unknown codes, or foreign keys. The mapping-file failure and the impossible referral-flag check are not built, because this repo has no mapping file.
+In the same transaction that replaces `raw`, the loader builds schema `ic`. Each raw table is copied to the same table name in `ic`. Date and time columns are timestamps. Infinite Campus writes them as `YYYY-MM-DD HH:MM:SS.fff`, including a time of day on columns whose names end in Date. The tables are dropped and rebuilt on every load, with no keys, indexes, or constraints.
+
+How a column's type is chosen (`kind` in `loader/contract.py`):
+
+- `endYear` is an integer. The columns in `BOOLEANS` are booleans and the columns in `NUMBERS` are numeric.
+- A name that ends in `timestamp`, `Stamp`, `Time`, or `date`, is `date`, or contains `Date` is a timestamp. That includes time-only columns such as `period.startTime`. Compare those by time of day with `::time`.
+- A name that ends in `ID` or `Id` is an id and stays text. Every other column, including codes, `grade`, and `studentNumber`, stays text.
+
+What the typed copy warns about today. Each warning gives the file, the column, the number of rows, the rule, and the first line. It never gives the value. The first line is counted in the order PostgreSQL stores the raw rows, which is the file order after a fresh load.
+
+- An id that is not 1 to 64 letters, digits, hyphens, or underscores. It becomes NULL.
+- Text with a line break or other control character. It becomes NULL.
+- A boolean, number, school year, or timestamp that PostgreSQL's `pg_input_is_valid` rejects for that type. It becomes NULL. PostgreSQL also accepts `t`, `yes`, `1`, and `on` (and their opposites) as booleans.
+- A blank key in three columns only: `school.schoolID`, `calendar.calendarID`, and `enrollment.enrollmentID` (`REQUIRED` in `loader/contract.py`). No other blank cell warns.
+
+The three cross-row checks warn and keep the row. Each gives the file and the number of rows, with no line number:
+
+- Two grades for the same student, school, and year: `enrollment` rows with the same `personID`, the calendar's `schoolID`, and `endYear`, and more than one `grade`.
+- Attendance outside enrollment: an `attendance` row with no `enrollment` for the same person at the same school (matched through each calendar's `schoolID`) whose `startDate` is on or before the date and whose `endDate` is blank or on or after it. Any enrollment counts, not only a primary one.
+- An action date before the incident was entered: a `behavior_resolution` whose `discassignDate` falls on an earlier calendar day than its incident's `timestamp`, joined through `behavior_role` and `behavior_event`. A same-day action does not warn.
+
+**Not built yet:** duplicate-key checks, foreign-key checks, unknown-code warnings, the mapping-file failure, and the impossible referral-flag check. The last three need a mapping file, and this repo has none.
 
 ## Shared file rules
 
@@ -25,23 +46,23 @@ These rules were written for vendor-neutral standard files, which will not be bu
 - UTF-8, comma-separated, a header row, any valid CSV quoting.
 - Header names match this document exactly, lowercase, in any column order.
 - An unknown or misspelled header fails the file, and the report names that header (Austin, relayed by CampusView Engineer, 2026-11-03). A missing required header fails the file.
-- **Bad values warn** (Austin, relayed by CampusView Engineer, 2026-11-03, 12:47 PM ET). A cell that breaks one of the value rules below is stored as NULL in the `ic` copy, and the load report lists the problem with the file, row number, and rule. Loading continues. The raw table keeps the text as it arrived.
+- **Bad values warn** (Austin, relayed by CampusView Engineer, 2026-11-03, 12:47 PM ET). A cell that breaks one of the value rules below is stored as NULL in the `ic` copy, and the load report lists the problem with the file, row number, and rule. Today's report gives the column and the first line for each rule, not every row (see above). Loading continues. The raw table keeps the text as it arrived.
 - Character set for every id: letters, digits, hyphen, underscore, length 1 to 64.
-- Dates are `YYYY-MM-DD`. Times are `HH:MM` in 24-hour local time.
-- Booleans are `true` or `false`.
+- Dates are `YYYY-MM-DD`. Times are `HH:MM` in 24-hour local time. In `ic`, every date and time column is a timestamp (see above).
+- Booleans are `true` or `false`. In `ic`, any spelling PostgreSQL accepts is a valid boolean.
 - Decimals use a period.
-- School year is `YYYY-YYYY` with the second year equal to the first plus one.
-- A blank cell is allowed only where the column says optional. A blank required cell is a warning.
-- A duplicate or bad key is a warning on the load report. Loading continues.
-- A code that is not in the matching mapping table is a warning on the load report that names the file and the code's column. Loading continues. There is no silent "other" bucket. The district adds an explicit map row for every code that appears.
+- School year is `YYYY-YYYY` with the second year equal to the first plus one. In `ic`, the school year is the integer `endYear`.
+- A blank cell is allowed only where the column says optional. A blank required cell is a warning. Today only the three keys above warn when blank.
+- A duplicate or bad key is a warning on the load report. Loading continues. **Not built yet** for duplicate keys and foreign keys; today only an id with bad characters and the three blank keys warn.
+- A code that is not in the matching mapping table is a warning on the load report that names the file and the code's column. Loading continues. There is no silent "other" bucket. The district adds an explicit map row for every code that appears. **Not built yet:** this repo has no mapping file.
 - Text fields must not contain line breaks or other control characters. A cell that does is a warning.
 - The nightly drop is a full snapshot of the school years to keep, not a list of changes since yesterday. After a good load, the warehouse matches the drop, minus years outside the history window.
 - Only `school.csv` and `calendar.csv` must contain at least one data row. If either has zero data rows, the whole load fails (Austin, 2026-11-03, 1:05 to 1:13 PM ET). Every other file, including `day.csv`, `person.csv`, and `enrollment.csv`, may arrive empty. An empty file is a warning on the load report, and loading continues.
-- Mapping files live in the district repo, not in the SFTP drop. They are required on every load. A bad code-mapping file fails the whole load: both a header problem and a bad code in the file (Austin, relayed by CampusView Engineer, 2026-11-03, 12:47 PM ET). This is different from an extract code with no map row, which only warns.
+- Mapping files live in the district repo, not in the SFTP drop. They are required on every load. A bad code-mapping file fails the whole load: both a header problem and a bad code in the file (Austin, relayed by CampusView Engineer, 2026-11-03, 12:47 PM ET). This is different from an extract code with no map row, which only warns. **Not built yet:** the loader reads no mapping files.
 - One failed file fails the whole load. The previous snapshot stays. Warnings do not fail a file.
-- **What fails the load:** an unknown, missing, repeated, or blank header; a missing or unexpected file; a row PostgreSQL rejects when loading `raw` (raw is all text, so this is a file-format problem, not a bad value); an empty `school.csv` or `calendar.csv` (zero data rows); and a bad code-mapping file.
-- **What warns and keeps loading:** any other file with zero data rows, bad values (stored as NULL in `ic`), bad or duplicate keys, extract codes with no map row, and the cross-row checks in the file sections below. A row that fails a cross-row check stays as it is in `ic` and still counts in the metrics (Austin, 2026-11-03, 12:56 PM ET).
-- Error reports name the file, the row number, and the rule. They do not repeat the cell value. Today's loader names the file and the reason, and gives a line number when PostgreSQL rejects a row.
+- **What fails the load:** an unknown, missing, repeated, or blank header; a missing or unexpected file; a row PostgreSQL rejects when loading `raw` (raw is all text, so this is a file-format problem, not a bad value); an empty `school.csv` or `calendar.csv` (zero data rows); and a bad code-mapping file (**not built yet**). Each of these fails before anything is written to `raw` or `ic`. The failed attempt is still recorded in `ops.load_batch`.
+- **What warns and keeps loading:** any other file with zero data rows, bad values (stored as NULL in `ic`), bad or duplicate keys (duplicates not checked yet), extract codes with no map row (not built yet), and the cross-row checks in the file sections below (three built; the referral-flag check is not built yet). A row that fails a cross-row check stays as it is in `ic` and still counts in the metrics (Austin, 2026-11-03, 12:56 PM ET).
+- Error reports name the file, the row number, and the rule. They do not repeat the cell value. Today's loader names the file and the reason, and gives a line number when PostgreSQL rejects a row. A typed-copy warning names the file, column, row count, rule, and first line. A cross-row warning names the file and row count.
 
 ## Changing the contract
 
@@ -51,7 +72,7 @@ The loader's file list is the Infinite Campus headers in `loader/contract.py`. T
 
 The standard layouts in this document will not be written as files. The typed copy keeps the Infinite Campus names. Do not change those layouts' meanings or rules without Austin.
 
-Load order inside the transaction follows the foreign keys: schools and students, then enrollments and calendar days, then attendance, incidents, incident behaviors, consequences, and plans. The check looks at the whole drop before anything is written.
+*Not built yet:* `raw` and `ic` have no foreign keys today. Planned: load order inside the transaction follows the foreign keys: schools and students, then enrollments and calendar days, then attendance, incidents, incident behaviors, consequences, and plans. The check looks at the whole drop before anything is written.
 
 ## schools.csv
 
@@ -252,7 +273,7 @@ Key: `status_code`.
 | `is_open` | boolean | yes | `true` means still open. |
 | `is_cancelled` | boolean | yes | `true` means the referral is ignored by every metric. |
 
-A row with `is_cancelled` false, `is_processed` false, and `is_open` false is a warning on the load report. Loading continues. The row stays as it is in `ic`, still counts in the metrics, and is listed on the load report (Austin, 2026-11-03, 12:56 PM ET). That combination would make a referral vanish from both lists without being cancelled. Cancelled rows must have the other two flags false.
+A row with `is_cancelled` false, `is_processed` false, and `is_open` false is a warning on the load report. Loading continues. The row stays as it is in `ic`, still counts in the metrics, and is listed on the load report (Austin, 2026-11-03, 12:56 PM ET). **Not built yet:** it needs the status mapping file. That combination would make a referral vanish from both lists without being cancelled. Cancelled rows must have the other two flags false.
 
 ### map_plan_types.csv
 
@@ -312,7 +333,7 @@ The typed copy does not invent codes and does not decide that a code is excused.
 
 ## TO CONFIRM
 
-**Deferred, not blocking step 0.** For Austin, before the typed copy is built in step 1. The working text above is general product knowledge, not a claim about this district's files.
+**Deferred, not blocking step 0.** For Austin. The typed copy is built (PR #14); these block the mapping tables and the reporting views. The working text above is general product knowledge, not a claim about this district's files.
 
 1. *Partly answered (Austin, relayed by CampusView Engineer, 2026-11-03): delivery is SFTP for now. Which export builds the files is still open.* Which export will actually be scheduled onto SFTP: an Ad Hoc filter CSV, the data-extract utility, or another report. CampusView will not connect to the Infinite Campus database.
 2. *Partly answered (Austin, relayed by CampusView Engineer, 2026-11-03): keep 2025-26 and 2026-27; extracts start 2025-07-01. Whether each file set is a full snapshot is still open.* That each nightly file set is a full snapshot of every school year that should be kept (current year and the prior year, by default), not a file of changes since the previous night.
