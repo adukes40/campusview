@@ -4,7 +4,7 @@ CampusView uses two git repos and at least two servers. This guide shows how to 
 
 Parts of this guide describe work that is not built yet. Those parts are marked **Not built yet**.
 
-The release flow here comes from Austin (relayed by CampusView Engineer, 2026-11-03): production pins a release tag cut from `main`, and the dev server follows `dev`. Production pinning tags is the CampusView Engineer's reading of Austin's reply. The rules themselves are in [INVARIANTS.md](../INVARIANTS.md) and [DECISIONS.md](../DECISIONS.md). Until PR #8 merges, `main` still has the older wording there.
+The release flow here comes from Austin (relayed by CampusView Engineer, 2026-11-03): production pins a release tag cut from `main`, and the dev server follows `dev`. Production pinning tags is the CampusView Engineer's reading of Austin's reply. The rules themselves are in [INVARIANTS.md](../INVARIANTS.md) and [DECISIONS.md](../DECISIONS.md).
 
 ## What goes where
 
@@ -143,7 +143,7 @@ GitHub answers that you have authenticated but it does not provide shell access.
 
 ### 4. Clone the district repo
 
-**Not built yet:** the folder CampusView reads district files from. The installer does not ask for it, and nothing reads it yet. `/opt/campusview-district` is the proposed folder, beside the install folder.
+Use `/opt/campusview-district`, beside the install folder. The update command pulls that exact folder when it is a git checkout. **Not built yet:** a setting for this folder. The installer does not ask for it or clone it, and nothing reads district files from it yet.
 
 On Debian, as root:
 
@@ -200,7 +200,11 @@ To go back to an older tag, run this.
 sudo bash /opt/campusview/install.sh --update --allow-downgrade
 ```
 
+On Debian as root, leave off `sudo`.
+
 The command pulls `/opt/campusview-district` when that folder is already a checkout. The pull is `git pull --ff-only`. When the folder is not a checkout, you see one skip line, `No district checkout at /opt/campusview-district. Skipped.` The command does not clone the district repo.
+
+The pull runs as the account that runs CampusView (`CV_RUN_USER`). If a different account owns the district folder, for example root runs CampusView and `cvadmin` owns the folder, git refuses it as `dubious ownership` and the update stops before the product moves.
 
 ## Tag a release
 

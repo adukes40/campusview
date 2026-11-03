@@ -193,13 +193,13 @@ This older-layout upgrade was tested once, on Debian 12.
 
 ## Update the server
 
-A server installed before this checkout exists has no `install.sh` in the install folder, so `--update` cannot run there yet. Run the new installer once. On the dev server:
+A server installed before this checkout exists has no `install.sh` in the install folder, so `--update` cannot run there yet. Run the new installer once, from a copy outside the install folder; a copy inside it is refused. On the dev server:
 
 ```bash
 sudo CV_REF=dev bash ./install.sh
 ```
 
-That keeps the database data and the saved passwords, and it checks the product repo out into the install folder. Press Enter on the branch question to keep `dev`.
+On Debian as root, leave off `sudo` in this command and the ones below. That keeps the database data and the saved passwords, and it checks the product repo out into the install folder. Press Enter on the branch question to keep `dev`.
 
 After that, leave `CV_REF` as `dev` and run the update command.
 
