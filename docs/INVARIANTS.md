@@ -12,15 +12,19 @@ A new number on a dashboard gets a view, then a hand-checked test, and only then
 
 Production loads district extracts. Tests, fixtures, and the testing install use Infinite Campus training-database extracts that Austin supplies. That database is completely fictional, so it counts as fake data (Austin, relayed by CampusView Engineer, 2026-11-03). Those files never go in the public repo; they stay on the builder's computer. Real student rows, real names, and real extracts never go into the product repo, a test, a log message, or a commit.
 
-The testing install runs the same release tag as production. It is the only place the sandbox database user exists.
+The testing install is the builder's own computer, or a separate fake-data server if Austin sets one up later (Austin, relayed by CampusView Engineer, 2026-11-03). It is never the dev server. It is the only place the sandbox database user and the training files exist.
+
+## The dev server is treated like production
+
+The dev server follows the `dev` branch and holds real district data, so Austin can see how a change will look (Austin, relayed by CampusView Engineer, 2026-11-03). For data and access it follows the production rules: no sandbox database user, no training files, and no agent access.
 
 ## Access lives in Superset roles and row-level security
 
 Superset's roles and row-level security on `school_id` are the only access control in v1. A dataset without a `school_id` column is not published. Staff charts read reporting views, never raw tables. A native filter is never a permission.
 
-## Production pulls tags only
+## Production pins a release tag
 
-The live server runs a release tag such as `v1.3.0`. It does not pull `main` and it does not pull a branch. Work reaches `main` only after CI passes. A tag is cut from that.
+The production server runs a release tag such as `v1.3.0`, cut from `main` (CampusView Engineer's reading of Austin's reply, 2026-11-03). The dev server follows the `dev` branch. No server pulls `main`, and production never pulls a branch. Work reaches `main` only after CI passes and Austin has checked it on the dev server. After each merge to `main`, the CampusView Engineer reminds Austin to cut a tag.
 
 ## District config lives in the district repo
 
@@ -34,7 +38,7 @@ The product repo has no student information, no real staff names or emails, no s
 
 ## Every release is upgrade-tested
 
-CI installs the release on a clean machine and upgrades a machine that was on the previous release. A release that has not passed both does not get a tag. The upgrade must leave district config in place.
+Before a tag is cut, the release is installed on a clean machine and used to upgrade a machine that was on the previous tag. Neither check needs data files, so both belong in CI once releases exist. A release that has not passed both does not get a tag. The upgrade must leave district config in place.
 
 ## Also do not break
 

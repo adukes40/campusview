@@ -70,18 +70,19 @@ The Django access list, the Django-to-Superset sync, guest tokens, and the share
 
 ## Repos and releases
 
-- **Product repo** `adukes40/campusview`: generic code and SQL only. Build branches merge to `main` when CI passes. Releases are tags such as `v1.3.0`. The live server pulls tags and never pulls raw `main`.
+- **Product repo** `adukes40/campusview`: generic code and SQL only. Changes go to the `dev` branch (`main` plus the new changes) and merge to `main` when CI passes and Austin has checked them on the dev server. Releases are tags such as `v1.3.0`, cut from `main`. Production pins a tag (CampusView Engineer's reading of Austin's reply, 2026-11-03). The dev server follows `dev`. No server pulls `main`.
 - **Private district repo** `adukes40/campusview-district`: that district's settings, code mappings, branding, and exported dashboards. Upgrades never overwrite it. It holds no secrets.
-- **Testing install:** the same release, loaded with Infinite Campus training-database extracts that Austin supplies. It also serves as an AI query sandbox. The AI gets its own database user that can read raw tables and build views in a scratch schema only. Finished views become SQL in the repo with hand-checked tests and ship through releases. They are never copy-pasted to production.
+- **Dev server:** follows `dev` and holds real district data, so Austin sees how a change will look (Austin, relayed by CampusView Engineer, 2026-11-03). It follows production rules for data and access: no sandbox user, no training files, no agent access.
+- **Testing install:** the builder's own computer, or a separate fake-data server later, loaded with Infinite Campus training-database extracts that Austin supplies. Never the dev server. It also serves as an AI query sandbox. The AI gets its own database user that can read raw tables and build views in a scratch schema only. Finished views become SQL in the repo with hand-checked tests and ship through releases. They are never copy-pasted to production.
 
 ## Build order
 
-One pull request per step. Merge when CI is green and the data tests pass on the builder's computer and Austin's test VM. CI on GitHub runs only the tests that need no data files (Austin, relayed by CampusView Engineer, 2026-11-03).
+One pull request per step. Merge when CI is green, the data tests pass on the builder's computer, and Austin has checked the change on the dev server. CI on GitHub runs only the tests that need no data files (Austin, relayed by CampusView Engineer, 2026-11-03). CI is built in step 1; until it exists, "CI is green" cannot be checked, and the builder runs the same no-data tests on its own computer.
 
 | Step | Work | Done when |
 | --- | --- | --- |
 | 0 | Docs, plus the bare-bones base install: PostgreSQL 17, plain Superset 6.1.0, default Django 6.1.2, and the `install.sh` wizard. **Built and merged.** | Austin approves the docs, and `install.sh` brings up the base install on a clean Ubuntu or Debian machine |
-| 1 | Getting data in: the SFTP drop, the raw schema, the validated loader, and the Infinite Campus mapping. Test files are Infinite Campus training-database extracts that Austin supplies, kept on the builder's computer | Bad files are rejected with a clear report, each load is all or nothing, every column the contract lists is kept, and a good drop built from the training extracts loads |
+| 1 | Getting data in: the SFTP drop, the raw schema, the validated loader, and the Infinite Campus mapping. Test files are Infinite Campus training-database extracts that Austin supplies, kept on the builder's computer. Also the release plumbing Austin moved into current work (Austin, relayed by CampusView Engineer, 2026-11-03): the district folder on each server and the mappings layout in the district repo; a product checkout on each server with a setting for the branch or tag it follows; an update command; and a `dev` branch with basic CI | Bad files are rejected with a clear report, each load is all or nothing, every column the contract lists is kept, a good drop built from the training extracts loads, the dev server follows `dev` and updates with the update command, and CI runs the no-data tests |
 | 2 | The first reporting views in PostgreSQL and the first Superset dashboard on them: an Overview, modeled on screenshots of Austin's current overview page (Austin, relayed by CampusView Engineer, 2026-11-03), with the three roles and school row-level security set up and checked | Each role sees exactly its schools on that dashboard, and each view's numbers match a hand-checked answer on the training extracts |
 
 Later steps, in an order Austin will set: the rest of the reporting views and the Attendance and Behavior dashboards; the nightly schedule and the history purge; and an adversarial review with fixes. Each new number gets a view and a hand-checked test before it gets a chart.
@@ -102,14 +103,14 @@ These are the numbers and charts v1 aims for. In plain Superset, a "card" is a b
 
 There is no fake-data generator. Tests and the testing install use Infinite Campus training-database extracts that Austin supplies. The training database is completely fictional, so it counts as fake data (Austin, relayed by CampusView Engineer, 2026-11-03). The files never go in the public repo. They are only for building. They stay on the builder's computer, and Austin can pull them again. Austin supplies whatever files a test needs.
 
-Workflow (Austin, relayed by CampusView Engineer, 2026-11-03): build and test on the builder's computer, push to Austin's test VM, then Austin updates production to `main`. CI on GitHub cannot use the training files, so it runs only the tests that need no data files. Tests that need data, including every hand-checked metric answer, run on the builder's computer and on the test VM.
+Workflow: build and test on the builder's computer, push to `dev`, Austin checks the dev server, merges `dev` into `main`, and a tag is cut for production. See [DECISIONS.md](DECISIONS.md), "Release flow". CI on GitHub cannot use the training files, so it runs only the tests that need no data files. Tests that need data, including every hand-checked metric answer, run on the builder's computer, or a fake-data server if one is set up. They never run on the dev server, which holds real data.
 
 The loader keeps every column the contract lists. The first sample was 23 CSV files with at most 1,000 rows each; that cap came from the DB Hub plugin Austin used to pull them, not from the extract. See [DECISIONS.md](DECISIONS.md), 2026-11-03.
 
 ## Guarding against unwanted changes
 
 - Dashboards are exported from Superset into the district repo. AI agents never edit those exports.
-- Every metric has a test with a hand-checked answer, run on the builder's computer and the test VM.
+- Every metric has a test with a hand-checked answer, run on the builder's computer.
 - Every release is tested as an upgrade from the previous release.
 - New ideas go to the FEATURES.md parking lot. Only Austin promotes them into the build.
 

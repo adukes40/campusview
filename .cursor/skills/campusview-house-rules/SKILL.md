@@ -23,12 +23,13 @@ Step 0 is documentation and the base install. Do not add application code in a d
 - No Redis, no Celery, no Superset worker or beat. The `celery` and `redis` libraries come with Superset; do not start or rely on them. The nightly load is a timed job on the server, not Celery.
 - Native install on Ubuntu or Debian. No containers. The CampusView Engineer owns the `install.sh` wizard and all engineering.
 - Files on SFTP are the only ingest. Do not add a direct connection to a student information system.
-- The product repo stays generic. District settings, code mappings, branding, and exported dashboards belong in the private district repo. Production pulls release tags, never raw `main`.
+- The product repo stays generic. District settings, code mappings, branding, and exported dashboards belong in the private district repo. Production pins a release tag cut from `main`. The dev server follows `dev`. No server pulls `main`. After each merge to `main`, remind Austin to cut a tag.
+- The dev server holds real data and is treated like production: no sandbox user, no training files, no agent access.
 
 ## Security
 
 - Fake data only, outside production. The Infinite Campus training database is completely fictional and counts as fake data. No real names, emails, student information, school names from a real district, keys, screenshots, or district-specific values in code, tests, fixtures, logs, docs, or commits. Exception: the IC start year, the extract cutoff date, and the homeroom rule stay in the docs. Examples use obvious placeholders such as `STU-001` and `School A`.
-- There is no fake-data generator. Tests and the testing install use Infinite Campus training-database extracts that Austin supplies. They never go in the repo; they stay on the builder's computer. Production does not load them. The testing install uses the same release tag.
+- There is no fake-data generator. Tests and the testing install use Infinite Campus training-database extracts that Austin supplies. They never go in the repo; they stay on the builder's computer. Production and the dev server do not load them. The testing install is the builder's computer, or a fake-data server later, never the dev server.
 - Every column the data contract lists is kept. Do not drop or ban a column. An unknown or misspelled header fails the file with a clear report.
 - File names, header names, and date formats in the data contract stay fixed. Adding a column or table to the contract needs a documented process, which is not written yet.
 - Secrets live only in `/etc/campusview/campusview.env` on the server (mode 600, owned by the account that runs CampusView, folder mode 700), loaded by systemd `EnvironmentFile=` or `start.sh`. `superset_config.py` and `settings.py` read them from the environment. Only Django's own generated `SECRET_KEY` stays in `settings.py`, which is mode 600. Never in source, argv, a fixture, or either git repo.
@@ -49,8 +50,8 @@ A new idea, including one that appears mid-build, is written into the Parking lo
 ## How work lands
 
 - One pull request per plan step. Do not mix two steps.
-- CI on GitHub must pass before the step is done. It runs only the tests that need no data files. Once releases exist, CI includes a fresh install and an upgrade from the previous release.
-- Tests that need data run on the builder's computer and on Austin's test VM, and must pass there too. Workflow: build and test on the builder's computer, push to the test VM, then Austin updates production.
-- Every metric has a test with a hand-checked answer on the training extracts, run on the builder's computer and the test VM. The test reads the reporting view. It does not reimplement the formula.
+- CI on GitHub must pass before the step is done. It runs only the tests that need no data files. CI is built in step 1; until then, run the same no-data tests on your own computer. Once releases exist, CI includes a fresh install and an upgrade from the previous tag.
+- Tests that need data run on the builder's computer, or a fake-data server, and must pass there too. Never on the dev server. Workflow: build and test on the builder's computer, push to `dev`, Austin checks the dev server and merges to `main`, then a tag is cut for production.
+- Every metric has a test with a hand-checked answer on the training extracts, run on the builder's computer. The test reads the reporting view. It does not reimplement the formula.
 - Definition choices still listed under Decisions for Austin in [docs/METRICS.md](../../../docs/METRICS.md) are open. Do not treat them as approved until Austin answers them. If Austin approves that document without changing an item, the item's working proposal becomes the definition.
 - Update the docs in the same pull request as the code. A step is not done while its guides are still stubs for behavior the step just added.

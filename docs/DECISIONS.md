@@ -4,13 +4,39 @@ Dated log of decisions already made. The plan of record is [PLAN.md](PLAN.md). N
 
 Open metric questions are not listed here. They are the Decisions for Austin list in [METRICS.md](METRICS.md). Open extract questions are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md). Both lists are deferred for now and do not block step 0.
 
+## 2026-11-03 — Release flow: dev branch, dev server, then a tag for production
+
+**What:**
+
+1. The builder builds and tests on its own computer and shows Austin screenshots. Screenshots never go in the public repo.
+2. Changes go to the `dev` branch (`main` plus the new changes).
+3. The dev server follows `dev`. It holds real district data, so Austin can see how a change will look. It follows production rules for data and access: no sandbox user, no training files, no agent access. The testing install is the builder's computer, or a separate fake-data server if Austin sets one up.
+4. If it looks good, Austin merges `dev` into `main`.
+5. A release tag is cut from `main`, and production moves to that tag. After each merge, the CampusView Engineer reminds Austin to cut a tag.
+
+**Why:** Austin's words on the dev server: "ideally the dev server is going to run production data, because I need to see how it will look... If need be, I can always set up like a different server that has just the fake data in it." On tags, the CampusView Engineer explained tags against `main` and recommended tags. Austin replied: "that sounds fine, as long as you can remind me about it."
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03. Production pinning tags is the CampusView Engineer's reading of Austin's reply.
+
+**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed by merging PR #8.
+
+**Amends:** 2026-11-01 "Tag-based releases" (below).
+
+## 2026-11-03 — Release plumbing moves into step 1
+
+**What:** Austin moved these into current work, as step 1: a product checkout on each server with a setting for the branch or tag it follows; an update command that pulls the product ref and the district repo fast-forward only, runs migrations, restarts, and leaves the env file and the SFTP drop alone; and a `dev` branch with basic CI that runs only the tests that need no data. The district folder on each server and the mappings layout in the district repo are step 1 work too. Three smaller items from the same scoping are parked in [FEATURES.md](../FEATURES.md#parking-lot).
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03 ("that sounds fine, as long as you can remind me about it").
+
+**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed by merging PR #8.
+
 ## 2026-11-03 — Answers to the open questions on PR #8
 
 **What:**
 
 - **Training data is fake data.** The IC training database is completely fictional, so no PII or PHI removal is needed.
 - **Training files never go in the public repo.** They are only for building, they stay on the builder's computer, and Austin can pull them again.
-- **Workflow and CI.** Build and test on the builder's computer, push to Austin's test VM, then Austin updates production to `main`. CI on GitHub cannot use the training files, so it runs only the tests that need no data files. Data tests, including every hand-checked metric answer, run on the builder's computer and the test VM. **Rule change:** "CI must pass" and "Every metric has a test with a hand-checked answer" in the house rules, PLAN, and FEATURES are reworded to say this.
+- **Workflow and CI.** Build and test on the builder's computer, push to Austin's test VM, then Austin updates production to `main` (*amended by "Release flow" above: the dev server holds real data, data tests run on the builder's computer, and production pins a tag*). CI on GitHub cannot use the training files, so it runs only the tests that need no data files. Data tests, including every hand-checked metric answer, run on the builder's computer and the test VM. **Rule change:** "CI must pass" and "Every metric has a test with a hand-checked answer" in the house rules, PLAN, and FEATURES are reworded to say this.
 - **Keep everything he pulls in,** including SSN, medical, email, and notes if he ever sends them. None of it goes in the public repo.
 - **Validated imports.** Every column the contract lists is kept, and nothing is dropped. An unknown or misspelled header fails the file with a clear report. A new column goes through the contract's change process. An email alert on a failed import is parked in [FEATURES.md](../FEATURES.md#parking-lot) for Austin to promote.
 - **State id and birthdate** may appear in reporting views for now.
@@ -200,6 +226,8 @@ For each reporting page, the metric logic is a PostgreSQL view whose SQL is in t
 **Alternatives:** A live connection to the vendor database, or a vendor API. Rejected because the district may not permit them, and because v1 would then depend on one vendor's connection.
 
 ## 2026-11-01 — Tag-based releases
+
+**Amended 2026-11-03:** production still pins tags, now cut after Austin checks `dev` on the dev server and merges it. The dev server follows `dev`. See "Release flow" above.
 
 **What:** Work merges to `main` only when CI passes. A release is a tag such as `v1.3.0`. The live server pulls tags and does not pull raw `main`.
 

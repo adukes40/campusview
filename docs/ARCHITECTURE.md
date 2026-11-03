@@ -200,9 +200,9 @@ The district repo holds code mappings, branding, exported dashboards, display na
 
 `install.sh` is one script with a step-by-step wizard. It asks for every setting the base install needs, installs the pieces above, creates the three databases and their users, and sets up the first Superset admin. The CampusView Engineer built it, and it passed clean installs and re-runs on Debian 12, Ubuntu 24.04, and Ubuntu 22.04. It is merged to `main`. How to run it is in [guides/install-and-upgrade.md](guides/install-and-upgrade.md). Non-secret district settings live in the district repo, not in the product repo.
 
-The product repo builds a release only as a tag such as `v1.3.0`. The live server pulls a tag. CI for a release installs that tag on a clean machine and upgrades a machine that was on the previous tag. The testing install runs the same tag and loads Infinite Campus training-database extracts that Austin supplies. Production does not load them.
+The product repo builds a release only as a tag such as `v1.3.0`, cut from `main`. Production pins a tag. The dev server follows the `dev` branch, holds real data, and follows production rules for data and access. Before a tag is cut, the release is installed on a clean machine and upgrades a machine that was on the previous tag. The testing install is the builder's computer, or a fake-data server later; it loads Infinite Campus training-database extracts that Austin supplies. Production and the dev server do not load them. **Not built yet:** the per-server product checkout, the branch or tag setting, the update command, the `dev` branch, and CI (all step 1).
 
-The testing database has one extra user for the AI sandbox: it can read `raw` and `reporting`, and it can create objects only in `scratch`. Production does not have this user. A view that is ready to keep is added as SQL in the product repo, with a hand-checked test, and arrives through a release.
+The testing database has one extra user for the AI sandbox: it can read `raw` and `reporting`, and it can create objects only in `scratch`. Production and the dev server do not have this user. A view that is ready to keep is added as SQL in the product repo, with a hand-checked test, and arrives through a release.
 
 ## Dashboards, in product terms
 

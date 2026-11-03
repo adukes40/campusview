@@ -1,6 +1,6 @@
 # Features
 
-v1, in the order [PLAN.md](docs/PLAN.md) builds it. One pull request per step. A step is done when its "done when" line is true, CI is green, the data tests pass on the builder's computer and the test VM, and the docs that step touches are updated in the same pull request.
+v1, in the order [PLAN.md](docs/PLAN.md) builds it. One pull request per step. A step is done when its "done when" line is true, CI is green, the data tests pass on the builder's computer, Austin has checked it on the dev server, and the docs that step touches are updated in the same pull request.
 
 Ideas that show up while a step is open go in [Parking lot](#parking-lot). They are not built in the open step. Only Austin moves an item from the parking lot into a step.
 
@@ -21,6 +21,12 @@ Done when Austin approves the docs, and `install.sh` brings up the base install 
 - The Infinite Campus mapping onto those files.
 - Test files from Infinite Campus training-database extracts that Austin supplies, kept on the builder's computer, never in the repo. No fake-data generator.
 - The guide on how to write a mapping for another student information system. The mapping itself is not built.
+- Release plumbing, moved into current work by Austin (Austin, relayed by CampusView Engineer, 2026-11-03):
+  - The district folder on each server, and a setting for it (proposed `/opt/campusview-district`).
+  - The mappings layout in the district repo.
+  - A product checkout on each server, with a setting for the branch or tag it follows: `dev` on the dev server, a tag on production.
+  - An update command: pull the product ref and the district repo (fast-forward only), run migrations, restart, and leave the env file and the SFTP drop alone.
+  - A `dev` branch and basic CI on GitHub. CI runs only the tests that need no data.
 
 Done when a bad file leaves the previous data in place, and a good file set replaces the snapshot in one transaction.
 
@@ -61,6 +67,9 @@ Not in v1 unless Austin promotes one.
 - Django as a thin front door to Superset — deferred 2026-11-01: plain Superset first; revisit only if base install shows real need.
 - Jump box for Infinite Campus — logged 2026-11-03 (Austin, relayed by CampusView Engineer, 2026-11-03); Austin asked for it to be logged, not built. Later, a jump box would be the only host allowed to query the Infinite Campus database. CampusView sends it scripts, it queries Infinite Campus and returns files, the files are copied to the CampusView server, and the import runs there. Until then, delivery is SFTP.
 - Email alert on failed import — logged 2026-11-03, raised by Austin (Austin, relayed by CampusView Engineer, 2026-11-03); Austin asked for it, so he can promote it. Optional email to Austin through the server's existing SMTP relay, using Python `smtplib`, configured in the env file, with no new daemon (as CampusView Engineer proposed). It says what failed, why, and whether to check the server or the extract. Later because: no plan step includes alerts; step 1 records failures but does not notify anyone. Earliest step: step 1, once the loader records failures; most useful with the nightly timer.
+- Pick up district settings after a pull — logged 2026-11-03, raised by CampusView Keeper from the PR #9 scoping. Reload or restart so new branding and settings take effect after the district repo is pulled. Later because: mappings are read on every load, and branding and settings do not exist yet. Earliest step: when branding or district settings are built.
+- Installer clones the district repo with a deploy key — logged 2026-11-03, raised by CampusView Keeper from the PR #9 scoping. The installer makes the read-only deploy key and clones the district repo. Later because: the manual steps in the repos guide work today. Earliest step: after step 1's district folder and update command.
+- Secret scan in CI — logged 2026-11-03, raised by CampusView Keeper from the PR #9 scoping. A CI check that fails a push carrying a password, key, or token, in the product repo and the district repo. Later because: basic CI comes first, in step 1. Earliest step: after step 1's basic CI.
 - Redis and Celery, with a Superset worker and beat: async queries, scheduled alerts and reports, and caching — deferred 2026-11-02: bare-bones install first; revisit only if base install shows real need.
 
 Held from the first approved plan:
