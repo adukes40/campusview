@@ -2,7 +2,7 @@
 
 CampusView uses two git repos and at least two servers. This guide shows how to set them up for any district. It uses fake names throughout: the district `example-district`, the GitHub account `example-district`, and servers under `example.org`. Use your own names in their place.
 
-Parts of this guide describe work that is not built yet. Those parts are marked **Not built yet**. 
+Parts of this guide describe work that is not built yet. Those parts are marked **Not built yet**.
 
 The release flow here comes from Austin (relayed by CampusView Engineer, 2026-11-03): production pins a release tag cut from `main`, and the dev server follows `dev`. Production pinning tags is the CampusView Engineer's reading of Austin's reply. The rules themselves are in [INVARIANTS.md](../INVARIANTS.md) and [DECISIONS.md](../DECISIONS.md). Until PR #8 merges, `main` still has the older wording there.
 
