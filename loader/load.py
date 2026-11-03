@@ -70,7 +70,6 @@ def load_drop(folder: Path, district: Path) -> tuple[bool, bool, str]:
                         f"Warning: calendar {calendar_id} has enrollments and no Day rows."
                         for calendar_id in day_warnings(conn)
                     )
-                    # Assigning fault here would commit the snapshot. replace raises instead.
                     passed, notes = found.replace(conn)
                     lines.extend(passed)
                     warnings.extend(notes)

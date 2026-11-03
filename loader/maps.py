@@ -293,7 +293,6 @@ def _cell(rule: Rule, text: str) -> tuple[object | None, tuple[str, ...]]:
     if rule is Rule.SORT:
         if _SORT.fullmatch(text):
             value = int(text)
-            # A PostgreSQL integer error quotes the rejected digits, so an out-of-range sort fails here.
             if _SORT_MIN <= value <= _SORT_MAX:
                 return value, ()
         return None, ("not an integer",)
