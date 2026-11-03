@@ -1,6 +1,6 @@
 # SFTP and extracts
 
-Outline only. Step 1 fills this in, when the SFTP drop, the loader, and the Infinite Campus mapping exist. None of them are built yet. Column layouts stay in [DATA_CONTRACT.md](../DATA_CONTRACT.md). This guide is the operator's version.
+The loader is in this repo. SFTP and the mapping onto the standard files are not built yet. Column layouts for those standard files stay in [DATA_CONTRACT.md](../DATA_CONTRACT.md). The Infinite Campus headers the loader accepts are in `loader/contract.py`. This guide is the operator's version.
 
 ## The drop folder
 
@@ -18,9 +18,47 @@ Where they live (the district repo, not the SFTP drop). Who edits them when the 
 
 How to schedule the extracts this district confirmed in the TO CONFIRM list, that the loader keeps every column the extract sends, and what the mapping step does before the loader runs. Field-level notes stay in the data contract so this guide does not drift from it.
 
+## Run the loader
+
+The loader reads one folder of Infinite Campus CSV files and loads them into the `raw` schema. SFTP pickup and the mapping onto the standard layouts come later.
+
+The installer does not run the loader. From a checkout of this repository, load the password file into the environment. Do not put the password on the command line. The command below uses the Python 3.12 the installer already placed. It does not download Python, and it does not install the test tools. The first run installs the loader's database library into that checkout.
+
+```
+set -a
+. /etc/campusview/campusview.env
+set +a
+cd /path/to/checkout
+UV_PYTHON_INSTALL_DIR=/opt/campusview/.uv/python \
+  /opt/campusview/.uv/bin/uv run --no-dev --no-python-downloads --python 3.12 \
+  python -m loader /path/to/folder
+```
+
+A good folder has every CSV file named in `loader/contract.py`. A CSV file that is not in that list fails the load. A listed file that is missing fails the load. Files that are not CSV are ignored.
+
+You should see `Load passed.` and one line per file with its row count. The same text is stored in `ops.load_batch`, in the `report` column. `outcome` is `pass` or `fail`. `fault` is `extract` when the files are wrong, and `server` when the machine or the database is the problem. `fault` is empty on a pass. Read the table as `campusview_owner`.
+
+A failed load writes nothing to `raw`. The previous rows stay. The report lists only the files that failed. A file that has only a header row is a pass, and it clears that table. Running the same folder again leaves the same rows.
+
+Every value is stored as text, so a leading zero stays. A blank cell is stored as NULL, including a quoted empty cell. Postgres reads the CSV, so a quoted comma or a quote inside a value is kept, and the line endings can be LF or CRLF.
+
+A calendar with no Day rows is a warning when an enrollment's end date, or its start date when the end date is empty, is on or after the extract cutoff date, 2025-07-01. An old enrollment with a blank end date is left out. The load still passes. The warning lists those calendar ids in numeric order. Day rows may repeat a date for one calendar. Older calendars do that when one date sits on more than one schedule structure. The loader allows the repeat.
+
+If a load is already running, the new one stops and names the server as the fault.
+
+## Add a column or a table
+
+File names and header names stay fixed until you change the list in `loader/contract.py`.
+
+1. Add the new header, or the new file and its headers, in `loader/contract.py`. Match the spelling in the extract exactly.
+2. Add that same column or file to the extract.
+3. Run the loader. It adds a missing text column on the raw table. It does not drop a column that is already there.
+
+Until the list includes the new header, the loader fails that file and the report names the header. A renamed header fails the same way. The report shows an unknown column and a missing column.
+
 ## When a load fails
 
-Where the system admin looks (the load history table, `ops.load_batch`, and the loader logs). What they will see: file name, row number, and rule, not the cell value. That the dashboards keep showing the last good snapshot.
+Read the loader output, or `ops.load_batch`. A failed load names only the files that failed, with the rule. You do not see the cell value. Use `fault` to decide where to look. `extract` means fix the files. `server` means check this machine, the database, or whether a load is already running. The previous rows stay in place.
 
 ## Writing a mapping for another student information system
 

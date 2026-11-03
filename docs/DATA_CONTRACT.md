@@ -26,7 +26,11 @@ The Infinite Campus section says how a typical extract maps onto these files. It
 
 ## Changing the contract
 
-File names, header names, and date formats stay fixed (Austin, relayed by CampusView Engineer, 2026-11-03). Adding a new column or a new table to this contract needs a documented process. Until a column is added, a file that carries it fails with a clear report. **That process is not written yet.** Until it is, do not change a layout here without Austin.
+File names, header names, and date formats stay fixed (Austin, relayed by CampusView Engineer, 2026-11-03). Adding a new column or a new table needs a documented process. Until a column is added, a file that carries it fails with a clear report.
+
+The loader's file list is the Infinite Campus headers in `loader/contract.py`. To add a column or a file, add it there, then add it to the extract. The steps are in [the extracts guide](guides/sftp-and-extracts.md). Until the list includes the new header, the loader fails the file and the report names the header. Do not rename a header that is already in the list.
+
+The standard layouts in this document are the files the mapping step will write. That mapping is not built yet. Do not change those layouts without Austin.
 
 Load order inside the transaction follows the foreign keys: schools and students, then enrollments and calendar days, then attendance, incidents, incident behaviors, consequences, and plans. The check looks at the whole drop before anything is written.
 
