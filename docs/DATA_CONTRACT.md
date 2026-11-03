@@ -25,19 +25,22 @@ These rules were written for vendor-neutral standard files, which will not be bu
 - UTF-8, comma-separated, a header row, any valid CSV quoting.
 - Header names match this document exactly, lowercase, in any column order.
 - An unknown or misspelled header fails the file, and the report names that header (Austin, relayed by CampusView Engineer, 2026-11-03). A missing required header fails the file.
+- **Bad values warn** (Austin, relayed by CampusView Engineer, 2026-11-03, 12:47 PM ET). A cell that breaks one of the value rules below is stored as NULL in the `ic` copy, and the load report lists the problem with the file, row number, and rule. Loading continues. The raw table keeps the text as it arrived.
 - Character set for every id: letters, digits, hyphen, underscore, length 1 to 64.
 - Dates are `YYYY-MM-DD`. Times are `HH:MM` in 24-hour local time.
 - Booleans are `true` or `false`.
 - Decimals use a period.
 - School year is `YYYY-YYYY` with the second year equal to the first plus one.
-- A blank cell is allowed only where the column says optional.
+- A blank cell is allowed only where the column says optional. A blank required cell is a warning.
 - A duplicate or bad key is a warning on the load report. Loading continues.
 - A code that is not in the matching mapping table is a warning on the load report that names the file and the code's column. Loading continues. There is no silent "other" bucket. The district adds an explicit map row for every code that appears.
-- Text fields reject line breaks and other control characters.
+- Text fields must not contain line breaks or other control characters. A cell that does is a warning.
 - The nightly drop is a full snapshot of the school years to keep, not a list of changes since yesterday. After a good load, the warehouse matches the drop, minus years outside the history window.
-- `schools.csv`, `students.csv`, `enrollments.csv`, and `calendar_days.csv` must each contain at least one data row. The other extract files may be header-only.
-- Mapping files live in the district repo, not in the SFTP drop. They are required on every load. A bad mapping fails the load the same way a bad extract does.
+- `schools.csv`, `students.csv`, `enrollments.csv`, and `calendar_days.csv` must each contain at least one data row. If one has zero data rows, the whole load fails (Austin, relayed by CampusView Engineer, 2026-11-03, 12:47 PM ET). The other extract files may be header-only. Not built yet: today's loader passes a header-only file.
+- Mapping files live in the district repo, not in the SFTP drop. They are required on every load. A bad code-mapping file fails the whole load: both a header problem and a bad code in the file (Austin, relayed by CampusView Engineer, 2026-11-03, 12:47 PM ET). This is different from an extract code with no map row, which only warns.
 - One failed file fails the whole load. The previous snapshot stays. Warnings do not fail a file.
+- **What fails the load:** an unknown, missing, repeated, or blank header; a missing or unexpected file; a row PostgreSQL rejects when loading `raw` (raw is all text, so this is a file-format problem, not a bad value); a required file with zero data rows; and a bad code-mapping file.
+- **What warns and keeps loading:** bad values (stored as NULL in `ic`), bad or duplicate keys, extract codes with no map row, and the cross-row checks in the file sections below.
 - Error reports name the file, the row number, and the rule. They do not repeat the cell value. Today's loader names the file and the reason, and gives a line number when PostgreSQL rejects a row.
 
 ## Changing the contract
@@ -92,7 +95,7 @@ One row per enrollment span. Key: `enrollment_id`. Also unique on (`student_id`,
 Validation beyond types:
 
 - For one student, primary spans must not overlap in dates.
-- For one student, one school, and one school year, every row shares a single `grade`. Two grades in that combination fail the file. This is the working rule in Decisions for Austin, item 19, in [METRICS.md](METRICS.md): v1 does not represent a mid-year grade change unless Austin asks for it.
+- For one student, one school, and one school year, every row shares a single `grade`. Two grades in that combination are a warning on the load report. Loading continues. This is the working rule in Decisions for Austin, item 19, in [METRICS.md](METRICS.md): v1 does not represent a mid-year grade change unless Austin asks for it.
 - A school that has enrollments but no calendar days in that school year does not fail the file. It loads, and the load report shows a warning naming the school and year (Austin, relayed by CampusView Engineer, 2026-11-03). Today's loader checks this on the Infinite Campus files and names the calendar id instead. Its students have no membership days until calendar days arrive.
 
 ## calendar_days.csv
@@ -123,7 +126,7 @@ One row per student per school per date, already rolled up to the day. Key: (`st
 
 The portion of the day, and whether the code is a tardy, live only in the attendance-code map. The extract does not carry a second copy of that decision.
 
-The date must fall inside a primary enrollment for that student and school. A row that does not is a failed file. A school day with no attendance row is not an error. How metrics treat that day is a decision in [METRICS.md](METRICS.md).
+The date must fall inside a primary enrollment for that student and school. A row that does not is a warning on the load report. Loading continues. A school day with no attendance row is not an error. How metrics treat that day is a decision in [METRICS.md](METRICS.md).
 
 ## incidents.csv
 
@@ -139,7 +142,7 @@ One referral, one student. If the source system records several students on one 
 | `incident_time` | time | no | Blank if the time was not recorded. |
 | `location_code` | text | no | If present, must exist in `map_locations.csv`. |
 | `status_code` | text | yes | Must exist in `map_referral_statuses.csv`. |
-| `action_date` | date | no | Date of the first action or consequence. Blank if there is no action yet. Must be on or after `incident_date` when set; an earlier date fails the file. |
+| `action_date` | date | no | Date of the first action or consequence. Blank if there is no action yet. Must be on or after `incident_date` when set; an earlier date is a warning on the load report. |
 
 No narrative, participant notes, or victim names.
 
@@ -249,7 +252,7 @@ Key: `status_code`.
 | `is_open` | boolean | yes | `true` means still open. |
 | `is_cancelled` | boolean | yes | `true` means the referral is ignored by every metric. |
 
-A row with `is_cancelled` false, `is_processed` false, and `is_open` false is rejected. That combination would make a referral vanish from both lists without being cancelled. Cancelled rows must have the other two flags false.
+A row with `is_cancelled` false, `is_processed` false, and `is_open` false is a warning on the load report. Loading continues. That combination would make a referral vanish from both lists without being cancelled. Cancelled rows must have the other two flags false.
 
 ### map_plan_types.csv
 

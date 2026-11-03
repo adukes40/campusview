@@ -98,7 +98,7 @@ The view is an ordinary view, because the date depends on today. No attendance r
 | View | `reporting.v_incident`, rows where `days_to_action` is not null. |
 | Formula | Average of `days_to_action`. That column is the calendar-day difference from `incident_date` to `action_date`. |
 | Denominator | The count of referrals in the filter that have an action date. Referrals with no action yet are excluded, not treated as still running. |
-| Edge | Same-day action is 0. A negative span fails the load, so it never enters the average. |
+| Edge | Same-day action is 0. A negative span (an action date before the incident date) is flagged on the load report. Whether that row counts in the average is not decided. |
 | Table columns | Student id, name, school, incident date, action date, days. |
 
 ### Active 504 plans

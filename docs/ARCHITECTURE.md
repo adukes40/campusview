@@ -26,9 +26,9 @@ flowchart TD
 ```
 
 1. The district drops a full CSV snapshot on SFTP. CampusView never connects to the student information system.
-2. The loader checks every Infinite Campus file. Nothing is renamed. If a file fails (a header or column problem, a missing file, or an unexpected file), it loads nothing and leaves the previous data in place. If every check passes, it replaces the raw snapshot in one database transaction. See [DATA_CONTRACT.md](DATA_CONTRACT.md).
+2. The loader checks every Infinite Campus file. Nothing is renamed. If the load fails (a header or column problem, a missing or unexpected file, a row PostgreSQL rejects, a required file with zero data rows, or a bad district code-mapping file), it loads nothing and leaves the previous data in place. If every check passes, it replaces the raw snapshot in one database transaction. See [DATA_CONTRACT.md](DATA_CONTRACT.md).
 3. Raw tables store every column the contract lists, as text, with the Infinite Campus names. Nothing is dropped, and an unknown header fails the file.
-4. A typed, checked copy of each raw table keeps the same table and column names, with real dates and numbers. It lives in schema `ic`, so `raw.enrollment` becomes `ic.enrollment`. Bad keys and unknown codes are warnings on the load report, and loading continues. Code-mapping tables, from the district repo, say what each local code means. See 2026-11-03 "The typed layer keeps the Infinite Campus names" in [DECISIONS.md](DECISIONS.md).
+4. A typed, checked copy of each raw table keeps the same table and column names, with real dates and numbers. It lives in schema `ic`, so `raw.enrollment` becomes `ic.enrollment`. Bad values (stored as NULL), bad keys, unknown codes, and cross-row problems are warnings on the load report, and loading continues. Code-mapping tables, from the district repo, say what each local code means. See 2026-11-03 "The typed layer keeps the Infinite Campus names" in [DECISIONS.md](DECISIONS.md).
 5. Reporting views join the typed copy to those maps and expose every number the dashboards show. The SQL is in this repo. The metric list is [METRICS.md](METRICS.md).
 6. Superset dashboards read the views. Superset's roles and row-level security limit each person to their schools. See [ACCESS.md](ACCESS.md).
 
@@ -71,7 +71,7 @@ Later code is expected to split along these lines. Only the `loader` package exi
 | --- | --- | --- | --- |
 | `ingest.drop` | Watch the SFTP folder | Files on disk | Nothing |
 | `loader` (built) | Validate, then load all or nothing | Infinite Campus CSV | `raw`, `ops.load_batch` |
-| Typed copy (module name to be decided) | Typed, checked copy of each raw table, same names; bad keys and unknown codes are warnings on the load report | `raw`, district maps | `ic` |
+| Typed copy (module name to be decided) | Typed, checked copy of each raw table, same names; bad values (stored as NULL), bad keys, unknown codes, and cross-row problems are warnings on the load report | `raw`, district maps | `ic` |
 | `warehouse.ic` | Typed copy tables. Not built | | |
 | `warehouse.raw` | Snapshot tables, all text | | |
 | `warehouse.ref` | Code-mapping tables | | |
@@ -86,8 +86,8 @@ Dashboards, charts, filters, roles, and row-level security are Superset settings
 Planned: `load(drop_dir, district_config_dir) -> LoadResult`
 
 - Look in `drop_dir` for the Infinite Campus extract files and in `district_config_dir` for the code-mapping files. Both sets are required.
-- Validate every file first: headers (an unknown or misspelled header fails the file). The typed copy then checks types. Bad keys and unknown codes are warnings on the load report, and loading continues. Details are in [DATA_CONTRACT.md](DATA_CONTRACT.md).
-- On any failure (a header or column problem, a missing file, or an unexpected file), leave the previous snapshot in place. Warnings do not stop the load. Record the failed attempt on `ops.load_batch` with the file name, the row number, and the rule that failed. Do not record the cell value.
+- Validate every file first: headers (an unknown or misspelled header fails the file). The typed copy then checks values, keys, codes, and cross-row rules. Those are warnings on the load report, a bad value is stored as NULL in `ic`, and loading continues. Details are in [DATA_CONTRACT.md](DATA_CONTRACT.md).
+- On any failure (a header or column problem, a missing or unexpected file, a row PostgreSQL rejects, a required file with zero data rows, or a bad district code-mapping file), leave the previous snapshot in place. Warnings do not stop the load. Record the failed attempt on `ops.load_batch` with the file name, the row number, and the rule that failed. Do not record the cell value.
 - On success, replace the raw snapshot inside one transaction, purge school years outside the history window, and commit.
 - The drop is a full snapshot of the years to keep, not a file of changes. Running the same files twice leaves the same warehouse.
 - History length is a district setting, default 2: the newest school year in the drop and the one before it.

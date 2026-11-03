@@ -13,6 +13,8 @@ Open metric questions are not listed here. They are the Decisions for Austin lis
 - It stores real dates and numbers.
 - It lives in schema `ic`, with the same owner and permissions as `raw`. For example, `raw.enrollment` becomes `ic.enrollment` (Austin, relayed by CampusView Engineer, 2026-11-03, 12:43 PM ET: "Call the schema ic.").
 - Bad keys and unknown codes only warn on the load report, and loading continues. Header and column problems, missing files, and unexpected files still fail the whole batch (Austin, relayed by CampusView Engineer, 2026-11-03, 12:43 PM ET: "Bad keys or unknown codes only warn on the load report and keep loading.").
+- Bad values warn. A cell with a wrong id character, a bad date, time, boolean, or decimal, a bad school year, a blank required value, or a control character in text is stored as NULL in `ic`, and the load report lists the problem. Cross-row problems also warn: two grades for one student, school, and year; an attendance date outside an enrollment; an action date before the incident date; and an impossible referral flag combination (Austin, relayed by CampusView Engineer, 2026-11-03, 12:47 PM ET: "Go with your recommendation: bad values and cross-row problems warn; empty files and bad district mapping codes stop the load.").
+- These fail the whole load: header and column problems, missing or unexpected files, a row PostgreSQL rejects when loading `raw`, any of the four required files with zero data rows, and a bad district code-mapping file (header problem or bad code) (same answer, 12:47 PM ET).
 - It is built as the next step 1 pull request after the update command.
 - Superset reads it only through the reporting views.
 
