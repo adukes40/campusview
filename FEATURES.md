@@ -28,7 +28,7 @@ Done when Austin approves the docs, and `install.sh` brings up the base install 
   - An update command: pull the product ref and the district repo (fast-forward only), run migrations, restart, and leave the env file and the SFTP drop alone.
   - A `dev` branch and basic CI on GitHub. CI runs only the tests that need no data.
 
-So far: the CSV loader for the Infinite Campus extracts (PR #10, commit 2f21b49), the `dev` branch, and basic GitHub CI (`.github/workflows/ci.yml`). CI runs the loader tests; the two that need a database skip there. Not yet: SFTP, the typed copy, the mapping tables, the district folder and the mappings layout, the product checkout and its branch or tag setting, and the update command. The nightly timer is a later step.
+So far: the CSV loader for the Infinite Campus extracts (PR #10, commit 2f21b49), the `dev` branch, basic GitHub CI (`.github/workflows/ci.yml`), and the product checkout with its branch or tag setting (`CV_REF`) and the update command (`install.sh --update`, PR #12, commit d5b6890). CI runs the loader tests; the two that need a database skip there. The update command pulls `/opt/campusview-district` only when that folder is already a git checkout; it does not create or clone it. Not yet: SFTP, the typed copy, the mapping tables, the district folder setup and its setting, and the mappings layout. The nightly timer is a later step.
 
 Done when a bad file leaves the previous data in place, and a good file set replaces the snapshot in one transaction.
 

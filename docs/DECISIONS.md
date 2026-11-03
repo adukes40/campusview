@@ -4,6 +4,20 @@ Dated log of decisions already made. The plan of record is [PLAN.md](PLAN.md). N
 
 Open metric questions are not listed here. They are the Decisions for Austin list in [METRICS.md](METRICS.md). Open extract questions are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md). Both lists are deferred for now and do not block step 0.
 
+## 2026-11-03 — Servers pin `dev` or a release tag, and updates only move forward
+
+**What:**
+
+- Each server's install folder is a checkout of the product repo. `CV_REF` in `/etc/campusview/campusview.env` names the branch or tag it follows: `dev` on the dev server, a release tag on production. The installer refuses `main`.
+- `install.sh --update` updates a server. A branch only fast-forwards. A tag cannot move back to an older one unless the command is run with `--allow-downgrade`. The district repo is pulled fast-forward only, and if that pull fails the product does not move.
+- The update refuses a checkout with local edits. It does not rewrite the server's config files, the password file, or the SFTP drop.
+
+**Who:** Recorded by CampusView Keeper from PR #12 (commit d5b6890), which Austin merged into `dev` on 2026-11-03 at 2:52 PM ET. The code is `valid_ref`, `update_main`, and `pull_district` in `install.sh`.
+
+**Status:** Proposed, confirmed by merging.
+
+**Builds on:** 2026-11-03 "Release plumbing moves into step 1" and "Release flow" (below).
+
 ## 2026-11-03 — Days to action and days open start when the referral is entered
 
 **What:** discipline days to action and days open count from the date the referral was entered into Infinite Campus, not from the incident date. That date is `behavior_incident.timestamp`. This is Austin's understanding ("I do believe"); the SIS person is asked to confirm it, and the work does not wait on that. The action-date check compares against `behavior_incident.timestamp`. A negative span is flagged on the load report, and the row is kept and counted (see the next entry).
