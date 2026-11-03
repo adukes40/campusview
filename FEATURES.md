@@ -16,11 +16,11 @@ Done when Austin approves the docs, and `install.sh` brings up the base install 
 ## Step 1 — Getting data in
 
 - The SFTP drop folder.
-- Standard files and mapping tables from [docs/DATA_CONTRACT.md](docs/DATA_CONTRACT.md), and the raw schema in `campusview_data`.
+- The code-mapping tables from [docs/DATA_CONTRACT.md](docs/DATA_CONTRACT.md), and the raw schema in `campusview_data`.
 - The loader: check every file, reject a bad file, load all or nothing. An unknown or misspelled header fails the file, and the failed load is recorded in `ops.load_batch` with the files that failed and the reason, plus the line number when PostgreSQL rejects a row.
-- The Infinite Campus mapping onto those files.
+- The typed, checked copy of each raw table. It keeps the Infinite Campus table and column names, with real dates and numbers, and flags key and code checks on the load report. It comes after the update command. Its schema is to be decided.
 - Test files from Infinite Campus training-database extracts that Austin supplies, kept on the builder's computer, never in the repo. No fake-data generator.
-- The guide on how to write a mapping for another student information system. The mapping itself is not built.
+- The guide on how to write a mapping for another student information system. The mapping itself is not built. How another system fits, now that the Infinite Campus names are kept, is not decided.
 - Release plumbing, moved into current work by Austin (Austin, relayed by CampusView Engineer, 2026-11-03):
   - The district folder on each server, and a setting for it (proposed `/opt/campusview-district`).
   - The mappings layout in the district repo.
@@ -28,7 +28,7 @@ Done when Austin approves the docs, and `install.sh` brings up the base install 
   - An update command: pull the product ref and the district repo (fast-forward only), run migrations, restart, and leave the env file and the SFTP drop alone.
   - A `dev` branch and basic CI on GitHub. CI runs only the tests that need no data.
 
-So far: the CSV loader for the Infinite Campus extracts (PR #10, commit 2f21b49), the `dev` branch, and basic GitHub CI (`.github/workflows/ci.yml`). CI runs the loader tests; the two that need a database skip there. Not yet: SFTP, the mapping and the standard files, the mapping tables, the district folder and the mappings layout, the product checkout and its branch or tag setting, and the update command. The nightly timer is a later step.
+So far: the CSV loader for the Infinite Campus extracts (PR #10, commit 2f21b49), the `dev` branch, and basic GitHub CI (`.github/workflows/ci.yml`). CI runs the loader tests; the two that need a database skip there. Not yet: SFTP, the typed copy, the mapping tables, the district folder and the mappings layout, the product checkout and its branch or tag setting, and the update command. The nightly timer is a later step.
 
 Done when a bad file leaves the previous data in place, and a good file set replaces the snapshot in one transaction.
 

@@ -4,11 +4,30 @@ Dated log of decisions already made. The plan of record is [PLAN.md](PLAN.md). N
 
 Open metric questions are not listed here. They are the Decisions for Austin list in [METRICS.md](METRICS.md). Open extract questions are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md). Both lists are deferred for now and do not block step 0.
 
+## 2026-11-03 — The typed layer keeps the Infinite Campus names
+
+**What:**
+
+- The standard layer is a typed, checked copy of each `raw` table.
+- It keeps the Infinite Campus table and column names. Nothing is renamed to a vendor-neutral standard layout.
+- It stores real dates and numbers.
+- Key and code checks are flagged on the load report.
+- It is built as the next step 1 pull request after the update command.
+- Superset reads it only through the reporting views.
+
+**Not decided:** the schema that holds the typed layer. `ref` is documented for code-mapping and lookup tables, so it is not assumed. Also not decided: whether a flagged key or code problem fails the load or only warns.
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03, 12:31 PM ET: "Yes, build the cleaned copies with the same IC names next."
+
+**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed by merging PR #11.
+
+**Amends:** 2026-11-01 "Files are the only ingest" (below). Its mapping step to vendor-neutral standard layouts is replaced.
+
 ## 2026-11-03 — The raw schema holds the Infinite Campus files as they arrive
 
 **What:** The step 1 loader (PR #10, commit 2f21b49) loads the Infinite Campus CSV files themselves, before any mapping. Each of the 24 files in `loader/contract.py` gets its own table in `raw`, named after the file (for example `raw.enrollment`), with every column stored as text. A column added to the list is added to the table. A column is never dropped. The loader creates the `ops` schema and `ops.load_batch` itself, owned by `campusview_owner`, with no grant to `campusview_reader`. The earlier design, in [ARCHITECTURE.md](ARCHITECTURE.md) and 2026-11-01 "Files are the only ingest" below, maps the vendor files to standard files first and loads those into `raw`.
 
-**Not decided:** where the standard-layout tables live once the mapping is built, and where the type, key, code, and foreign-key checks in [DATA_CONTRACT.md](DATA_CONTRACT.md) run.
+**Follow-up:** 2026-11-03 "The typed layer keeps the Infinite Campus names" (above) settles what sits on top of `raw`: a typed, checked copy with the same names, where the type, key, and code checks run. Its schema name is not decided.
 
 **Who:** Recorded by CampusView Keeper from the code on `dev`, 2026-11-03.
 
@@ -256,6 +275,8 @@ For each reporting page, the metric logic is a PostgreSQL view whose SQL is in t
 **What it said:** Django renders the pages staff open: the filter bar, the KPI cards, the modal tables, export, print, student profiles, preferences, admin screens, and all page styling. Superset charts are embedded.
 
 ## 2026-11-01 — Files are the only ingest
+
+**Amended 2026-11-03:** files are still the only ingest. The mapping step to CampusView's standard layouts is replaced by a typed, checked copy of each raw table that keeps the Infinite Campus names. See 2026-11-03 "The typed layer keeps the Infinite Campus names" above.
 
 **What:** Data arrives as CSV extracts on SFTP. A mapping step turns the vendor files into CampusView's standard layouts. The loader validates every file and loads all or nothing.
 

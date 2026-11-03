@@ -1,6 +1,6 @@
 # SFTP and extracts
 
-The loader is in this repo. SFTP and the mapping onto the standard files are not built yet. Column layouts for those standard files stay in [DATA_CONTRACT.md](../DATA_CONTRACT.md). The Infinite Campus headers the loader accepts are in `loader/contract.py`. This guide is the operator's version.
+The loader is in this repo. SFTP and the typed copy of the loaded tables are not built yet. The typed copy keeps the Infinite Campus names. The rules and meanings stay in [DATA_CONTRACT.md](../DATA_CONTRACT.md). The Infinite Campus headers the loader accepts are in `loader/contract.py`. This guide is the operator's version.
 
 ## The drop folder
 
@@ -8,7 +8,7 @@ Where files land, which account can upload, and the fact that this account canno
 
 ## What a nightly drop contains
 
-The standard file names, the rule that this is a full snapshot of the years to keep, and which files must contain rows. What a header-only incident file means (no incidents, and the previous incidents are replaced).
+The file names in `loader/contract.py`, the rule that this is a full snapshot of the years to keep, and which files must contain rows. What a header-only incident file means (no incidents, and the previous incidents are replaced).
 
 ## Code-mapping files
 
@@ -16,11 +16,11 @@ Where they live (the district repo, not the SFTP drop). Who edits them when the 
 
 ## Infinite Campus
 
-How to schedule the extracts this district confirmed in the TO CONFIRM list, that the loader keeps every column the extract sends, and what the mapping step does before the loader runs. Field-level notes stay in the data contract so this guide does not drift from it.
+How to schedule the extracts this district confirmed in the TO CONFIRM list, that the loader keeps every column the extract sends, and what the typed copy does after the loader runs. Field-level notes stay in the data contract so this guide does not drift from it.
 
 ## Run the loader
 
-The loader reads one folder of Infinite Campus CSV files and loads them into the `raw` schema. SFTP pickup and the mapping onto the standard layouts come later.
+The loader reads one folder of Infinite Campus CSV files and loads them into the `raw` schema. SFTP pickup and the typed copy come later.
 
 The installer does not install or run the loader. From a checkout of this repository, load the password file into the environment. Do not put the password on the command line. The command below uses the Python 3.12 the installer already placed. It does not download Python, and it does not install the test tools. The first run installs the loader's database library into that checkout, so it needs internet access. If you chose another install folder, use it in place of `/opt/campusview`.
 
@@ -44,7 +44,7 @@ A failed load writes nothing to `raw`. The previous rows stay. On a failure the 
 
 Every value is stored as text, so a leading zero stays. A blank cell is stored as NULL, including a quoted empty cell. Postgres reads the CSV, so a quoted comma or a quote inside a value is kept, and the line endings can be LF or CRLF.
 
-A calendar with no Day rows is a warning when an enrollment's end date, or its start date when the end date is empty, is on or after the extract cutoff date, 2025-07-01. The dates are compared as text, so they must be `YYYY-MM-DD`. Only numeric calendar ids are checked. An old enrollment with a blank end date is left out. The load still passes. The warning lists those calendar ids in numeric order. Day rows may repeat a date for one calendar. Older calendars do that when one date sits on more than one schedule structure. The loader allows the repeat.
+A calendar with no Day rows is a warning when an enrollment's end date, or its start date when the end date is empty, is on or after the extract cutoff date, 2025-07-01. The dates are compared as text, so they must start with `YYYY-MM-DD`. Only numeric calendar ids are checked. An old enrollment with a blank end date is left out. The load still passes. The warning lists those calendar ids in numeric order. Day rows may repeat a date for one calendar. Older calendars do that when one date sits on more than one schedule structure. The loader allows the repeat.
 
 If a load is already running, the new one stops at once, without waiting, and names the server as the fault.
 
@@ -64,7 +64,7 @@ Read the loader output, or `ops.load_batch`. A failed load names only the files 
 
 ## Writing a mapping for another student information system
 
-The contract another system must meet: produce these standard files, with these keys, and do not connect CampusView to that system. v1 does not ship that mapping. The steps here will be: list the source files, map each CampusView column to a source field, roll daily attendance up to one row per student per date, keep the other columns, and run the same loader. Promote a real second mapping out of the parking lot before building it.
+**Not decided.** CampusView keeps the Infinite Campus names (2026-11-03 "The typed layer keeps the Infinite Campus names" in [../DECISIONS.md](../DECISIONS.md)), so there is no vendor-neutral layout for another system to produce. The earlier outline follows. It said to produce the standard files, with these keys, and not to connect CampusView to that system. v1 does not ship that mapping. The steps here will be: list the source files, map each CampusView column to a source field, roll daily attendance up to one row per student per date, keep the other columns, and run the same loader. Promote a real second mapping out of the parking lot before building it.
 
 ## History
 

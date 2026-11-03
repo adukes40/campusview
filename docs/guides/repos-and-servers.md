@@ -75,7 +75,7 @@ git push
 
 3. Give write access only to the people who change district settings. A server never gets write access.
 
-**Not built yet:** the folder layout inside the district repo. The loader will read code-mapping files from it once the mapping is built ([DATA_CONTRACT.md](../DATA_CONTRACT.md)). Branding, dashboard exports, and the settings file come later. Until the layout is set, the repo holds only its README.
+**Not built yet:** the folder layout inside the district repo. Code-mapping files will be read from it once the code checks are built ([DATA_CONTRACT.md](../DATA_CONTRACT.md)). Branding, dashboard exports, and the settings file come later. Until the layout is set, the repo holds only its README.
 
 Before every commit to the district repo, run `git status` and `git diff --cached` and check that no password, key, extract, or screenshot is listed.
 
@@ -169,7 +169,7 @@ runuser -u cvadmin -- git -C /opt/campusview-district pull --ff-only
 
 On Ubuntu, use `sudo -u cvadmin` in place of `runuser -u cvadmin --`.
 
-**Not built yet:** how CampusView picks up new district settings after a pull. Mapping files will be read on each load, once the mapping step exists. Whether branding or other settings need a restart is set when they are built.
+**Not built yet:** how CampusView picks up new district settings after a pull. Mapping files will be read on each load, once the code checks exist. Whether branding or other settings need a restart is set when they are built.
 
 ## Set up a server
 

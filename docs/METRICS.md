@@ -275,7 +275,7 @@ Short form of the columns that carry decisions. Filter columns are omitted here.
 
 **Deferred, not blocking.** Austin will answer these later. They do not block step 0 or the base install. Each needs an answer before the view it affects is built.
 
-Working proposals are in the body above. Each item below is the choice that would change a number or a screen. Extract questions that block the mapping are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md), not here.
+Working proposals are in the body above. Each item below is the choice that would change a number or a screen. Extract questions that block the typed copy are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md), not here.
 
 1. **No attendance mark.** When a student is enrolled on a school day and the file has no attendance row, v1 counts that day as present. Confirm, or say the day should be left out of both the numerator and the denominator.
 

@@ -10,29 +10,29 @@ A **view** is a saved query in PostgreSQL. Charts read views. They do not re-dec
 flowchart TD
   extracts[Nightly SIS CSV extracts]
   sftp[SFTP drop folder]
-  mapper[SIS mapping]
   loader[Loader checks every file then writes one transaction]
-  raw[(Raw tables)]
+  raw[(Raw tables, all text, Infinite Campus names)]
+  typed[(Typed copy, same names, schema to be decided)]
   maps[(Code-mapping tables from the district repo)]
   views[Reporting views hold all metric logic]
   superset[Superset dashboards and native filters]
   roles[Superset roles and row-level security on school_id]
 
-  extracts --> sftp --> mapper --> loader --> raw
+  extracts --> sftp --> loader --> raw --> typed
   maps --> views
-  raw --> views
+  typed --> views
   views --> superset
   roles --> superset
 ```
 
 1. The district drops a full CSV snapshot on SFTP. CampusView never connects to the student information system.
-2. The mapping for that system rewrites the vendor files into CampusView's standard layouts. v1 ships the Infinite Campus mapping only. See [DATA_CONTRACT.md](DATA_CONTRACT.md).
-3. The loader checks every standard file and every code-mapping file. If any check fails, it loads nothing and leaves the previous data in place. If every check passes, it replaces the raw snapshot in one database transaction.
-4. Raw tables store every column the contract lists. Nothing is dropped, and an unknown header fails the file. Code-mapping tables, from the district repo, say what each local code means.
-5. Reporting views join raw rows to those maps and expose every number the dashboards show. The SQL is in this repo. The metric list is [METRICS.md](METRICS.md).
+2. The loader checks every Infinite Campus file. Nothing is renamed. If any check fails, it loads nothing and leaves the previous data in place. If every check passes, it replaces the raw snapshot in one database transaction. See [DATA_CONTRACT.md](DATA_CONTRACT.md).
+3. Raw tables store every column the contract lists, as text, with the Infinite Campus names. Nothing is dropped, and an unknown header fails the file.
+4. A typed, checked copy of each raw table keeps the same table and column names, with real dates and numbers. Key and code checks are flagged on the load report. Its schema is to be decided. Code-mapping tables, from the district repo, say what each local code means. See 2026-11-03 "The typed layer keeps the Infinite Campus names" in [DECISIONS.md](DECISIONS.md).
+5. Reporting views join the typed copy to those maps and expose every number the dashboards show. The SQL is in this repo. The metric list is [METRICS.md](METRICS.md).
 6. Superset dashboards read the views. Superset's roles and row-level security limit each person to their schools. See [ACCESS.md](ACCESS.md).
 
-**Built so far (step 1, on `dev`):** a loader that reads one folder of Infinite Campus CSV files and loads each file, as it arrives, into its own all-text table in `raw`. It checks file names and headers. It does not yet check types, keys, codes, or foreign keys, and it reads no code-mapping files. SFTP, the mapping, and the standard files are not built yet. Steps 2 to 4 above describe the planned design; see the proposed entry in [DECISIONS.md](DECISIONS.md), 2026-11-03, "The raw schema holds the Infinite Campus files as they arrive".
+**Built so far (step 1, on `dev`):** a loader that reads one folder of Infinite Campus CSV files and loads each file, as it arrives, into its own all-text table in `raw`. It checks file names and headers. It does not yet check types, keys, codes, or foreign keys, and it reads no code-mapping files. SFTP and the typed copy (step 4) are not built yet. The typed copy is the next step 1 pull request after the update command.
 
 No view restricts itself to a school, a year, a grade, or a gender. Superset applies those: school through row-level security, and year, grade, and gender through native filters. Views may omit rows that never count, such as a cancelled referral or a day that is not a school day.
 
@@ -70,11 +70,11 @@ Later code is expected to split along these lines. Only the `loader` package exi
 | Module | Responsibility | Reads | Writes |
 | --- | --- | --- | --- |
 | `ingest.drop` | Watch the SFTP folder | Files on disk | Nothing |
-| `ingest.map.infinite_campus` | Vendor files to standard files | Vendor CSV | Standard CSV in a temp folder |
-| `ingest.loader` | Validate, then load all or nothing | Standard CSV, district maps | `raw`, `ref`, `ops.load_batch` |
-| `warehouse.raw` | Snapshot tables | | |
+| `loader` (built) | Validate, then load all or nothing | Infinite Campus CSV | `raw`, `ops.load_batch` |
+| Typed copy (module name to be decided) | Typed, checked copy of each raw table, same names; flags key and code problems on the load report | `raw`, district maps | Typed tables, schema to be decided |
+| `warehouse.raw` | Snapshot tables, all text | | |
 | `warehouse.ref` | Code-mapping tables | | |
-| `warehouse.reporting` | Views only, as SQL files in this repo | `raw`, `ref` | |
+| `warehouse.reporting` | Views only, as SQL files in this repo | The typed copy, `ref` | |
 
 Dashboards, charts, filters, roles, and row-level security are Superset settings, not code in this repo. Dashboards are exported to the district repo.
 
@@ -84,8 +84,8 @@ Dashboards, charts, filters, roles, and row-level security are Superset settings
 
 Planned: `load(drop_dir, district_config_dir) -> LoadResult`
 
-- Look in `drop_dir` for the standard extract files and in `district_config_dir` for the code-mapping files. Both sets are required.
-- Validate every file first: headers (an unknown or misspelled header fails the file), types, keys, allowed codes, and foreign keys. Details are in [DATA_CONTRACT.md](DATA_CONTRACT.md).
+- Look in `drop_dir` for the Infinite Campus extract files and in `district_config_dir` for the code-mapping files. Both sets are required.
+- Validate every file first: headers (an unknown or misspelled header fails the file). The typed copy then checks types, and flags key and code problems on the load report. Details are in [DATA_CONTRACT.md](DATA_CONTRACT.md).
 - On any error, leave the previous snapshot in place. Record the failed attempt on `ops.load_batch` with the file name, the row number, and the rule that failed. Do not record the cell value.
 - On success, replace the raw snapshot inside one transaction, purge school years outside the history window, and commit.
 - The drop is a full snapshot of the years to keep, not a file of changes. Running the same files twice leaves the same warehouse.
@@ -106,13 +106,14 @@ Schemas in `campusview_data`:
 
 | Schema | Holds | Who may read it |
 | --- | --- | --- |
-| `raw` | Today: one table per Infinite Campus file, every column text, no load metadata columns. Planned: one table per standard file | Loader (`campusview_owner`). Not Superset. |
+| `raw` | One table per Infinite Campus file, every column text, no load metadata columns | Loader (`campusview_owner`). Not Superset. |
+| To be decided | The typed copy: one table per raw table, same names, real dates and numbers. Not built | `campusview_owner`, and the reporting views. Not Superset directly |
 | `ref` | Code-mapping tables | Loader (`campusview_owner`), and the reporting views |
 | `reporting` | Views | `campusview_reader` (Superset's data connection), `SELECT` only |
 | `ops` | `load_batch`: `batch_id`, `started_at`, `finished_at`, `outcome`, `fault`, `report`. The loader creates the schema and the table on its first run | `campusview_owner` only. No grant is made to `campusview_reader` |
 | `scratch` | Empty on a normal install | Testing install only, and only the sandbox database user |
 
-Today the table names are the Infinite Campus file names without `.csv`, for example `raw.enrollment` and `raw.day`. The full list is in `loader/contract.py`. The planned standard tables match the files in [DATA_CONTRACT.md](DATA_CONTRACT.md): `raw.schools`, `raw.students`, `raw.enrollments`, `raw.calendar_days`, `raw.attendance`, `raw.incidents`, `raw.incident_behaviors`, `raw.consequences`, `raw.plans`.
+The table names are the Infinite Campus file names without `.csv`, for example `raw.enrollment` and `raw.day`. The full list is in `loader/contract.py`. The typed copy uses the same table and column names. The vendor-neutral names in the standard-layout sections of [DATA_CONTRACT.md](DATA_CONTRACT.md) (`schools`, `students`, `calendar_days`, and so on) are not table names.
 
 Relationships, all by the text ids in the files:
 
