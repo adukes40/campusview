@@ -177,7 +177,7 @@ Do this once for the dev server and once for production. Each district sets up i
 
 1. Pick a server that meets [Server requirements](server-requirements.md).
 2. Run the installer as in [Install and upgrade](install-and-upgrade.md). Each server makes its own passwords and secret key. Do not copy the password file from one server to another.
-3. Choose how people reach it. Production and the dev server both hold real data, and real student data needs HTTPS. Plain HTTP is only for an on-prem test machine with fake data that is not on the internet. Whether the dev server may use plain HTTP is an open question for Austin.
+3. Choose how people reach it. Production always uses HTTPS. Plain HTTP is for an on-prem test machine with fake data that is not on the internet. The dev server holds real data, but Austin accepted one exception (Austin, relayed by CampusView Engineer, 2026-11-03): the on-prem dev server may use plain HTTP during early testing. It must move to HTTPS before production gets Google sign-on or real users. Plain HTTP sends logins and data unencrypted across the network.
 4. Give the server read access to the district repo and clone it, as above.
 5. On the dev server, set it to follow `dev`. On production, set it to a release tag. **Not built yet:** the setting for the branch or tag (step 1).
 6. Do not add the sandbox database user or training files to production or the dev server. They belong only on the testing install.
