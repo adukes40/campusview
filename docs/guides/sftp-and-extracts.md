@@ -22,26 +22,27 @@ How to schedule the extracts this district confirmed in the TO CONFIRM list, tha
 
 The loader reads one folder of Infinite Campus CSV files and loads them into the `raw` schema. SFTP pickup and the mapping onto the standard layouts come later.
 
-Run it from a checkout of this repository. The installer does not run it. The database password stays in `/etc/campusview/campusview.env`. Load that file into the environment. Do not put the password on the command line.
+The installer does not run the loader. From a checkout of this repository, load the password file into the environment. Do not put the password on the command line. The command below uses the Python 3.12 the installer already placed. It does not download Python, and it does not install the test tools. The first run installs the loader's database library into that checkout.
 
 ```
 set -a
 . /etc/campusview/campusview.env
 set +a
-uv run python -m loader /path/to/folder
+cd /path/to/checkout
+UV_PYTHON_INSTALL_DIR=/opt/campusview/.uv/python \
+  /opt/campusview/.uv/bin/uv run --no-dev --no-python-downloads --python 3.12 \
+  python -m loader /path/to/folder
 ```
-
-If `uv` is not on your path, the installer put it at `/opt/campusview/.uv/bin/uv`.
 
 A good folder has every CSV file named in `loader/contract.py`. A CSV file that is not in that list fails the load. A listed file that is missing fails the load. Files that are not CSV are ignored.
 
 You should see `Load passed.` and one line per file with its row count. The same text is stored in `ops.load_batch`, in the `report` column. `outcome` is `pass` or `fail`. `fault` is `extract` when the files are wrong, and `server` when the machine or the database is the problem. `fault` is empty on a pass. Read the table as `campusview_owner`.
 
-A failed load writes nothing to `raw`. The previous rows stay. A file that has only a header row is a pass, and it clears that table. Running the same folder again leaves the same rows.
+A failed load writes nothing to `raw`. The previous rows stay. The report lists only the files that failed. A file that has only a header row is a pass, and it clears that table. Running the same folder again leaves the same rows.
 
-Every value is stored as text, so a leading zero stays. A blank cell is stored as NULL. The file must be UTF-8 with no BOM, with CRLF line endings, and with commas between values. Quote a value only when it contains a comma.
+Every value is stored as text, so a leading zero stays. A blank cell is stored as NULL. Postgres reads the CSV, so a quoted comma or a quote inside a value is kept, and the line endings can be LF or CRLF.
 
-A calendar that has enrollment rows and no Day rows is a warning. The load still passes. The warning names that calendar id. Day rows may repeat a date for one calendar. Older calendars do that when one date sits on more than one schedule structure. The loader allows the repeat.
+A calendar that has enrollment rows and no Day rows is a warning when that enrollment's school year is one of the two newest end years in the file. Older years are left out. The load still passes. The warning lists those calendar ids in numeric order. Day rows may repeat a date for one calendar. Older calendars do that when one date sits on more than one schedule structure. The loader allows the repeat.
 
 If a load is already running, the new one stops and names the server as the fault.
 
@@ -57,7 +58,7 @@ Until the list includes the new header, the loader fails that file and the repor
 
 ## When a load fails
 
-Read the loader output, or `ops.load_batch`. You see the file name, the row number when the failure is on a row, and the rule. You do not see the cell value. Use `fault` to decide where to look. `extract` means fix the files. `server` means check this machine, the database, or whether a load is already running. The previous rows stay in place.
+Read the loader output, or `ops.load_batch`. A failed load names only the files that failed, with the rule. You do not see the cell value. Use `fault` to decide where to look. `extract` means fix the files. `server` means check this machine, the database, or whether a load is already running. The previous rows stay in place.
 
 ## Writing a mapping for another student information system
 

@@ -4,7 +4,7 @@ CampusView is a self-hosted reporting platform for K-12 districts. Each night it
 
 Nothing in this repository is specific to one district. Names, schools, local codes, branding, and exported dashboards belong in that district's own repo. Production pins a release tag cut from `main`. The dev server follows the `dev` branch.
 
-This is step 0: documentation and the base install. The base install is PostgreSQL 17, Apache Superset 6.1.0, and a default Django 6.1.2 project, all on Python 3.12 and installed directly on Ubuntu or Debian, with no containers, no Redis, and no Celery. The `install.sh` setup wizard is built and tested on Debian 12, Ubuntu 24.04, and Ubuntu 22.04, and is waiting for Austin's review. The Infinite Campus CSV loader is in this repo. SFTP and the mapping onto the standard files are not built yet. How to run the loader is in [docs/guides/sftp-and-extracts.md](docs/guides/sftp-and-extracts.md). [FEATURES.md](FEATURES.md) lists the later steps. New ideas go to the parking lot there; only Austin promotes them.
+This is step 0: documentation and the base install. The base install is PostgreSQL 17, Apache Superset 6.1.0, and a default Django 6.1.2 project, all on Python 3.12 and installed directly on Ubuntu or Debian, with no containers, no Redis, and no Celery. The `install.sh` setup wizard is built and tested on Debian 12, Ubuntu 24.04, and Ubuntu 22.04, and is waiting for Austin's review. SFTP and the loader are not built yet. [FEATURES.md](FEATURES.md) lists the later steps. New ideas go to the parking lot there; only Austin promotes them.
 
 ## Read these
 

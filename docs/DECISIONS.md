@@ -91,7 +91,7 @@ Open metric questions are not listed here. They are the Decisions for Austin lis
 
 **Who:** Austin, relayed by CampusView Engineer, 2026-11-03.
 
-**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed by merging PR #8. The raw extract list now has steps in the extracts guide. The standard layouts still change only with Austin.
+**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed by merging PR #8.
 
 ## 2026-11-03 — 504 status from program participation
 
