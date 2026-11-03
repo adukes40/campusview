@@ -6,8 +6,6 @@
 #
 # Interactive:      sudo ./install.sh                       (a short wizard asks the questions)
 # Non-interactive:  sudo CV_NONINTERACTIVE=1 CV_ANSWERS=/path/answers.env ./install.sh
-# Update:           sudo bash /opt/campusview/install.sh --update
-#                   sudo bash /opt/campusview/install.sh --update --allow-downgrade
 #
 # All answers, including the secrets, are saved to /etc/campusview/campusview.env, mode 0600, readable only by
 # the Linux account that runs CampusView (root on a default Debian install).
@@ -43,7 +41,7 @@ read_env(){
   : "${CV_SYSTEMD:=no}"
   B=$CV_INSTALL_DIR; S=$B/superset; D=$B/django
 }
-resolve_ref(){ # local refs only. Sets ref_kind and target. Does not fetch.
+classify_fetched_ref(){
   local branch="refs/remotes/origin/$CV_REF" tag="refs/tags/$CV_REF" hb=0 ht=0
   if g show-ref --verify --quiet "$branch"; then hb=1; fi
   if g show-ref --verify --quiet "$tag"; then ht=1; fi
@@ -89,6 +87,7 @@ restart_apps(){
   else as_run "$B/stop.sh" >/dev/null 2>&1 || true; as_run "$B/start.sh"; fi
 }
 mark_running(){ g config --local campusview.running "$(g rev-parse HEAD)"; }
+checkout_can_apply(){ grep -q '^apply_main(){' "$B/install.sh"; }
 pull_district(){
   if [ ! -e "$DISTRICT/.git" ]; then echo "No district checkout at $DISTRICT. Skipped."; return 0; fi
   as_run git -C "$DISTRICT" pull --ff-only || {
@@ -111,7 +110,7 @@ create_checkout(){
     g remote add origin "$o"
   fi
   g fetch origin --tags
-  resolve_ref || exit 1
+  classify_fetched_ref || exit 1
   g checkout --detach "$target" || die "Could not check out $CV_REF."
 }
 put_back(){
@@ -142,7 +141,7 @@ update_main(){
     echo "The checkout has local edits. The checkout was left as it is." >&2; exit 1
   fi
   g fetch origin --tags
-  resolve_ref || exit 1
+  classify_fetched_ref || exit 1
   head=$(g rev-parse HEAD)
   running=$(g config --local --get campusview.running 2>/dev/null || true)
   previous=$head
@@ -165,8 +164,7 @@ update_main(){
   if [ "$head" != "$target" ]; then
     g checkout --detach "$target" || die "Could not check out $CV_REF. The checkout was left as it is."
   fi
-  # The new install.sh holds this commit's package versions. Read it from the first line.
-  if ! grep -q '^update_main(){' "$B/install.sh"; then
+  if ! checkout_can_apply; then
     [ "$head" = "$target" ] || put_back "$previous"
     die "The target checkout has no update command. The checkout was put back. Services were not restarted."
   fi
@@ -180,7 +178,7 @@ apply_main(){
   [[ $previous =~ ^[0-9a-f]{40}$ ]] || usage
   read_env
   valid_ref || exit 1
-  resolve_ref || exit 1
+  classify_fetched_ref || exit 1
   head=$(g rev-parse HEAD)
   [ "$(g rev-parse --abbrev-ref HEAD)" = HEAD ] || exit 1
   [ "$head" = "$target" ] || exit 1

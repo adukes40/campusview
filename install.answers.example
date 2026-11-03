@@ -1,7 +1,6 @@
 # FAKE test answers for the clean-room harness. Never use these values on a real server.
 # Leave a secret blank to have install.sh generate one.
 # No CV_INSTALL_DIR: the default /opt/campusview is used.
-# The dev server follows dev. Production puts a release tag here instead, such as v1.3.0.
 CV_REF=dev
 CV_RUN_USER=root
 CV_ADMIN_USER=admin
