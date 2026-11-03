@@ -14,7 +14,7 @@ A hand-checked test, when the views are built, uses the Infinite Campus training
 
 **Who is enrolled on a date.** A student is enrolled at a school on a date when a primary enrollment covers that date: `start_date` is on or before the date, and `end_date` is blank or on or after the date. Non-primary enrollments do not create membership and do not count in any denominator.
 
-**Membership day.** An enrolled student on a calendar row with `is_school_day` true. From Infinite Campus, that is a Day row with `instruction` set, not `schoolDay` (Austin, relayed by CampusView Engineer, 2026-11-03). The day's weight is `day_value` (1, or 0.5 for a half day). For now everyone is treated as full day, so every weight is 1 (Austin, relayed by CampusView Engineer, 2026-11-03).
+**Membership day.** An enrolled student on a calendar row with `is_school_day` true. From Infinite Campus, that is a Day row with `instruction` set, not `schoolDay` (Austin, relayed by CampusView Engineer, 2026-11-03). The day's weight is `day_value`. For now, every instruction day counts as 1 day, so every weight is 1, and a half-day absence code has `absence_portion` 1, so it counts as a full day absent (Austin, relayed by CampusView Engineer, 2026-11-03, 10:32 AM ET). The formulas below still accept other values in case half days are counted as half later.
 
 **No calendar days.** A school with enrollments but no calendar days in the year loads with a warning on the load report. Its students have no membership days there, so they add nothing to any rate until calendar days arrive.
 
@@ -38,16 +38,16 @@ A hand-checked test, when the views are built, uses the Infinite Campus training
 
 ### Worked attendance example
 
-Everyone is treated as full day for now, so a real load has no `day_value` 0.5. The example keeps the half day to show how the formula works if half days are added later.
+For now, every instruction day counts as 1 day, and a half-day absence counts as a full day absent (Austin, relayed by CampusView Engineer, 2026-11-03, 10:32 AM ET).
 
-A student has 100 membership days of weight 1, plus one half instructional day (`day_value` 0.5) on which they were fully absent. They also have 4 full-day absences and one separate half-day absence (`absence_portion` 0.5) on a full instructional day.
+A student has 101 membership days, each of weight 1. One of them was a half instructional day, and the student was absent that day. The student also has 4 full-day absences and one half-day absence code on another day.
 
-- Membership = 100 + 0.5 = 100.5
-- Absence equivalents = 4 + 0.5 + 0.5 = 5
-- Present equivalents = 100.5 - 5 = 95.5
-- Attendance rate = 95.5 / 100.5 = 95.0%
+- Membership = 101
+- Absence equivalents = 4 + 1 (the half-day absence code counts as a full day) + 1 (the absence on the half instructional day counts as a full day) = 6
+- Present equivalents = 101 - 6 = 95
+- Attendance rate = 95 / 101 = 94.1%
 
-The half instructional day contributes 0.5 to the denominator even though the student was absent, because the day itself was only half a day.
+The half instructional day counts as a whole membership day, and each half-day absence counts as a whole day absent.
 
 ## Overview headline numbers
 
@@ -281,7 +281,7 @@ Working proposals are in the body above. Each item below is the choice that woul
 
 2. **Pooled rate.** The year-to-date attendance rate is total present-day equivalents divided by total membership-day equivalents, so a larger school counts more than a smaller one. Confirm, or say you want the average of each student's own rate.
 
-3. *Partly answered (Austin, relayed by CampusView Engineer, 2026-11-03): everyone is treated as full day for now, so every calendar day has weight 1. Absence codes with portion 0.5 still count as half a day absent. How half days are marked is a follow-up for the SIS person in [DATA_CONTRACT.md](DATA_CONTRACT.md).* **Half days.** A calendar day with day value 0.5 counts as half a membership day. An absence code with portion 0.5 counts as half a day absent. A full absence on a half day counts as 0.5. Confirm this matches how the district records half days.
+3. *Answered for now (Austin, relayed by CampusView Engineer, 2026-11-03, 10:32 AM ET): every instruction day counts as 1 day, and a half-day absence counts as a full day absent, the same as any other absence. Provisional. Whether half days should ever count as half is a follow-up for the SIS person in [DATA_CONTRACT.md](DATA_CONTRACT.md).* The text below is the earlier proposal, set aside for now. **Half days.** A calendar day with day value 0.5 counts as half a membership day. An absence code with portion 0.5 counts as half a day absent. A full absence on a half day counts as 0.5. Confirm this matches how the district records half days.
 
 4. *Partly answered (Austin, relayed by CampusView Engineer, 2026-11-03): tardies come from Infinite Campus's overnight calculation; the effect of each tardy code on the rate is still set in the code map.* **Tardies and the rate.** A tardy does not lower the attendance rate unless that code's absence portion is greater than zero. Confirm.
 

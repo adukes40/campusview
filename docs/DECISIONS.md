@@ -23,7 +23,7 @@ Open metric questions are not listed here. They are the Decisions for Austin lis
 **What:**
 
 - Attendance counts Day rows with the `instruction` flag set, not `schoolDay`.
-- Everyone is treated as full day, so every instructional day has weight 1.
+- For now, every instruction day counts as 1 day (weight 1), and a half-day absence counts as a full day absent, the same as any other absence (Austin, relayed by CampusView Engineer, 2026-11-03, 10:32 AM ET). The half-day absence codes map to `absence_portion` 1. This is provisional; whether half days should ever count as half is a follow-up for the SIS person.
 - A calendar with enrollments but no Day rows loads with a warning on the load report. It does not fail the file. This replaces the earlier rule that every school with an enrollment must have a calendar day.
 
 **Not decided:** the CampusView Engineer suggests adding `dayID` and `structureID` to the Day extract query (`day.sql`), because a calendar with more than one schedule structure repeats dates.
