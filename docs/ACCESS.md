@@ -52,7 +52,7 @@ Deactivating a user in Superset stops their sign-in.
 | `campusview_reader` (Superset's report data connection, and safe DBeaver browsing) | Log in and connect to `campusview_data`. `USAGE` and `SELECT` on the `reporting` schema only. Tables and views the owner adds to `reporting` later are readable automatically. | The `raw`, `ic`, `ref`, and `ops` schemas. Any write. Creating anything. |
 | `django_user` (Django) | Owns `django_app`, Django's default tables. | `campusview_data`. Django has no v1 role. |
 | `campusview_owner` (the loader, from step 1) | Owns `campusview_data` and its schemas `raw`, `ic`, `ref`, and `reporting`. The loader writes as this account. It also creates and owns the `ops` schema and `ops.load_batch` on its first run. | Superset's and Django's databases. |
-| Sandbox (testing install only) | `SELECT` on raw and reporting, and on `ic` once it exists. Create objects in the scratch schema. | Production and the dev server. Neither database has this user; it exists only on the testing install (the builder's computer, or a fake-data server). |
+| Sandbox (testing install only) | `SELECT` on raw, `ic`, and reporting. Create objects in the scratch schema. | Production and the dev server. Neither database has this user; it exists only on the testing install (the builder's computer, or a fake-data server). |
 
 **`ic` schema (Austin, relayed by CampusView Engineer, 2026-11-03):** `ic` holds the typed copy of each raw table. It has the same owner and grants as `raw`: owned by `campusview_owner`, with no grant to `campusview_reader`. The installer creates the empty schema. The loader creates it if it is missing and rebuilds the tables on each load.
 

@@ -4,7 +4,7 @@ Exact definitions for the v1 dashboard list in [PLAN.md](PLAN.md). Each metric n
 
 The body uses one working proposal for each choice so later steps have a single target. Those choices are **not approved yet**. They are listed again under [Decisions for Austin](#decisions-for-austin), which are deferred and do not block step 0. If Austin approves this document without changing an item, that item's proposal becomes the definition. Until then, do not treat the list as settled.
 
-Views do the classifying. A chart may only sum, count, average, or divide columns the view already computed. Filter columns are `school_year`, `school_id`, `grade`, and `gender` unless a metric says otherwise. "The filter" means the four Superset native filters, after row-level security has already limited the schools.
+Views do the classifying. A chart may only sum, count, average, or divide columns the view already computed. Filter columns are `school_year`, `school_id`, `grade`, and `gender` unless a metric says otherwise. Those, and the other snake_case names below, are view column names. The views read the typed copy in schema `ic`, which keeps the Infinite Campus table and column names. [Source columns in `ic`](#source-columns-in-ic) says where each input comes from. "The filter" means the four Superset native filters, after row-level security has already limited the schools.
 
 The preview's sparklines and the "versus last year" text on the headline numbers are parked. They are not metrics in v1. The absence number does name the day it counts. That part is in scope.
 
@@ -12,9 +12,9 @@ A hand-checked test, when the views are built, uses the Infinite Campus training
 
 ## Shared rules
 
-**Who is enrolled on a date.** A student is enrolled at a school on a date when a primary enrollment covers that date: `start_date` is on or before the date, and `end_date` is blank or on or after the date. Non-primary enrollments do not create membership and do not count in any denominator.
+**Who is enrolled on a date.** A student is enrolled at a school on a date when a primary enrollment covers that date: `ic.enrollment."startDate"` is on or before the date, and `"endDate"` is blank or on or after the date. Non-primary enrollments do not create membership and do not count in any denominator.
 
-**Membership day.** An enrolled student on a calendar row with `is_school_day` true. From Infinite Campus, that is a Day row with `instruction` set, not `schoolDay` (Austin, relayed by CampusView Engineer, 2026-11-03). The day's weight is `day_value`. For now, every instruction day counts as 1 day, so every weight is 1, and a half-day absence code has `absence_portion` 1, so it counts as a full day absent (Austin, relayed by CampusView Engineer, 2026-11-03, 10:32 AM ET). The formulas below still accept other values in case half days are counted as half later.
+**Membership day.** An enrolled student on a school day: an `ic.day` row with `instruction` true, not `schoolDay` (Austin, relayed by CampusView Engineer, 2026-11-03). The day's weight is `day_value`. For now, every instruction day counts as 1 day, so every weight is 1, and a half-day absence code has `absence_portion` 1, so it counts as a full day absent (Austin, relayed by CampusView Engineer, 2026-11-03, 10:32 AM ET). The formulas below still accept other values in case half days are counted as half later.
 
 **No calendar days.** A school with enrollments but no calendar days in the year loads with a warning on the load report. Its students have no membership days there, so they add nothing to any rate until calendar days arrive.
 
@@ -35,6 +35,28 @@ A hand-checked test, when the views are built, uses the Infinite Campus training
 **One school year at a time.** The filter always has a single school year. Comparison to last year is a second pass over the prior year with the same school, grade, and gender filters. It is not a second definition of the rate.
 
 **Pooled rates.** A rate that covers several schools is total numerator divided by total denominator. It is not the average of the school rates, and it is not the average of the student rates.
+
+### Source columns in `ic`
+
+The views read `ic`, not `raw`, and use the Infinite Campus names (PR #14). Each table below is in `loader/contract.py`. Quote the mixed-case names in SQL, for example `ic.enrollment."startDate"`. Items marked TO CONFIRM are open in [DATA_CONTRACT.md](DATA_CONTRACT.md).
+
+| Meaning in this document | Table and columns in `ic` | Notes |
+| --- | --- | --- |
+| Student | `ic.person`, key `personID` | Every student join uses `personID`. The id staff see is `studentNumber` (TO CONFIRM 3). |
+| Name, gender, race | `ic.identity` (`firstName`, `lastName`, `gender`, `raceEthnicity`, `raceethnicityFed`), from `ic.person."currentIdentityID"`; also `ic.identity_race_ethnicity` and `ic.race_ethnicity` | Which race field feeds equity is TO CONFIRM 16. |
+| School (`school_id`) | `ic.school."schoolID"`, reached through `ic.calendar."schoolID"` | TO CONFIRM 4. |
+| School year (`school_year`) | `ic.calendar."endYear"` and `ic.enrollment."endYear"`, integers | The view turns the end year into `YYYY-YYYY` (TO CONFIRM 5). |
+| Enrollment and grade | `ic.enrollment` (`personID`, `calendarID`, `grade`, `serviceType`, `startDate`, `endDate`) | Which `serviceType` value is primary is TO CONFIRM. `grade` stays text. |
+| School day | `ic.day` (`calendarID`, `date`, `instruction`) | `day_value` has no column. It is 1 for now. |
+| Attendance mark and code | `ic.attendance` (`personID`, `calendarID`, `date`, `excuseID`, `status`), `ic.attendance_excuse` (`code`), `ic.att_day_aggregation` | Which columns carry the homeroom mark is open in DATA_CONTRACT. |
+| Referral (incident) | `ic.behavior_incident` (`incidentID`, `calendarID`, `location`, `status`, `timestamp`) | The student is `ic.behavior_role."personID"`, through `ic.behavior_event`. |
+| Behavior label | `ic.behavior_event."typeID"` to `ic.behavior_type` (`code`, `name`) | |
+| Consequence and action date | `ic.behavior_resolution` (`roleID`, `typeID`, `discassignDate`) to `ic.behavior_res_type` | |
+| 504 plan | `ic.program_participation` with `ic.program` | |
+| IEP | Probably `ic.plan` with `ic.plan_type` | TO CONFIRM 15. |
+| Incident date and time, plan review date | No column in today's contract | Open. `behavior_incident.timestamp` is the entry time, not the incident time. |
+
+Every date and time column in `ic` is a `timestamp`. A time-only value, such as `ic.period."startTime"`, is stored on a placeholder date such as 1900-01-01. Compare times of day with `::time`, for example `"startTime"::time`, never the whole timestamp. Compare calendar days with `::date`.
 
 ### Worked attendance example
 
@@ -63,7 +85,7 @@ Six headline numbers, each a Superset big-number chart on its view. The rows beh
 | Denominator | Sum of `day_value` for those membership days. If the denominator is 0, the chart shows no number, not zero percent. |
 | Table columns | Student id, name, school, grade, membership days, absence-day equivalents, attendance percent. One row per student. Days are the sums of that student's filtered day rows. |
 
-Mid-year enrollment: days before `start_date` and after `end_date` are not membership. A student who arrives in October is rated only on days from October on. A student enrolled at two schools in the year contributes days to each school; a single-school filter sees only that school's days.
+Mid-year enrollment: days before `ic.enrollment."startDate"` and after `"endDate"` are not membership. A student who arrives in October is rated only on days from October on. A student enrolled at two schools in the year contributes days to each school; a single-school filter sees only that school's days.
 
 ### Absent on the last school day
 
@@ -71,7 +93,7 @@ Mid-year enrollment: days before `start_date` and after `end_date` are not membe
 | --- | --- |
 | Shows | A count of students. The chart title names the day, for example the weekday and date, when every selected school shares one last day. When the schools differ, the title says that each school uses its own last day. |
 | View | `reporting.v_last_school_day_absence` |
-| Last school day | For each school, the latest `is_school_day` date in the selected year that is on or before today. Schools with different calendars can have different dates. |
+| Last school day | For each school, the latest `ic.day` date with `instruction` true in the selected year that is on or before today. Schools with different calendars can have different dates. |
 | Who counts | A student enrolled on that school's last day whose `absence_portion` that day is 0.5 or greater. |
 | Denominator | None. This is a headcount. |
 | Table columns | Student id, name, school, grade, the date counted, absence portion. |
@@ -96,7 +118,7 @@ The view is an ordinary view, because the date depends on today. No attendance r
 | --- | --- |
 | Shows | A number, one decimal. The plan's name for this number is average days to resolve or action. The working definition uses the first action. |
 | View | `reporting.v_incident`, rows where `days_to_action` is not null. |
-| Formula | Average of `days_to_action`. That column is the calendar-day difference from `behavior_incident.timestamp`, the date the referral was entered into Infinite Campus, to `action_date`. It does not start at the incident date (Austin, 2026-11-03, 12:55 PM ET; the column per Austin, 2026-11-03, 1:16 PM ET). |
+| Formula | Average of `days_to_action`. That column is the calendar-day difference from `ic.behavior_incident.timestamp`, the date the referral was entered into Infinite Campus, to the action date (`ic.behavior_resolution."discassignDate"`, the column the loader's cross-row check uses). It does not start at the incident date (Austin, 2026-11-03, 12:55 PM ET; the column per Austin, 2026-11-03, 1:16 PM ET). |
 | Denominator | The count of referrals in the filter that have an action date. Referrals with no action yet are excluded, not treated as still running. |
 | Edge | Same-day action is 0. A negative span (an action date before `behavior_incident.timestamp`) is flagged on the load report. The row is kept and counts in the average (Austin, 2026-11-03, 12:56 PM ET). |
 | Table columns | Student id, name, school, incident date, action date, days. |
@@ -107,9 +129,9 @@ The view is an ordinary view, because the date depends on today. No attendance r
 | --- | --- |
 | Shows | A count of plans, plus a second count expiring in 30 days. |
 | View | `reporting.v_plan`, rows with `plan_type` `504` and `is_active` true. |
-| Active | Status maps to active, `start_date` is on or before today, and `end_date` is blank or on or after today. |
+| Active | Status maps to active, `startDate` is on or before today, and `endDate` is blank or on or after today (`ic.program_participation` for a 504). |
 | School | The school of the student's primary enrollment in the selected year. A plan whose student has no primary enrollment in that year is not on the view. |
-| Expiring | Among the active rows, `review_due_date` falls from today through the next 30 days, including today. If `review_due_date` is blank, `end_date` is used the same way. If both are blank, the plan is not expiring. |
+| Expiring | Among the active rows, the review due date falls from today through the next 30 days, including today. If the review due date is blank, `endDate` is used the same way. No file in `loader/contract.py` has a review-date column today. If both are blank, the plan is not expiring. |
 | Denominator | None. Two active 504s for one student count as two. |
 | Table columns | Student id, name, school, grade, plan type, review due date, end date, and whether it expires in 30 days. |
 
@@ -156,7 +178,7 @@ These are Superset charts on the dashboard. They read the view named here and us
 | | |
 | --- | --- |
 | View | `reporting.v_behavior_event` |
-| Formula | Count of behavior rows. By calendar month of `incident_date`. By grade. By location label. A blank location is its own bar, labeled unknown, not dropped. |
+| Formula | Count of behavior rows. By calendar month of the incident date (no file in `loader/contract.py` has an incident-date column today; see [Source columns in `ic`](#source-columns-in-ic)). By grade. By location label. A blank location is its own bar, labeled unknown, not dropped. |
 | Denominator | None. These are counts. |
 
 ### Heatmap of location by time of day
@@ -164,7 +186,7 @@ These are Superset charts on the dashboard. They read the view named here and us
 | | |
 | --- | --- |
 | View | `reporting.v_behavior_event` |
-| Formula | Count of behavior rows by location label and hour of `incident_time` (0 through 23) in the district time zone. |
+| Formula | Count of behavior rows by location label (`ic.behavior_incident.location`) and hour of the incident time (0 through 23) in the district time zone. No file in `loader/contract.py` has an incident-time column today. |
 | Missing time | Rows with no time are left off the heatmap. They remain on the month, grade, and location charts. |
 
 ### Consequences
@@ -275,7 +297,7 @@ Short form of the columns that carry decisions. Filter columns are omitted here.
 
 **Deferred, not blocking.** Austin will answer these later. They do not block step 0 or the base install. Each needs an answer before the view it affects is built.
 
-Working proposals are in the body above. Each item below is the choice that would change a number or a screen. Extract questions that block the typed copy are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md), not here.
+Working proposals are in the body above. Each item below is the choice that would change a number or a screen. Extract questions that block the mapping tables and the views are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md), not here.
 
 1. **No attendance mark.** When a student is enrolled on a school day and the file has no attendance row, v1 counts that day as present. Confirm, or say the day should be left out of both the numerator and the denominator.
 

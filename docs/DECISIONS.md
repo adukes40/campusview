@@ -4,6 +4,23 @@ Dated log of decisions already made. The plan of record is [PLAN.md](PLAN.md). N
 
 Open metric questions are not listed here. They are the Decisions for Austin list in [METRICS.md](METRICS.md). Open extract questions are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md). Both lists are deferred for now and do not block step 0.
 
+## 2026-11-03 — The typed copy takes its types from column names, and every date and time is a timestamp
+
+**What:**
+
+- `kind` in `loader/contract.py` picks each `ic` column's type from its name. A name that ends in `timestamp`, `Stamp`, `Time`, or `date`, is `date`, or contains `Date` is a `timestamp`. A name that ends in `ID` or `Id` is an id. Three lists name the rest: `YEARS` (`endYear`, an integer), `BOOLEANS`, and `NUMBERS` (numeric). Every other column stays text.
+- Every date and time column is a `timestamp`, including time-only columns such as `period.startTime`. There is no separate `date` or `time` type. Time-of-day comparisons use `::time`.
+- Ids and codes stay text. An id must be 1 to 64 letters, digits, hyphens, or underscores, or it becomes NULL and warns.
+- A boolean, number, year, or timestamp is valid when PostgreSQL's `pg_input_is_valid` accepts it for that type.
+- Only three keys warn when blank: `school.schoolID`, `calendar.calendarID`, and `enrollment.enrollmentID` (`REQUIRED`).
+- Each `ic` table is dropped and rebuilt with `CREATE TABLE ... AS` on every load, so it has no keys, indexes, or constraints.
+
+**Who:** Recorded by CampusView Keeper from PR #14 (head 73b2651, merge commit e06c651), which Austin merged into `dev` on 2026-11-03 at 4:54 PM ET. The code is `kind` in `loader/contract.py` and `_cast` and `_rebuild` in `loader/typed.py`.
+
+**Status:** Proposed, confirmed by merging.
+
+**Builds on:** 2026-11-03 "The typed layer keeps the Infinite Campus names" (below).
+
 ## 2026-11-03 — Servers pin `dev` or a release tag, and updates only move forward
 
 **What:**
