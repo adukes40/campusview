@@ -9,6 +9,7 @@ import psycopg
 from psycopg import sql
 
 from loader.contract import FILES
+from loader.typed import replace_ic
 
 LOCK = 814202611
 EXTRACT_CUTOFF_DATE = "2025-07-01"
@@ -37,22 +38,31 @@ def load_drop(folder: Path) -> tuple[bool, bool, str]:
             fault, lines = "server", ["The database could not be reached."]
         return False, False, render(False, fault, lines, [])
     copy_name = None
+    warnings = []
     try:
         if not fault:
             with conn.transaction():
                 locked = conn.execute("SELECT pg_try_advisory_xact_lock(%s)", (LOCK,)).fetchone()[0]
                 if not locked:
-                    fault, lines, warnings = "server", ["Another load is already running."], []
+                    fault, lines = "server", ["Another load is already running."]
                 else:
                     conn.execute("CREATE SCHEMA IF NOT EXISTS raw")
                     lines = []
-                    for name, path, columns, header in ready:
+                    for name, path, columns, header, _has_data in ready:
                         copy_name = name
                         lines.append(copy_file(conn, name, path, columns, header))
-                    warnings = day_warnings(conn)
+                    copy_name = None
+                    warnings = [
+                        f"Warning: {name} has no data rows."
+                        for name, _path, _columns, _header, has_data in ready
+                        if not has_data
+                    ]
+                    warnings.extend(replace_ic(conn))
+                    warnings.extend(
+                        f"Warning: calendar {calendar_id} has enrollments and no Day rows."
+                        for calendar_id in day_warnings(conn)
+                    )
                     fault = None
-        else:
-            warnings = []
         ok = fault is None
         report = render(ok, fault, lines, warnings)
         return ok, save_report(conn, report, ok, fault, started), report
@@ -110,14 +120,25 @@ def check_folder(folder: Path):
         reason, header = check_header(path, columns)
         if reason:
             problem(name, reason)
+            continue
+        data = has_rows(path)
+        if name in ("school.csv", "calendar.csv") and not data:
+            problem(name, "The file has no data rows.")
         else:
-            ready.append((name, path, columns, header))
+            ready.append((name, path, columns, header, data))
     for name in sorted(names):
         if name not in FILES:
             problem(name, "This file is not in the extract contract.")
     if problems:
         return "extract", problems, []
     return None, [], ready
+
+
+def has_rows(path: Path) -> bool:
+    with path.open(newline="", encoding="utf-8") as handle:
+        reader = csv.reader(handle)
+        next(reader, None)
+        return next(reader, None) is not None
 
 
 def check_header(path: Path, columns: tuple[str, ...]):
@@ -212,10 +233,7 @@ def day_warnings(conn) -> list[str]:
 def render(ok: bool, fault, lines, warnings) -> str:
     if ok:
         head = ["Load passed."]
-        lines = [
-            *lines,
-            *[f"Warning: calendar {calendar_id} has enrollments and no Day rows." for calendar_id in warnings],
-        ]
+        lines = [*lines, *warnings]
     else:
         where = "the extract" if fault == "extract" else "the server"
         head = [

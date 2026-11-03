@@ -24,3 +24,42 @@ FILES = {
     "race_ethnicity.csv": "raceId,code,federalCode,active,name".split(","),
     "school.csv": "schoolID,districtID,number,name,type,address,city,state,zip,phone,principalName,exclude".split(","),
 }
+
+YEARS = frozenset({"endYear"})
+BOOLEANS = frozenset({
+    "exclude", "summerSchool", "instruction", "schoolDay", "noShow",
+    "stateExclude", "active", "nonInstructional", "locked", "archive",
+    "autoEnded", "violenceIndicator", "behavior",
+})
+NUMBERS = frozenset({
+    "scheduledMinutes", "absentMinutes", "unexcusedAbsentMinutes", "tardies",
+    "absentPeriods", "presentMinutes", "studentDay", "wholeDayAbsence",
+    "halfDayAbsence", "duration", "seq", "periodMinutes", "schooldaysDuration",
+})
+
+REQUIRED = {
+    "school.csv": ("schoolID",),
+    "calendar.csv": ("calendarID",),
+    "enrollment.csv": ("enrollmentID",),
+}
+
+
+def kind(column):
+    if column in YEARS:
+        return "year"
+    if column in BOOLEANS:
+        return "bool"
+    if column in NUMBERS:
+        return "num"
+    if (
+        column.endswith("timestamp")
+        or column.endswith("Stamp")
+        or column.endswith("Time")
+        or column == "date"
+        or column.endswith("date")
+        or "Date" in column
+    ):
+        return "timestamp"
+    if column.endswith("ID") or column.endswith("Id"):
+        return "id"
+    return "text"

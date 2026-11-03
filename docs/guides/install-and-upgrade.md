@@ -59,7 +59,7 @@ All passwords and the key are saved in `/etc/campusview/campusview.env`. Read th
 | Schema | Owner | Who can read it |
 | --- | --- | --- |
 | `raw`, loaded data | `campusview_owner` | `campusview_owner` only |
-| `ic`, the typed copy of each `raw` table. Not created yet; it comes with the typed-copy pull request | `campusview_owner` | `campusview_owner` only |
+| `ic`, the typed copy of each `raw` table. The installer creates the empty schema. The loader rebuilds the tables | `campusview_owner` | `campusview_owner` only |
 | `ref`, reference and lookup data | `campusview_owner` | `campusview_owner` only |
 | `reporting`, views for reports | `campusview_owner` | `campusview_owner`, and `campusview_reader` with read only access. Anything the owner adds here later is readable by `campusview_reader` automatically. |
 | `ops`, the load report table `load_batch` | `campusview_owner` | `campusview_owner` only. The installer does not create it. The loader creates it on its first run. |
