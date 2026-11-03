@@ -32,7 +32,7 @@ Everything listens on the server only:
 | Superset | 127.0.0.1:8088 |
 | Django | 127.0.0.1:8000 |
 
-With the default local-only choice, no port is opened to the network. To use Superset from a laptop, open an SSH tunnel.
+With the local-only choice, no port is opened to the network. To use Superset from a laptop, open an SSH tunnel.
 
 An optional nginx step is decided and in progress in the installer. When chosen, nginx is the only thing on the network: HTTP on port 80, or HTTPS on port 443 with 80 redirecting to 443. PostgreSQL and the two apps stay on 127.0.0.1. Plain HTTP is for test machines with fake data only. See [../DECISIONS.md](../DECISIONS.md).
 
