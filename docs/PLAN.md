@@ -48,7 +48,7 @@ The base install, all at default settings:
 - **No Redis and no Celery.** There is no Redis server, no Celery, and no Superset worker or beat process. The `celery` and `redis` Python libraries are present only because Superset's package list installs them.
 - **nginx, optional.** The installer can add nginx from the distro's apt repo as the one network entry point. The wizard offers local only through an SSH tunnel, HTTP on port 80, or HTTPS on port 443 with a self-signed or supplied certificate. A re-run shows the saved choice and asks whether to change it. Superset is at `/` and Django at `/app/`. The pieces above stay on 127.0.0.1 either way. This is decided and part of step 0's base install; the installer step is in progress. See [DECISIONS.md](DECISIONS.md), 2026-11-02, "Offer nginx with HTTP or HTTPS".
 - **No SFTP, no example data, and no theming** in the base install yet.
-- **The installer** is one script, `install.sh`, with a step-by-step wizard that asks for every setting it needs. The CampusView Engineer built it, and it passed clean installs and re-runs on Debian 12, Ubuntu 24.04, and Ubuntu 22.04. Austin is reviewing it.
+- **The installer** is one script, `install.sh`, with a step-by-step wizard that asks for every setting it needs. The CampusView Engineer built it, and it passed clean installs and re-runs on Debian 12, Ubuntu 24.04, and Ubuntu 22.04. It is merged to `main`.
 - **Secrets** go in one server file, `/etc/campusview/campusview.env` (mode 600, owned by the account that runs CampusView). systemd or `start.sh` loads it, and the Superset and Django config files read secrets from the environment.
 
 ## Access control
