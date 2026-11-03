@@ -1,6 +1,6 @@
 # Install and upgrade
 
-CampusView goes on one Ubuntu or Debian server. You run one script, `install.sh`. It asks a short list of questions, then installs PostgreSQL, the Superset web page, and the Django admin page. All of them listen only on the server itself. From your own computer, you open them through an SSH tunnel.
+CampusView goes on one Ubuntu or Debian server. You run one script, `install.sh`. It asks a short list of questions, then installs PostgreSQL, the Superset web page, and the Django admin page. All three listen only on the server itself. One question decides how people reach the web pages: through an SSH tunnel only, or through nginx on port 80 (HTTP) or port 443 (HTTPS). See [How people reach CampusView](#how-people-reach-campusview).
 
 This guide is for the person who runs the server. It stays generic. District settings that are not secrets live in the district repo, not in this one.
 
@@ -108,10 +108,11 @@ In order, the script does this work for you.
 9. Django 6.1.2 in its own Python environment, as a default project named `campusview_base`.
 10. Django pointed at `django_app`. Django reads the database password from the environment.
 11. `start.sh` and `stop.sh` in the install folder.
-12. A check that the pages answer, described below.
-13. If you answered `yes`, the services `cv-superset` and `cv-django` start at boot.
+12. If you chose HTTP or HTTPS: nginx from the distro's own apt repo, with one site, `/etc/nginx/sites-available/campusview`. For HTTPS with a self-signed certificate, the certificate too.
+13. A check that the pages answer, described below.
+14. If you answered `yes`, the services `cv-superset` and `cv-django` start at boot.
 
-The installer does not add a Redis server, Celery, a Superset worker, Docker, example data, or theming. An optional nginx step (HTTP or HTTPS) is decided and in progress; see [../DECISIONS.md](../DECISIONS.md). The `redis` and `celery` Python libraries are installed only because Superset depends on them, and nothing runs them. SFTP and the loader come in Step 1.
+The installer does not add a Redis server, Celery, a Superset worker, Docker, a firewall, Let's Encrypt (certbot), example data, or theming. nginx is the optional web server from the decision in [../DECISIONS.md](../DECISIONS.md). It is installed only when you choose HTTP or HTTPS. No second proxy is added. The `redis` and `celery` Python libraries are installed only because Superset depends on them, and nothing runs them. SFTP and the loader come in Step 1.
 
 ## Where the passwords live
 
@@ -125,7 +126,9 @@ The installer does not add a Redis server, Celery, a Superset worker, Docker, ex
 
 The installer checks three pages and the three databases. Superset's health page, the Superset sign-in page, and the Django admin sign-in page must each answer. The databases `superset_meta`, `django_app`, and `campusview_data` must exist. Then it prints `INSTALL OK`, the addresses, and a short DBeaver block with the same facts as above.
 
-Today everything listens on `127.0.0.1` only. (An optional nginx step for HTTP or HTTPS is in progress.) To open the pages from your computer, run this, then open `http://127.0.0.1:8088` and `http://127.0.0.1:8000/admin/`.
+With HTTP or HTTPS, the done screen prints the two addresses to open, for example `https://10.0.0.25/` for Superset and `https://10.0.0.25/app/` for the Django admin page. Sign in with the admin username and password. With a self-signed certificate, the browser warns the first time. See below.
+
+With the SSH tunnel choice, everything listens on `127.0.0.1` only. To open the pages from your computer, run this, then open `http://127.0.0.1:8088` and `http://127.0.0.1:8000/admin/`.
 
 ```bash
 ssh -L 8088:127.0.0.1:8088 -L 8000:127.0.0.1:8000 you@server
@@ -133,9 +136,37 @@ ssh -L 8088:127.0.0.1:8088 -L 8000:127.0.0.1:8000 you@server
 
 Use the ports you chose if they are not `8088` and `8000`. Sign in with the admin username and password.
 
+## How people reach CampusView
+
+The wizard asks `How should people reach CampusView?` right after the ports.
+
+| Choice | What you open | What listens on the network |
+|---|---|---|
+| 1) Only from this server (SSH tunnel) | `http://127.0.0.1:8088` and `http://127.0.0.1:8000/admin/` through an SSH tunnel | Nothing new. nginx is not installed. |
+| 2) HTTP on port 80 | `http://NAME/` (Superset) and `http://NAME/app/` (Django admin) | nginx on port 80 |
+| 3) HTTPS on port 443 (recommended, the default) | `https://NAME/` and `https://NAME/app/` | nginx on port 443, and on port 80 only to send people to https |
+
+`NAME` is the answer to `Server name or IP address`. It defaults to the server's main IP address. Use a DNS name if people have one for the server.
+
+In every mode, Superset, Django (gunicorn) and PostgreSQL keep listening on `127.0.0.1` only. nginx passes `/` to Superset and `/app/` to Django. DBeaver still connects through the SSH tunnel, exactly as above.
+
+HTTP sends passwords across the network unencrypted. Use it only for testing with fake data.
+
+### Certificates for HTTPS
+
+- **Self-signed (the default).** The installer makes a certificate for the server name or IP, plus the server's hostname, valid for 10 years. Browsers warn that the connection isn't private. Choose Advanced, then Continue (or Proceed, or Accept the risk). The done screen prints the certificate's SHA-256 fingerprint so you can check it's this server.
+- **Your own.** Give the full path to the certificate file (PEM, with any intermediate certificates) and to the private key file (PEM, no passphrase). The installer checks that both exist, that the key matches the certificate, and that the certificate hasn't expired. If any check fails, it stops before it changes anything. It copies both into `/etc/campusview/tls/`. When you renew the certificate, run the installer again with the new files.
+
+The key is stored as `/etc/campusview/tls/campusview.key`, mode 600, owned by root, in a folder only root can open.
+
+### Changing the choice later
+
+Run the installer again. It shows `Saved: ...` and asks `Change how people reach CampusView? (yes/no) [no]`. Answer `yes` to choose again. With an answers file, set `CV_ACCESS` (and the other network settings listed under [Run it from an answers file](#run-it-from-an-answers-file)) in the file; those win over the saved ones. Switching to the SSH tunnel removes the CampusView nginx site, and stops nginx if it has no other sites.
+
 No student data is needed for this check.
 
 ## Run the installer again
+
 
 Run the same command. The saved answers show up as the defaults, including the install folder. The two behind-the-scenes database password prompts say `Enter = keep the saved one`.
 
@@ -175,8 +206,9 @@ The file uses the same names as the saved password file.
 - `CV_SUPERSET_DB_PASSWORD`, `CV_DJANGO_DB_PASSWORD`, `CV_READER_DB_PASSWORD`, `CV_OWNER_DB_PASSWORD`, `CV_SECRET_KEY`
 - `CV_ADMIN_USER`, `CV_ADMIN_EMAIL`, `CV_ADMIN_PASSWORD`
 - `CV_SYSTEMD`, and `CV_SUPERSET_WORKERS`. The worker count is answers-file only. The default is 4.
+- `CV_ACCESS`: `tunnel`, `http`, or `https` (default `https` on a new install). `CV_SERVER_NAME`: blank means the server's main IP address. `CV_TLS_CERT_SOURCE`: `selfsigned` (default) or `own`, with `CV_TLS_CERT_FILE` and `CV_TLS_KEY_FILE` for `own`.
 
-`install.answers.example` in the repo root is a sample. Its secrets are blank. Leave any password out and the installer generates one. Do not use that sample on a real server until you set the Linux account and the admin email for that server. If the saved file `/etc/campusview/campusview.env` already exists, its values win over the answers file.
+`install.answers.example` in the repo root is a sample. Its secrets are blank. Leave any password out and the installer generates one. Do not use that sample on a real server until you set the Linux account and the admin email for that server. If the saved file `/etc/campusview/campusview.env` already exists, its values win over the answers file, except the network settings: a `CV_ACCESS`, `CV_SERVER_NAME` or `CV_TLS_*` value in the answers file replaces the saved one, so you can change modes. An install from before this question that runs again from an answers file without `CV_ACCESS` stays on the SSH tunnel.
 
 ## The testing install
 
