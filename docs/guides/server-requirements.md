@@ -18,7 +18,7 @@ The installer adds these itself:
 - PostgreSQL 17, from the official PostgreSQL apt repo (PGDG), added directly over https with its signing key.
 - Apache Superset 6.1.0 and Django 6.1.2, each in its own Python environment, run by gunicorn.
 
-Not needed: Docker, a Redis server, Celery, or a reverse proxy. The `redis` and `celery` Python libraries come in only as Superset dependencies. Nothing runs them.
+Not needed: Docker, a Redis server, or Celery. The `redis` and `celery` Python libraries come in only as Superset dependencies. Nothing runs them.
 
 The operator must already have SSH access to the machine and a user account that will run CampusView.
 
@@ -32,7 +32,9 @@ Everything listens on the server only:
 | Superset | 127.0.0.1:8088 |
 | Django | 127.0.0.1:8000 |
 
-No port is opened to the network. To use Superset from a laptop, open an SSH tunnel. Letting staff reach Superset over the network needs a reverse proxy with TLS. When to add one is an open question in [../PLAN.md](../PLAN.md).
+With the default local-only choice, no port is opened to the network. To use Superset from a laptop, open an SSH tunnel.
+
+An optional nginx step is decided and in progress in the installer. When chosen, nginx is the only thing on the network: HTTP on port 80, or HTTPS on port 443 with 80 redirecting to 443. PostgreSQL and the two apps stay on 127.0.0.1. Plain HTTP is for test machines with fake data only. See [../DECISIONS.md](../DECISIONS.md).
 
 ## Disk layout
 

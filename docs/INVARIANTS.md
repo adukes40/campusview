@@ -43,6 +43,6 @@ These follow from the same plan and are just as binding.
 - **Default deny.** No role, or no school, means no rows.
 - **Files are the only ingest.** There is no direct connection to the student information system.
 - **No Celery and no Redis in v1.** Loads run as a timed job on the server. The `celery` and `redis` Python libraries come with Superset but nothing runs them.
-- **Services listen on the server only.** PostgreSQL, Superset, and Django listen on 127.0.0.1 until a proxy is decided. PostgreSQL uses `listen_addresses = '127.0.0.1'`, not `localhost`, which also opens `[::1]`.
+- **Only nginx faces the network.** PostgreSQL and gunicorn for Superset and Django listen on 127.0.0.1 only. PostgreSQL uses `listen_addresses = '127.0.0.1'`, not `localhost`, which also opens `[::1]`. When nginx is chosen in the installer, it is the only thing listening on the network. PostgreSQL is never exposed; DBeaver uses an SSH tunnel. Plain HTTP sends logins unencrypted, so it is only for test machines with fake data. Real student data needs HTTPS.
 - **Agents do not edit exported dashboards.** Those files live in the district repo and stay as the system admin exported them.
 - **Parked work stays parked.** New ideas are written into the parking lot in [FEATURES.md](../FEATURES.md). Only Austin promotes one into a step. That includes the custom Django pages and the view and export log, which are parked.

@@ -111,7 +111,7 @@ In order, the script does this work for you.
 12. A check that the pages answer, described below.
 13. If you answered `yes`, the services `cv-superset` and `cv-django` start at boot.
 
-The installer does not add a Redis server, Celery, a Superset worker, a reverse proxy, Docker, example data, or theming. The `redis` and `celery` Python libraries are installed only because Superset depends on them, and nothing runs them. SFTP and the loader come in Step 1.
+The installer does not add a Redis server, Celery, a Superset worker, Docker, example data, or theming. An optional nginx step (HTTP or HTTPS) is decided and in progress; see [../DECISIONS.md](../DECISIONS.md). The `redis` and `celery` Python libraries are installed only because Superset depends on them, and nothing runs them. SFTP and the loader come in Step 1.
 
 ## Where the passwords live
 
@@ -125,7 +125,7 @@ The installer does not add a Redis server, Celery, a Superset worker, a reverse 
 
 The installer checks three pages and the three databases. Superset's health page, the Superset sign-in page, and the Django admin sign-in page must each answer. The databases `superset_meta`, `django_app`, and `campusview_data` must exist. Then it prints `INSTALL OK`, the addresses, and a short DBeaver block with the same facts as above.
 
-Everything listens on `127.0.0.1` only. To open the pages from your computer, run this, then open `http://127.0.0.1:8088` and `http://127.0.0.1:8000/admin/`.
+Today everything listens on `127.0.0.1` only. (An optional nginx step for HTTP or HTTPS is in progress.) To open the pages from your computer, run this, then open `http://127.0.0.1:8088` and `http://127.0.0.1:8000/admin/`.
 
 ```bash
 ssh -L 8088:127.0.0.1:8088 -L 8000:127.0.0.1:8000 you@server
