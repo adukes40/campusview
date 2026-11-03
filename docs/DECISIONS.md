@@ -14,6 +14,8 @@ Open metric questions are not listed here. They are the Decisions for Austin lis
 
 nginx comes from the distro's own apt repo. Superset is at `/` and Django is at `/app/`. gunicorn (Superset on 127.0.0.1:8088, Django on 127.0.0.1:8000) and PostgreSQL stay on 127.0.0.1. PostgreSQL is never exposed, and DBeaver keeps using an SSH tunnel. nginx is the only thing listening on the network. Nothing else is added: no Redis, no Docker.
 
+A re-run shows the saved choice and asks whether to change it. Which choice is the default is not recorded here yet; Austin settles it when he merges the installer pull request.
+
 **Why:** Austin wants to open CampusView by the server's address from his own computer, without an SSH tunnel. His words: "build the install to allow http or https, I will reset the ct, and rerun the new installer once you have it complete."
 
 **Who:** Austin's decision, relayed by the CampusView Engineer.
@@ -22,7 +24,7 @@ nginx comes from the distro's own apt repo. Superset is at `/` and Django is at 
 
 **Status:** Decided. The docs describe this target. The installer step is in progress, in a separate pull request from the CampusView Engineer after PR #3.
 
-**Alternatives:** Local only with an SSH tunnel. Still available, as the default wizard choice. Deferring the proxy until later. Set aside because Austin wants network access on his test machine now.
+**Alternatives:** Local only with an SSH tunnel for everyone. Still available as one of the three choices. Deferring the proxy until later. Set aside because Austin wants network access on his test machine now.
 
 **Resolves:** Open question 4, "Reaching it from the network", in [PLAN.md](PLAN.md).
 
