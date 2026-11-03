@@ -12,7 +12,7 @@ flowchart TD
   sftp[SFTP drop folder]
   loader[Loader checks every file then writes one transaction]
   raw[(Raw tables, all text, Infinite Campus names)]
-  typed[(Typed copy, same names, schema to be decided)]
+  typed[(Typed copy in schema ic, same names)]
   maps[(Code-mapping tables from the district repo)]
   views[Reporting views hold all metric logic]
   superset[Superset dashboards and native filters]
@@ -26,9 +26,9 @@ flowchart TD
 ```
 
 1. The district drops a full CSV snapshot on SFTP. CampusView never connects to the student information system.
-2. The loader checks every Infinite Campus file. Nothing is renamed. If any check fails, it loads nothing and leaves the previous data in place. If every check passes, it replaces the raw snapshot in one database transaction. See [DATA_CONTRACT.md](DATA_CONTRACT.md).
+2. The loader checks every Infinite Campus file. Nothing is renamed. If a file fails (a header or column problem, a missing file, or an unexpected file), it loads nothing and leaves the previous data in place. If every check passes, it replaces the raw snapshot in one database transaction. See [DATA_CONTRACT.md](DATA_CONTRACT.md).
 3. Raw tables store every column the contract lists, as text, with the Infinite Campus names. Nothing is dropped, and an unknown header fails the file.
-4. A typed, checked copy of each raw table keeps the same table and column names, with real dates and numbers. Key and code checks are flagged on the load report. Its schema is to be decided. Code-mapping tables, from the district repo, say what each local code means. See 2026-11-03 "The typed layer keeps the Infinite Campus names" in [DECISIONS.md](DECISIONS.md).
+4. A typed, checked copy of each raw table keeps the same table and column names, with real dates and numbers. It lives in schema `ic`, so `raw.enrollment` becomes `ic.enrollment`. Bad keys and unknown codes are warnings on the load report, and loading continues. Code-mapping tables, from the district repo, say what each local code means. See 2026-11-03 "The typed layer keeps the Infinite Campus names" in [DECISIONS.md](DECISIONS.md).
 5. Reporting views join the typed copy to those maps and expose every number the dashboards show. The SQL is in this repo. The metric list is [METRICS.md](METRICS.md).
 6. Superset dashboards read the views. Superset's roles and row-level security limit each person to their schools. See [ACCESS.md](ACCESS.md).
 
@@ -71,7 +71,8 @@ Later code is expected to split along these lines. Only the `loader` package exi
 | --- | --- | --- | --- |
 | `ingest.drop` | Watch the SFTP folder | Files on disk | Nothing |
 | `loader` (built) | Validate, then load all or nothing | Infinite Campus CSV | `raw`, `ops.load_batch` |
-| Typed copy (module name to be decided) | Typed, checked copy of each raw table, same names; flags key and code problems on the load report | `raw`, district maps | Typed tables, schema to be decided |
+| Typed copy (module name to be decided) | Typed, checked copy of each raw table, same names; bad keys and unknown codes are warnings on the load report | `raw`, district maps | `ic` |
+| `warehouse.ic` | Typed copy tables. Not built | | |
 | `warehouse.raw` | Snapshot tables, all text | | |
 | `warehouse.ref` | Code-mapping tables | | |
 | `warehouse.reporting` | Views only, as SQL files in this repo | The typed copy, `ref` | |
@@ -85,8 +86,8 @@ Dashboards, charts, filters, roles, and row-level security are Superset settings
 Planned: `load(drop_dir, district_config_dir) -> LoadResult`
 
 - Look in `drop_dir` for the Infinite Campus extract files and in `district_config_dir` for the code-mapping files. Both sets are required.
-- Validate every file first: headers (an unknown or misspelled header fails the file). The typed copy then checks types, and flags key and code problems on the load report. Details are in [DATA_CONTRACT.md](DATA_CONTRACT.md).
-- On any error, leave the previous snapshot in place. Record the failed attempt on `ops.load_batch` with the file name, the row number, and the rule that failed. Do not record the cell value.
+- Validate every file first: headers (an unknown or misspelled header fails the file). The typed copy then checks types. Bad keys and unknown codes are warnings on the load report, and loading continues. Details are in [DATA_CONTRACT.md](DATA_CONTRACT.md).
+- On any failure (a header or column problem, a missing file, or an unexpected file), leave the previous snapshot in place. Warnings do not stop the load. Record the failed attempt on `ops.load_batch` with the file name, the row number, and the rule that failed. Do not record the cell value.
 - On success, replace the raw snapshot inside one transaction, purge school years outside the history window, and commit.
 - The drop is a full snapshot of the years to keep, not a file of changes. Running the same files twice leaves the same warehouse.
 - History length is a district setting, default 2: the newest school year in the drop and the one before it.
@@ -107,13 +108,13 @@ Schemas in `campusview_data`:
 | Schema | Holds | Who may read it |
 | --- | --- | --- |
 | `raw` | One table per Infinite Campus file, every column text, no load metadata columns | Loader (`campusview_owner`). Not Superset. |
-| To be decided | The typed copy: one table per raw table, same names, real dates and numbers. Not built | `campusview_owner`, and the reporting views. Not Superset directly |
+| `ic` | The typed copy: one table per raw table, same names, real dates and numbers, for example `ic.enrollment`. Not created yet; it comes with the typed-copy pull request | Loader (`campusview_owner`), and the reporting views. Not Superset. Same owner and grants as `raw` |
 | `ref` | Code-mapping tables | Loader (`campusview_owner`), and the reporting views |
 | `reporting` | Views | `campusview_reader` (Superset's data connection), `SELECT` only |
 | `ops` | `load_batch`: `batch_id`, `started_at`, `finished_at`, `outcome`, `fault`, `report`. The loader creates the schema and the table on its first run | `campusview_owner` only. No grant is made to `campusview_reader` |
 | `scratch` | Empty on a normal install | Testing install only, and only the sandbox database user |
 
-The table names are the Infinite Campus file names without `.csv`, for example `raw.enrollment` and `raw.day`. The full list is in `loader/contract.py`. The typed copy uses the same table and column names. The vendor-neutral names in the standard-layout sections of [DATA_CONTRACT.md](DATA_CONTRACT.md) (`schools`, `students`, `calendar_days`, and so on) are not table names.
+The table names are the Infinite Campus file names without `.csv`, for example `raw.enrollment` and `raw.day`. The full list is in `loader/contract.py`. The typed copy in `ic` uses the same table and column names. The vendor-neutral names in the standard-layout sections of [DATA_CONTRACT.md](DATA_CONTRACT.md) (`schools`, `students`, `calendar_days`, and so on) are not table names.
 
 Relationships, all by the text ids in the files:
 
@@ -205,7 +206,7 @@ The district repo holds code mappings, branding, exported dashboards, display na
 
 The product repo builds a release only as a tag such as `v1.3.0`, cut from `main`. Production pins a tag. The dev server follows the `dev` branch, holds real data, and follows production rules for data and access. Before a tag is cut, the release is installed on a clean machine and upgrades a machine that was on the previous tag. The testing install is the builder's computer, or a fake-data server later; it loads Infinite Campus training-database extracts that Austin supplies. Production and the dev server do not load them. The `dev` branch exists, and basic CI (`.github/workflows/ci.yml`) runs the tests on every push and pull request. **Not built yet:** the per-server product checkout, the branch or tag setting, the update command (all step 1), and the clean-install and upgrade checks in CI.
 
-The testing database has one extra user for the AI sandbox: it can read `raw` and `reporting`, and it can create objects only in `scratch`. Production and the dev server do not have this user. A view that is ready to keep is added as SQL in the product repo, with a hand-checked test, and arrives through a release.
+The testing database has one extra user for the AI sandbox: it can read `raw` and `reporting` (and `ic` once it exists), and it can create objects only in `scratch`. Production and the dev server do not have this user. A view that is ready to keep is added as SQL in the product repo, with a hand-checked test, and arrives through a release.
 
 ## Dashboards, in product terms
 

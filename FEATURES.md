@@ -18,7 +18,7 @@ Done when Austin approves the docs, and `install.sh` brings up the base install 
 - The SFTP drop folder.
 - The code-mapping tables from [docs/DATA_CONTRACT.md](docs/DATA_CONTRACT.md), and the raw schema in `campusview_data`.
 - The loader: check every file, reject a bad file, load all or nothing. An unknown or misspelled header fails the file, and the failed load is recorded in `ops.load_batch` with the files that failed and the reason, plus the line number when PostgreSQL rejects a row.
-- The typed, checked copy of each raw table. It keeps the Infinite Campus table and column names, with real dates and numbers, and flags key and code checks on the load report. It comes after the update command. Its schema is to be decided.
+- The typed, checked copy of each raw table. It keeps the Infinite Campus table and column names, with real dates and numbers, in schema `ic`. Bad keys and unknown codes are warnings on the load report, and loading continues. It comes after the update command.
 - Test files from Infinite Campus training-database extracts that Austin supplies, kept on the builder's computer, never in the repo. No fake-data generator.
 - The guide on how to write a mapping for another student information system. The mapping itself is not built. How another system fits, now that the Infinite Campus names are kept, is not decided.
 - Release plumbing, moved into current work by Austin (Austin, relayed by CampusView Engineer, 2026-11-03):

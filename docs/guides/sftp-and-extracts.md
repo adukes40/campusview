@@ -12,7 +12,7 @@ The file names in `loader/contract.py`, the rule that this is a full snapshot of
 
 ## Code-mapping files
 
-Where they live (the district repo, not the SFTP drop). Who edits them when the district adds an attendance code. That a code in the extract with no map row fails the load and leaves yesterday's data in place.
+Where they live (the district repo, not the SFTP drop). Who edits them when the district adds an attendance code. That a code in the extract with no map row is a warning on the load report, and loading continues.
 
 ## Infinite Campus
 
@@ -20,7 +20,7 @@ How to schedule the extracts this district confirmed in the TO CONFIRM list, tha
 
 ## Run the loader
 
-The loader reads one folder of Infinite Campus CSV files and loads them into the `raw` schema. SFTP pickup and the typed copy come later.
+The loader reads one folder of Infinite Campus CSV files and loads them into the `raw` schema. SFTP pickup and the typed copy in schema `ic` come later. The typed copy will report bad keys and unknown codes as warnings, and keep loading.
 
 The installer does not install or run the loader. From a checkout of this repository, load the password file into the environment. Do not put the password on the command line. The command below uses the Python 3.12 the installer already placed. It does not download Python, and it does not install the test tools. The first run installs the loader's database library into that checkout, so it needs internet access. If you chose another install folder, use it in place of `/opt/campusview`.
 

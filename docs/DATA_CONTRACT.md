@@ -16,11 +16,11 @@ The built loader (PR #10) reads the Infinite Campus files themselves, not the st
 - Every value is stored as text. A blank cell, quoted or not, is stored as NULL. A header-only file passes.
 - A calendar with enrollments and no Day rows is a warning, not a failure. See [the extracts guide](guides/sftp-and-extracts.md).
 
-It does not check types, keys, codes, or foreign keys yet. The typed copy will do that, on the same Infinite Campus names. It will store real dates and numbers, and flag key and code checks on the load report. It is not built yet.
+It does not check types, keys, codes, or foreign keys yet. The typed copy will do that, on the same Infinite Campus names. It will store real dates and numbers in schema `ic`. Bad keys and unknown codes will be warnings on the load report, and loading continues. It is not built yet.
 
 ## Shared file rules
 
-These rules were written for vendor-neutral standard files, which will not be built. They are the reference for the typed copy's checks. Whether a key or code problem fails the load or is only flagged is not decided.
+These rules were written for vendor-neutral standard files, which will not be built. They are the reference for the typed copy's checks. Bad keys and unknown codes are warnings on the load report, and loading continues. Header and column problems, missing files, and unexpected files fail the whole batch (Austin, relayed by CampusView Engineer, 2026-11-03).
 
 - UTF-8, comma-separated, a header row, any valid CSV quoting.
 - Header names match this document exactly, lowercase, in any column order.
@@ -31,13 +31,13 @@ These rules were written for vendor-neutral standard files, which will not be bu
 - Decimals use a period.
 - School year is `YYYY-YYYY` with the second year equal to the first plus one.
 - A blank cell is allowed only where the column says optional.
-- Duplicate keys fail the file.
-- A code that is not in the matching mapping table fails the file. There is no silent "other" bucket. The district adds an explicit map row for every code that appears.
+- A duplicate or bad key is a warning on the load report. Loading continues.
+- A code that is not in the matching mapping table is a warning on the load report that names the file and the code's column. Loading continues. There is no silent "other" bucket. The district adds an explicit map row for every code that appears.
 - Text fields reject line breaks and other control characters.
 - The nightly drop is a full snapshot of the school years to keep, not a list of changes since yesterday. After a good load, the warehouse matches the drop, minus years outside the history window.
 - `schools.csv`, `students.csv`, `enrollments.csv`, and `calendar_days.csv` must each contain at least one data row. The other extract files may be header-only.
 - Mapping files live in the district repo, not in the SFTP drop. They are required on every load. A bad mapping fails the load the same way a bad extract does.
-- One failed file fails the whole load. The previous snapshot stays.
+- One failed file fails the whole load. The previous snapshot stays. Warnings do not fail a file.
 - Error reports name the file, the row number, and the rule. They do not repeat the cell value. Today's loader names the file and the reason, and gives a line number when PostgreSQL rejects a row.
 
 ## Changing the contract

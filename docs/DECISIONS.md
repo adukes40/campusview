@@ -11,11 +11,10 @@ Open metric questions are not listed here. They are the Decisions for Austin lis
 - The standard layer is a typed, checked copy of each `raw` table.
 - It keeps the Infinite Campus table and column names. Nothing is renamed to a vendor-neutral standard layout.
 - It stores real dates and numbers.
-- Key and code checks are flagged on the load report.
+- It lives in schema `ic`, with the same owner and permissions as `raw`. For example, `raw.enrollment` becomes `ic.enrollment` (Austin, relayed by CampusView Engineer, 2026-11-03, 12:43 PM ET: "Call the schema ic.").
+- Bad keys and unknown codes only warn on the load report, and loading continues. Header and column problems, missing files, and unexpected files still fail the whole batch (Austin, relayed by CampusView Engineer, 2026-11-03, 12:43 PM ET: "Bad keys or unknown codes only warn on the load report and keep loading.").
 - It is built as the next step 1 pull request after the update command.
 - Superset reads it only through the reporting views.
-
-**Not decided:** the schema that holds the typed layer. `ref` is documented for code-mapping and lookup tables, so it is not assumed. Also not decided: whether a flagged key or code problem fails the load or only warns.
 
 **Who:** Austin, relayed by CampusView Engineer, 2026-11-03, 12:31 PM ET: "Yes, build the cleaned copies with the same IC names next."
 
@@ -27,7 +26,7 @@ Open metric questions are not listed here. They are the Decisions for Austin lis
 
 **What:** The step 1 loader (PR #10, commit 2f21b49) loads the Infinite Campus CSV files themselves, before any mapping. Each of the 24 files in `loader/contract.py` gets its own table in `raw`, named after the file (for example `raw.enrollment`), with every column stored as text. A column added to the list is added to the table. A column is never dropped. The loader creates the `ops` schema and `ops.load_batch` itself, owned by `campusview_owner`, with no grant to `campusview_reader`. The earlier design, in [ARCHITECTURE.md](ARCHITECTURE.md) and 2026-11-01 "Files are the only ingest" below, maps the vendor files to standard files first and loads those into `raw`.
 
-**Follow-up:** 2026-11-03 "The typed layer keeps the Infinite Campus names" (above) settles what sits on top of `raw`: a typed, checked copy with the same names, where the type, key, and code checks run. Its schema name is not decided.
+**Follow-up:** 2026-11-03 "The typed layer keeps the Infinite Campus names" (above) settles what sits on top of `raw`: a typed, checked copy with the same names, where the type, key, and code checks run. It lives in schema `ic`.
 
 **Who:** Recorded by CampusView Keeper from the code on `dev`, 2026-11-03.
 
