@@ -32,7 +32,7 @@ flowchart TD
 5. Reporting views join the typed copy to those maps and expose every number the dashboards show. The SQL is in this repo. The metric list is [METRICS.md](METRICS.md).
 6. Superset dashboards read the views. Superset's roles and row-level security limit each person to their schools. See [ACCESS.md](ACCESS.md).
 
-**Built so far (step 1, on `dev`):** a loader that reads one folder of Infinite Campus CSV files and loads each file, as it arrives, into its own all-text table in `raw`. In the same transaction it builds the typed copy in schema `ic`. Date and time columns are timestamps, ids and codes stay text, and the tables are rebuilt on every load with no keys or constraints. A bad value becomes NULL and the report warns. A blank `school.schoolID`, `calendar.calendarID`, or `enrollment.enrollmentID` warns. The three cross-row checks warn and keep the row. An empty `school.csv` or `calendar.csv` fails the load. Any other header-only file warns. It does not check duplicate keys, unknown codes, or foreign keys, and it reads no code-mapping files. The mapping-file failure and the impossible referral-flag check are not built, because this repo has no mapping file. SFTP is not built yet.
+**Built so far (step 1, on `dev`):** a loader that reads one folder of Infinite Campus CSV files and loads each file, as it arrives, into its own all-text table in `raw`. In the same transaction it builds the typed copy in schema `ic` and replaces the ten code-mapping tables in schema `ref`. Date and time columns are timestamps, ids and codes stay text, and the tables are rebuilt on every load with no keys or constraints. A bad value becomes NULL and the report warns. A blank `school.schoolID`, `calendar.calendarID`, or `enrollment.enrollmentID` warns. The three cross-row checks warn and keep the row. An empty `school.csv` or `calendar.csv` fails the load. Any other header-only extract file warns. A missing map, a bad map header, or a bad map code fails the load before anything is written. An extract code with no map row warns, and the load still passes. It does not check duplicate keys or foreign keys. The impossible referral-flag check is not built. SFTP is not built yet.
 
 No view restricts itself to a school, a year, a grade, or a gender. Superset applies those: school through row-level security, and year, grade, and gender through native filters. Views may omit rows that never count, such as a cancelled referral or a day that is not a school day.
 
@@ -65,33 +65,25 @@ Filters only narrow what row-level security already allows. A filter is never a 
 
 ## Module map
 
-Later code is expected to split along these lines. Only the `loader` package exists today. It reads the Infinite Campus CSV files and writes `raw`, `ic`, and `ops.load_batch`.
+Later code is expected to split along these lines. Only the `loader` package exists today. It reads the Infinite Campus CSV files and the district code maps, and writes `raw`, `ic`, `ref`, and `ops.load_batch`.
 
 | Module | Responsibility | Reads | Writes |
 | --- | --- | --- | --- |
 | `ingest.drop` | Watch the SFTP folder | Files on disk | Nothing |
-| `loader` (built) | Validate, then load all or nothing | Infinite Campus CSV | `raw`, `ic`, `ops.load_batch` |
+| `loader` (built) | Validate, then load all or nothing | Infinite Campus CSV and the district code maps | `raw`, `ic`, `ref`, `ops.load_batch` |
 | `loader/typed.py` (built) | Rebuild each `ic` table from `raw` in the load transaction. Bad values become NULL and warn. The three cross-row checks warn and keep the row | `raw` | `ic` |
 | `warehouse.ic` | Typed copy tables. The installer creates the empty schema. The loader creates the schema if it is missing and rebuilds the tables | | |
 | `warehouse.raw` | Snapshot tables, all text | | |
-| `warehouse.ref` | Code-mapping tables | | |
+| `warehouse.ref` | Code-mapping tables. The loader creates the schema if it is missing and replaces the ten tables on each load. No grant to `campusview_reader` | | |
 | `warehouse.reporting` | Views only, as SQL files in this repo | The typed copy, `ref` | |
 
 Dashboards, charts, filters, roles, and row-level security are Superset settings, not code in this repo. Dashboards are exported to the district repo.
 
 ## Loader interface
 
-**Built today:** `python -m loader FOLDER`, which calls `load_drop(folder)` in `loader/load.py` and returns whether the load passed, whether the report was saved, and the report text. Exit code 0 means it passed and the report was saved, 1 means anything else, and 2 means the command was used wrong. It checks the 24 file names and the headers in `loader/contract.py`, loads all or nothing in one transaction, and rebuilds `ic` in that same transaction. The loader creates `ic` if it is missing. The installer creates the empty schema, owned by `campusview_owner`, with no grant to `campusview_reader`. It stores the report text in `ops.load_batch`. It takes a lock, and a second load fails at once instead of waiting. It reads no district folder, does no history purge, and runs by hand, not on a timer. The guide is [guides/sftp-and-extracts.md](guides/sftp-and-extracts.md).
+**Built today:** `python -m loader FOLDER DISTRICT`, which calls `load_drop(folder, district)` in `loader/load.py` and returns whether the load passed, whether the report was saved, and the report text. Exit code 0 means it passed and the report was saved, 1 means anything else, and 2 means the command did not have both paths. It checks the 24 extract file names and the headers in `loader/contract.py`, and the ten code-mapping files in the district directory. It loads all or nothing in one transaction, rebuilds `ic` in that same transaction, and replaces the ten `ref` tables there too. The loader creates `ic` and `ref` if either is missing, and it grants nothing. The installer creates those empty schemas, owned by `campusview_owner`, with no grant to `campusview_reader`. It stores the report text in `ops.load_batch`. It takes a lock, and a second load fails at once instead of waiting. It does no history purge, and it runs by hand, not on a timer. The guide is [guides/sftp-and-extracts.md](guides/sftp-and-extracts.md).
 
-Planned: `load(drop_dir, district_config_dir) -> LoadResult`
-
-- Look in `drop_dir` for the Infinite Campus extract files and in `district_config_dir` for the code-mapping files. Both sets are required.
-- Validate every file first: headers (an unknown or misspelled header fails the file). The typed copy then checks values, keys, codes, and cross-row rules. Those are warnings on the load report, a bad value is stored as NULL in `ic`, a row that fails a cross-row check is kept as it is, and loading continues. Details are in [DATA_CONTRACT.md](DATA_CONTRACT.md).
-- On any failure (a header or column problem, a missing or unexpected file, a row PostgreSQL rejects, an empty `school.csv` or `calendar.csv`, or a bad district code-mapping file), leave the previous snapshot in place. Warnings do not stop the load. Record the failed attempt on `ops.load_batch` with the file name, the row number, and the rule that failed. Do not record the cell value.
-- On success, replace the raw snapshot inside one transaction, purge school years outside the history window, and commit.
-- The drop is a full snapshot of the years to keep, not a file of changes. Running the same files twice leaves the same warehouse.
-- History length is a district setting, default 2: the newest school year in the drop and the one before it.
-- After a successful commit, a school that is new to the drop has no school admin yet. Until someone adds it to a Superset role's row-level security, only the all-schools roles see it. See the open question on school assignments in [ACCESS.md](ACCESS.md).
+Still planned: the history purge, the timer, and SFTP. History length is a district setting, default 2, the newest school year in the drop and the one before it. The drop is a full snapshot of the years to keep, not a file of changes. Running the same files twice leaves the same warehouse. After a successful commit, a school that is new to the drop has no school admin yet. Until someone adds it to a Superset role's row-level security, only the all-schools roles see it. See the open question on school assignments in [ACCESS.md](ACCESS.md).
 
 The load will run as a timed job on the server; the timer is a later step. It takes a lock so two runs cannot overlap (built). It does not use Celery; there is no Celery or Redis in v1.
 
@@ -109,12 +101,12 @@ Schemas in `campusview_data`:
 | --- | --- | --- |
 | `raw` | One table per Infinite Campus file, every column text, no load metadata columns | Loader (`campusview_owner`). Not Superset. |
 | `ic` | The typed copy: one table per raw table, same names, real dates and numbers, for example `ic.enrollment`. The installer creates the empty schema. The loader creates the schema if it is missing | Loader (`campusview_owner`). Reporting views read it as their owner. Not Superset. Same owner as `raw`, and no grant to `campusview_reader` |
-| `ref` | Code-mapping tables | Loader (`campusview_owner`), and the reporting views |
+| `ref` | The ten code-mapping tables. The table name is the map file name without `.csv`, for example `ref.map_grades`. The installer creates the empty schema. The loader creates the schema if it is missing and replaces the tables on each load. No grant to `campusview_reader` | Loader (`campusview_owner`). Reporting views read it as their owner. Not Superset. |
 | `reporting` | Views | `campusview_reader` (Superset's data connection), `SELECT` only |
 | `ops` | `load_batch`: `batch_id`, `started_at`, `finished_at`, `outcome`, `fault`, `report`. The loader creates the schema and the table on its first run | `campusview_owner` only. No grant is made to `campusview_reader` |
 | `scratch` | Empty on a normal install | Testing install only, and only the sandbox database user |
 
-The table names are the Infinite Campus file names without `.csv`, for example `raw.enrollment` and `raw.day`. The full list is in `loader/contract.py`. The typed copy in `ic` uses the same table and column names. The vendor-neutral names in the standard-layout sections of [DATA_CONTRACT.md](DATA_CONTRACT.md) (`schools`, `students`, `calendar_days`, and so on) are not table names.
+The table names are the Infinite Campus file names without `.csv`, for example `raw.enrollment` and `raw.day`. The full list is in `loader/contract.py`. The typed copy in `ic` uses the same table and column names. The `ref` tables use the code-mapping file names without `.csv`. The vendor-neutral names in the standard-layout sections of [DATA_CONTRACT.md](DATA_CONTRACT.md) (`schools`, `students`, `calendar_days`, and so on) are not table names.
 
 Relationships, all by the text ids in the files:
 

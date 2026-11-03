@@ -12,7 +12,9 @@ The file names in `loader/contract.py`, the rule that this is a full snapshot of
 
 ## Code-mapping files
 
-Where they live (the district repo, not the SFTP drop). Who edits them when the district adds an attendance code. That a code in the extract with no map row is a warning on the load report, and loading continues.
+The ten code-mapping files live in the district directory, not in the SFTP drop. All ten are required on every load. A missing file, a bad header, or a bad code fails the load before anything is written. The report names the file, the line, and the rule. It does not repeat the cell value. An extract code with no map row warns, and the load still passes. The warning names the extract file and the column. A header-only map loads as an empty table and does not add an empty-file warning. The all-false referral warning is not built yet.
+
+Someone with write access to the district repo edits a file when the district adds an attendance code. Commit it there, then run the loader with that directory.
 
 ## Infinite Campus
 
@@ -20,7 +22,7 @@ How to schedule the extracts this district confirmed in the TO CONFIRM list, tha
 
 ## Run the loader
 
-The loader reads one folder of Infinite Campus CSV files, loads them into the `raw` schema, and rebuilds the typed copy in schema `ic` in the same step. A bad value becomes NULL in `ic` and the report warns. A row that fails a cross-row check is kept and still counts. An empty `school.csv` or `calendar.csv` fails the load. A bad district code-mapping file is not checked yet, because this repo has no mapping file. See [DATA_CONTRACT.md](../DATA_CONTRACT.md).
+The loader reads one folder of Infinite Campus CSV files and the district directory of code-mapping files. It loads the extracts into the `raw` schema, rebuilds the typed copy in schema `ic`, and replaces the ten `ref` tables in the same step. A bad value becomes NULL in `ic` and the report warns. A row that fails a cross-row check is kept and still counts. An empty `school.csv` or `calendar.csv` fails the load. A missing map, a bad map header, or a bad map code fails the load before anything is written. See [DATA_CONTRACT.md](../DATA_CONTRACT.md).
 
 The installer does not install or run the loader. From a checkout of this repository, load the password file into the environment. Do not put the password on the command line. The command below uses the Python 3.12 the installer already placed. It does not download Python, and it does not install the test tools. The first run installs the loader's database library into that checkout, so it needs internet access. If you chose another install folder, use it in place of `/opt/campusview`.
 
@@ -31,16 +33,16 @@ set +a
 cd /path/to/checkout
 UV_PYTHON_INSTALL_DIR=/opt/campusview/.uv/python \
   /opt/campusview/.uv/bin/uv run --no-dev --no-python-downloads --python 3.12 \
-  python -m loader /path/to/folder
+  python -m loader /path/to/folder /opt/campusview-district
 ```
 
-A good folder has every CSV file named in `loader/contract.py`, 24 files today, with the names spelled exactly. A CSV file that is not in that list fails the load. A listed file that is missing fails the load. Files that are not CSV, and folders, are ignored. A file fails when it is not UTF-8, has no header row, or has a blank, repeated, unknown, or missing header.
+A good folder has every CSV file named in `loader/contract.py`, 24 files today, with the names spelled exactly. A CSV file that is not in that list fails the load, including a code-mapping file dropped in that folder. A listed file that is missing fails the load. Files that are not CSV, and folders, are ignored. A file fails when it is not UTF-8, has no header row, or has a blank, repeated, unknown, or missing header. The district directory must hold all ten code-mapping files.
 
-You should see `Load passed.` and one line per file with its row count. The same text is stored in `ops.load_batch`, in the `report` column. `outcome` is `pass` or `fail`. `fault` is `extract` when the files are wrong, and `server` when the machine or the database is the problem. `fault` is empty on a pass. The table also has `batch_id`, `started_at`, and `finished_at`. The loader creates `ops` and the table on its first run. Read the table as `campusview_owner`; `campusview_reader` cannot see it.
+You should see `Load passed.`, one line per extract file with its row count, and one line per map file. The same text is stored in `ops.load_batch`, in the `report` column. `outcome` is `pass` or `fail`. `fault` is `extract` when the files are wrong, and `server` when the machine or the database is the problem. `fault` is empty on a pass. The table also has `batch_id`, `started_at`, and `finished_at`. The loader creates `ops` and the table on its first run. Read the table as `campusview_owner`; `campusview_reader` cannot see it.
 
-The exit code is 0 when the load passed and the report was saved, 1 otherwise, and 2 when the folder is missing from the command. When `CV_OWNER_DB_PASSWORD` is not set, or the database cannot be reached, the loader prints the report and saves nothing to `ops.load_batch`.
+The exit code is 0 when the load passed and the report was saved, 1 otherwise, and 2 when the command did not have both paths. When `CV_OWNER_DB_PASSWORD` is not set, or the database cannot be reached, the loader prints the report and saves nothing to `ops.load_batch`.
 
-A failed load writes nothing to `raw` or `ic`. The previous rows stay. On a failure the report lists only the files that failed. `school.csv` or `calendar.csv` with zero data rows fails the load and leaves the previous data. Any other header-only file warns and still loads, and that table is replaced with zero rows. See [DATA_CONTRACT.md](../DATA_CONTRACT.md). Running the same folder again leaves the same rows.
+A failed load writes nothing to `raw`, `ic`, or `ref`. The previous rows stay. On a failure the report lists only the files that failed. `school.csv` or `calendar.csv` with zero data rows fails the load and leaves the previous data. Any other header-only extract file warns and still loads, and that table is replaced with zero rows. See [DATA_CONTRACT.md](../DATA_CONTRACT.md). Running the same extract folder and the same district directory again leaves the same rows.
 
 Every value in `raw` is stored as text, so a leading zero stays. Ids and codes stay text in `ic` as well. A blank cell is stored as NULL, including a quoted empty cell. Postgres reads the CSV, so a quoted comma or a quote inside a value is kept, and the line endings can be LF or CRLF.
 
@@ -60,7 +62,7 @@ Until the list includes the new header, the loader fails that file and the repor
 
 ## When a load fails
 
-Read the loader output, or `ops.load_batch`. A failed load names only the files that failed, with the reason. When PostgreSQL rejects a row, it gives the line number. You do not see the cell value. Use `fault` to decide where to look. `extract` means fix the files. `server` means check this machine, the database, or whether a load is already running. The previous rows stay in place.
+Read the loader output, or `ops.load_batch`. A failed load names only the files that failed, with the reason. When PostgreSQL rejects a row, it gives the line number. A bad code-mapping file names that file, the line, and the rule. You do not see the cell value. Use `fault` to decide where to look. `extract` means fix the files in the drop or the district directory. `server` means check this machine, the database, the district path, or whether a load is already running. The previous rows stay in place.
 
 ## Writing a mapping for another student information system
 

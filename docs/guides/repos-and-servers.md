@@ -71,11 +71,14 @@ git push
    *.key
    *.pem
    *.csv
+   !map_*.csv
    ```
 
-3. Give write access only to the people who change district settings. A server never gets write access.
+   `*.csv` keeps an extract from being committed. `!map_*.csv` puts the code-mapping files back in. The ten files sit at the checkout root, next to the README. On a server that root is `/opt/campusview-district`.
 
-**Not built yet:** the folder layout inside the district repo. Code-mapping files will be read from it once the code checks are built ([DATA_CONTRACT.md](../DATA_CONTRACT.md)). Branding, dashboard exports, and the settings file come later. Until the layout is set, the repo holds only its README.
+3. Copy `examples/district/` from the product repo into that root. Replace the `FAKE-` rows with this district's codes. `git add` the ten names and commit them in this private repo. Give write access only to the people who change district settings. A server never gets write access.
+
+Put the files beside the README. The loader reads `map_grades.csv` in the directory you pass, for example `/opt/campusview-district/map_grades.csv`. It does not open a `mappings/` folder. Branding, dashboard exports, and the settings file come later.
 
 Before every commit to the district repo, run `git status` and `git diff --cached` and check that no password, key, extract, or screenshot is listed.
 
@@ -143,7 +146,7 @@ GitHub answers that you have authenticated but it does not provide shell access.
 
 ### 4. Clone the district repo
 
-Use `/opt/campusview-district`, beside the install folder. The update command pulls that exact folder when it is a git checkout. **Not built yet:** a setting for this folder. The installer does not ask for it or clone it, and nothing reads district files from it yet.
+Use `/opt/campusview-district`, beside the install folder. The update command pulls that exact folder when it is a git checkout. **Not built yet:** a setting for this folder. The installer does not ask for it or clone it. The loader reads the directory when you pass that path. Nothing in the installer creates the checkout.
 
 On Debian, as root:
 
@@ -169,7 +172,7 @@ runuser -u cvadmin -- git -C /opt/campusview-district pull --ff-only
 
 On Ubuntu, use `sudo -u cvadmin` in place of `runuser -u cvadmin --`.
 
-**Not built yet:** how CampusView picks up new district settings after a pull. Mapping files will be read on each load, once the code checks exist. Whether branding or other settings need a restart is set when they are built.
+The loader reads the code-mapping files from the district directory on each load. **Not built yet:** how CampusView picks up branding or other settings after a pull. Whether those need a restart is set when they are built.
 
 ## Set up a server
 
