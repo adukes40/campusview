@@ -75,6 +75,7 @@ Not in v1 unless Austin promotes one.
 Held from the first approved plan:
 
 - Emailed scheduled reports (would need the Redis and Celery item above)
+- Google sign-in (SSO) — logged 2026-11-03, raised by Austin (relayed by CampusView Engineer). Staff sign in to Superset with their district Google accounts. Later because: Austin confirmed it is a future item, not in the plan; v1 uses Superset's own login. Earliest step: after the v1 steps, once real users are coming. Before it is turned on, the dev server moves to HTTPS. Outline: [docs/guides/google-oauth.md](docs/guides/google-oauth.md).
 - ClassLink sign-in
 - Caseload-based access
 - Small-group hiding for totals-only roles

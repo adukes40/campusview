@@ -14,7 +14,9 @@ A hand-checked test, when the views are built, uses the Infinite Campus training
 
 **Who is enrolled on a date.** A student is enrolled at a school on a date when a primary enrollment covers that date: `start_date` is on or before the date, and `end_date` is blank or on or after the date. Non-primary enrollments do not create membership and do not count in any denominator.
 
-**Membership day.** An enrolled student on a calendar row with `is_school_day` true. The day's weight is `day_value` (1, or 0.5 for a half day).
+**Membership day.** An enrolled student on a calendar row with `is_school_day` true. From Infinite Campus, that is a Day row with `instruction` set, not `schoolDay` (Austin, relayed by CampusView Engineer, 2026-11-03). The day's weight is `day_value` (1, or 0.5 for a half day). For now everyone is treated as full day, so every weight is 1 (Austin, relayed by CampusView Engineer, 2026-11-03).
+
+**No calendar days.** A school with enrollments but no calendar days in the year loads with a warning on the load report. Its students have no membership days there, so they add nothing to any rate until calendar days arrive.
 
 **Present and absent portions.** For a membership day:
 
@@ -35,6 +37,8 @@ A hand-checked test, when the views are built, uses the Infinite Campus training
 **Pooled rates.** A rate that covers several schools is total numerator divided by total denominator. It is not the average of the school rates, and it is not the average of the student rates.
 
 ### Worked attendance example
+
+Everyone is treated as full day for now, so a real load has no `day_value` 0.5. The example keeps the half day to show how the formula works if half days are added later.
 
 A student has 100 membership days of weight 1, plus one half instructional day (`day_value` 0.5) on which they were fully absent. They also have 4 full-day absences and one separate half-day absence (`absence_portion` 0.5) on a full instructional day.
 
@@ -277,7 +281,7 @@ Working proposals are in the body above. Each item below is the choice that woul
 
 2. **Pooled rate.** The year-to-date attendance rate is total present-day equivalents divided by total membership-day equivalents, so a larger school counts more than a smaller one. Confirm, or say you want the average of each student's own rate.
 
-3. **Half days.** A calendar day with day value 0.5 counts as half a membership day. An absence code with portion 0.5 counts as half a day absent. A full absence on a half day counts as 0.5. Confirm this matches how the district records half days.
+3. *Partly answered (Austin, relayed by CampusView Engineer, 2026-11-03): everyone is treated as full day for now, so every calendar day has weight 1. Absence codes with portion 0.5 still count as half a day absent. How half days are marked is a follow-up for the SIS person in [DATA_CONTRACT.md](DATA_CONTRACT.md).* **Half days.** A calendar day with day value 0.5 counts as half a membership day. An absence code with portion 0.5 counts as half a day absent. A full absence on a half day counts as 0.5. Confirm this matches how the district records half days.
 
 4. *Partly answered (Austin, relayed by CampusView Engineer, 2026-11-03): tardies come from Infinite Campus's overnight calculation; the effect of each tardy code on the rate is still set in the code map.* **Tardies and the rate.** A tardy does not lower the attendance rate unless that code's absence portion is greater than zero. Confirm.
 

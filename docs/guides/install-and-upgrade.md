@@ -150,7 +150,7 @@ The wizard asks `How should people reach CampusView?` right after the ports.
 
 In every mode, Superset, Django (gunicorn) and PostgreSQL keep listening on `127.0.0.1` only. nginx passes `/` to Superset and `/app/` to Django. DBeaver still connects through the SSH tunnel, exactly as above.
 
-HTTP sends passwords across the network unencrypted. Use it only for testing with fake data.
+HTTP sends passwords across the network unencrypted. Use it only for testing with fake data. The one exception is Austin's on-prem dev server during early testing; it moves to HTTPS before production gets Google sign-on or real users. Production uses HTTPS.
 
 ### Certificates for HTTPS
 

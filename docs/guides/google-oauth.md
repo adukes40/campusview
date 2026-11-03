@@ -1,6 +1,6 @@
 # Google sign-in
 
-**Open question.** The approved plan said staff sign in with Google. In v1, sign-in is Superset's own login, and the base install uses Superset's own user accounts. Superset can be set up for Google sign-in through its config file, but that is not in the base install, and whether and when to turn it on is Austin's decision. See [../PLAN.md](../PLAN.md).
+**Future, not built.** The approved plan said staff sign in with Google. Austin has confirmed it is a future item, not in the plan (Austin, relayed by CampusView Engineer, 2026-11-03). It is parked in [../../FEATURES.md](../../FEATURES.md#parking-lot). In v1, sign-in is Superset's own login, and the base install uses Superset's own user accounts. Superset can be set up for Google sign-in through its config file, but that is not in the base install. Before Google sign-in is turned on, the dev server moves from plain HTTP to HTTPS. See [../PLAN.md](../PLAN.md).
 
 The outline below applies only if Google sign-in is turned on. It never contains a real client secret.
 

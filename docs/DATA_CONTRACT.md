@@ -73,7 +73,7 @@ Validation beyond types:
 
 - For one student, primary spans must not overlap in dates.
 - For one student, one school, and one school year, every row shares a single `grade`. Two grades in that combination fail the file. This is the working rule in Decisions for Austin, item 19, in [METRICS.md](METRICS.md): v1 does not represent a mid-year grade change unless Austin asks for it.
-- Every `school_id` that has an enrollment also has at least one calendar day in that school year.
+- A school that has enrollments but no calendar days in that school year does not fail the file. It loads, and the load report shows a warning naming the school and year (Austin, relayed by CampusView Engineer, 2026-11-03). Its students have no membership days until calendar days arrive.
 
 ## calendar_days.csv
 
@@ -84,8 +84,8 @@ One row per school per date. Key: (`school_id`, `calendar_date`).
 | `school_id` | text | yes | Must exist in `schools.csv`. |
 | `school_year` | school year | yes | |
 | `calendar_date` | date | yes | Unique with `school_id`. |
-| `is_school_day` | boolean | yes | `true` only when the day counts as membership. |
-| `day_value` | decimal | yes | Greater than 0 and at most 1. A full day is `1`. A half day is `0.5`. Required on every row so a half day is never guessed. |
+| `is_school_day` | boolean | yes | `true` only when the day counts as membership. From Infinite Campus, this is the Day table's `instruction` flag, not `schoolDay` (Austin, relayed by CampusView Engineer, 2026-11-03). |
+| `day_value` | decimal | yes | Greater than 0 and at most 1. A full day is `1`. A half day is `0.5`. Required on every row so a half day is never guessed. For now everyone is treated as full day, so the Infinite Campus mapping writes `1` (Austin, relayed by CampusView Engineer, 2026-11-03). |
 
 Non-school days may be omitted. If they are included, `is_school_day` is `false` and reporting views ignore them. `day_value` on a non-school day is not used.
 
@@ -262,7 +262,7 @@ What follows is the usual shape of Infinite Campus, from public product knowledg
 | `schools.school_id`, `school_name` | The school record attached to a calendar | Confirm whether the extract uses a number, a code, or an internal id. The same value must appear on enrollments, calendar days, and attendance. |
 | `enrollments` | An enrollment tied to a calendar: start date, end date, grade, service type | A primary service type becomes `is_primary` true. Other service types become false so they do not double-count membership. |
 | `enrollments.school_year` | The school year on that calendar | Infinite Campus often stores an end year. The mapping converts it to `YYYY-YYYY`. |
-| `calendar_days` | The Infinite Campus Day table (the school calendar's day records), which Austin will upload (Austin, relayed by CampusView Engineer, 2026-11-03) | Column details: set when the file arrives. A full instructional day becomes `1`. How a half day is flagged is set when the file arrives. |
+| `calendar_days` | The Infinite Campus Day table (the school calendar's day records), which Austin will upload (Austin, relayed by CampusView Engineer, 2026-11-03) | Column details: set when the file arrives. A day counts for attendance when its `instruction` flag is set, not `schoolDay`. Everyone is treated as full day, so every instructional day becomes `1` (Austin, relayed by CampusView Engineer, 2026-11-03). A calendar with enrollments but no Day rows loads with a warning. *Suggested by the CampusView Engineer, not decided:* add `dayID` and `structureID` to the Day extract query (`day.sql`), because a calendar with more than one schedule structure repeats dates. `day.sql` is not in this repo. |
 | `attendance` | The daily attendance result | A student is present for the day when marked present in homeroom, even if they leave during homeroom. Tardies come from Infinite Campus's overnight attendance calculation (Austin, relayed by CampusView Engineer, 2026-11-03). Which columns carry the homeroom mark: set when the file arrives. |
 | `attendance.attendance_code` | The district's attendance code | The code's status (present, absent, tardy) and excuse (excused, unexcused) are configured in Infinite Campus. Copy the code. Put the meaning in `map_attendance_codes.csv`. |
 | `incidents` | A behavior incident, a behavior referral, or both | Staff in different districts use these words for different records. The mapping has to match Austin's workflow. |
@@ -299,7 +299,7 @@ The mapper does not invent codes and does not decide that a code is excused. It 
 6. **Answered** (Austin, relayed by CampusView Engineer, 2026-11-03): the daily result is the homeroom mark. Whether secondary schools record period attendance, elementary schools record daily attendance, or both already have a daily result. The standard file is one row per student per date.
 7. **Answered** (Austin, relayed by CampusView Engineer, 2026-11-03): present for the day if marked present in homeroom, even if the student leaves during homeroom; tardies come from Infinite Campus's overnight calculation. The local rule that turns periods into a full-day or half-day absence, or confirmation that Infinite Campus already calculates a daily attendance value the extract should take instead.
 8. The attendance code list, and for each code whether it is present, an excused absence, an unexcused absence, an excused tardy, an unexcused tardy, or a partial day, plus the portion of the day.
-9. *Source known (Austin, relayed by CampusView Engineer, 2026-11-03): the Day table. Details set when the file arrives.* How a half instructional day shows up on the calendar, so `day_value` can be set to `0.5` instead of `1`.
+9. *Partly answered (Austin, relayed by CampusView Engineer, 2026-11-03): the Day table; attendance counts `instruction` days; everyone is treated as full day for now. How half days are marked is a follow-up below.* How a half instructional day shows up on the calendar, so `day_value` can be set to `0.5` instead of `1`.
 10. Which behavior record is "a referral" here: the behavior referral, the behavior incident, or both. Public material shows incidents, coded events, and resolutions; the referral workflow itself is configured per district.
 11. The status values staff really use, and which ones mean not yet processed, still open, closed, or void or cancelled.
 12. That one incident with several students should become one CampusView incident row per student.
@@ -309,3 +309,11 @@ The mapper does not invent codes and does not decide that a code is excused. It 
 16. Which race or ethnicity field should feed the equity groups.
 17. Grade values as stored, such as `K`, `KF`, `01`, or `1`, so the grade map can match them.
 18. *Partly answered (Austin, relayed by CampusView Engineer, 2026-11-03): keep every table and column sent; each one is added through the change process.* The full list of tables and columns the scheduled extracts will carry. The loader keeps all of them; the list tells the docs what lands in the drop folder.
+
+### Open follow-ups for the SIS person
+
+Raised from the Day table rules above (2026-11-03). Ask the district's Infinite Campus (SIS) person:
+
+1. `instruction` or `schoolDay`: which Day table flag is right for counting attendance days? CampusView uses `instruction` for now.
+2. Are there half-day, AM, or PM schedules, and how are half days marked in the Day table? CampusView treats everyone as full day for now.
+3. Should a calendar ever have enrollments but no Day rows? CampusView loads it with a warning for now.

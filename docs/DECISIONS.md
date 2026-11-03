@@ -4,6 +4,34 @@ Dated log of decisions already made. The plan of record is [PLAN.md](PLAN.md). N
 
 Open metric questions are not listed here. They are the Decisions for Austin list in [METRICS.md](METRICS.md). Open extract questions are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md). Both lists are deferred for now and do not block step 0.
 
+## 2026-11-03 — Plain HTTP on the dev server during early testing
+
+**What:** The on-prem dev server may use plain HTTP during early testing, even though it holds real production data. It moves to HTTPS before production gets Google sign-on or real users. Production always uses HTTPS. Plain HTTP on test machines with fake data is unchanged.
+
+**Why:** Austin's choice. He wants plain HTTP for early testing, and will move the dev server to HTTPS when production gets Google sign-on and real users.
+
+**Tradeoff:** Plain HTTP sends logins, and the real data on the dev server, unencrypted across the district network. The CampusView Engineer flagged this risk to Austin once, and Austin accepted it.
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03.
+
+**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed by merging PR #8.
+
+**Amends:** the tradeoff in 2026-11-02 "Offer nginx with HTTP or HTTPS" (below).
+
+## 2026-11-03 — Day table rules for attendance
+
+**What:**
+
+- Attendance counts Day rows with the `instruction` flag set, not `schoolDay`.
+- Everyone is treated as full day, so every instructional day has weight 1.
+- A calendar with enrollments but no Day rows loads with a warning on the load report. It does not fail the file. This replaces the earlier rule that every school with an enrollment must have a calendar day.
+
+**Not decided:** the CampusView Engineer suggests adding `dayID` and `structureID` to the Day extract query (`day.sql`), because a calendar with more than one schedule structure repeats dates.
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03.
+
+**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed by merging PR #8. The SIS person still has three follow-ups, listed in [DATA_CONTRACT.md](DATA_CONTRACT.md).
+
 ## 2026-11-03 — Release flow: dev branch, dev server, then a tag for production
 
 **What:**
@@ -40,7 +68,7 @@ Open metric questions are not listed here. They are the Decisions for Austin lis
 - **Keep everything he pulls in,** including SSN, medical, email, and notes if he ever sends them. None of it goes in the public repo.
 - **Validated imports.** Every column the contract lists is kept, and nothing is dropped. An unknown or misspelled header fails the file with a clear report. A new column goes through the contract's change process. An email alert on a failed import is parked in [FEATURES.md](../FEATURES.md#parking-lot) for Austin to promote.
 - **State id and birthdate** may appear in reporting views for now.
-- **Plain HTTP** is OK on Austin's test VM, which is on-prem and not on the internet.
+- **Plain HTTP** is OK on Austin's test VM, which is on-prem and not on the internet. *See also "Plain HTTP on the dev server during early testing" above.*
 - **District specifics** (IC start year, extract cutoff, homeroom rule) stay in the product docs.
 - **No screenshots** go in the public repo.
 - **The jump box stays parked.**
@@ -145,7 +173,7 @@ A re-run shows the saved choice and asks whether to change it. The default is HT
 
 **Who:** Austin's decision, relayed by the CampusView Engineer.
 
-**Tradeoff:** Plain HTTP sends logins and passwords unencrypted across the network. Austin accepted that for test machines because all data there is fake ("all data would be fake"). HTTP is for test machines with fake data only. Real student data needs HTTPS.
+**Tradeoff:** Plain HTTP sends logins and passwords unencrypted across the network. Austin accepted that for test machines because all data there is fake ("all data would be fake"). HTTP is for test machines with fake data only. Real student data needs HTTPS. *Amended 2026-11-03: Austin accepted plain HTTP on the on-prem dev server during early testing. See "Plain HTTP on the dev server during early testing" above.*
 
 **Status:** Built. The installer step merged to `main` in PR #5.
 
@@ -258,7 +286,7 @@ These were approved in the same plan. Each is the rule the build follows. Rows c
 | Decision | Why | Alternative set aside |
 | --- | --- | --- |
 | Infinite Campus is the only mapping built and tested in v1. Docs explain how to write another. | One real extract is enough to prove the contract. | Building several SIS mappings up front. |
-| Google sign-in now. *Open since 2026-11-01: plain Superset does not do this out of the box. See the open questions in [PLAN.md](PLAN.md).* | The district can use accounts it already has. | ClassLink, which is parked. Local passwords as the main sign-in. |
+| Google sign-in now. *Open since 2026-11-01: plain Superset does not do this out of the box. **Superseded 2026-11-03:** Austin confirmed Google sign-in is a future item, not in the plan; it is parked in [FEATURES.md](../FEATURES.md#parking-lot).* | The district can use accounts it already has. | ClassLink, which is parked. Local passwords as the main sign-in. |
 | History defaults to the current school year plus one prior year, then purges. | Attendance needs a last-year comparison. Unbounded history is unnecessary for v1. | Keeping every year, or keeping only the current year. |
 | All metric logic lives in PostgreSQL reporting views. Charts only filter and aggregate those views. | A number is defined once. | Computing metrics in Python or inside each chart. |
 | Materialize a view only after a query is proven slow. | Ordinary views stay correct for "today" without a refresh job. | Materializing everything at the start. |

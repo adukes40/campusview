@@ -36,7 +36,7 @@ Native filters never grant access. A school picked in a filter can only narrow w
 
 The base install uses Superset's own user accounts, created by the system admin. There is no open registration: self-signup stays off.
 
-**Open question: Google sign-in.** The approved plan said staff sign in with Google. Superset can be set up for Google sign-in through its config file, but that is not in the base install, and whether and when to turn it on is not decided. See [guides/google-oauth.md](guides/google-oauth.md).
+**Google sign-in: future, not built.** The approved plan said staff sign in with Google. Austin has confirmed it is a future item, not in the plan (Austin, relayed by CampusView Engineer, 2026-11-03). Superset can be set up for Google sign-in through its config file, but that is not in the base install. v1 uses Superset's own login. When Google sign-in arrives, the dev server moves to HTTPS first. See [guides/google-oauth.md](guides/google-oauth.md).
 
 Deactivating a user in Superset stops their sign-in.
 

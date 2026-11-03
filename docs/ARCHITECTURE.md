@@ -184,7 +184,7 @@ flowchart LR
 | Superset web | Apache Superset 6.1.0, Python 3.12 (verified on 3.12.16), gunicorn. Installed with Superset's tested package list (`requirements/base.txt` from the 6.1.0 release) as pip constraints | 127.0.0.1:8088 |
 | Django | A default `startproject campusview_base` on Django 6.1.2, Python 3.12, in its own Python environment, gunicorn. No role in v1 features | 127.0.0.1:8000 |
 
-Optional nginx (decided 2026-11-02, in the installer on `main`; HTTPS with a self-signed certificate is the default): the installer can add nginx from the distro's apt repo as the only thing listening on the network. Choices are local only through an SSH tunnel, HTTP on port 80, or HTTPS on port 443 with a self-signed or supplied certificate (80 redirects to 443). A re-run shows the saved choice and asks whether to change it. nginx sends `/` to Superset and `/app/` to Django. PostgreSQL is never exposed. Plain HTTP is for test machines with fake data only. See [DECISIONS.md](DECISIONS.md).
+Optional nginx (decided 2026-11-02, in the installer on `main`; HTTPS with a self-signed certificate is the default): the installer can add nginx from the distro's apt repo as the only thing listening on the network. Choices are local only through an SSH tunnel, HTTP on port 80, or HTTPS on port 443 with a self-signed or supplied certificate (80 redirects to 443). A re-run shows the saved choice and asks whether to change it. nginx sends `/` to Superset and `/app/` to Django. PostgreSQL is never exposed. Plain HTTP is for test machines with fake data, plus Austin's accepted exception for the on-prem dev server during early testing. Production uses HTTPS. See [DECISIONS.md](DECISIONS.md).
 
 Not in the base install:
 

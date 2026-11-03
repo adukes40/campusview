@@ -123,7 +123,7 @@ A step is not done until its docs are. The guides are: server requirements; inst
 Not answered yet. Nobody should guess these; Austin decides.
 
 1. **School assignments.** Without the Django-to-Superset sync, how does each school admin's list of schools get kept up to date in Superset's roles and row-level security? By hand in Superset, or some other way?
-2. **Google sign-in.** The first draft had Google sign-in through Django. Plain Superset uses its own login. Whether and when to turn on Google sign-in in Superset is not decided.
+2. **Google sign-in.** *Answered (Austin, relayed by CampusView Engineer, 2026-11-03): a future item, not in the plan. Parked in [FEATURES.md](../FEATURES.md#parking-lot). When it arrives, the dev server moves to HTTPS first.* The first draft had Google sign-in through Django. Plain Superset uses its own login.
 3. **Downloads and a view log.** With the Django exports and the custom view log deferred, should staff be able to download rows from Superset, and is any record of who looked at named rows needed in v1? (This is decision 24 in [METRICS.md](METRICS.md).)
 4. **Reaching it from the network.** *Decided 2026-11-02.* The installer offers three choices: local only through an SSH tunnel, HTTP on port 80, or HTTPS on port 443 with a self-signed or supplied certificate (the default). See "Offer nginx with HTTP or HTTPS" in [DECISIONS.md](DECISIONS.md).
 5. **Warehouse database users.** *Resolved 2026-11-02.* The installer creates `campusview_owner` (owns `campusview_data` and its schemas; the loader writes as it) and `campusview_reader` (reads `reporting` only; Superset's data connection should use it). `superset_user` no longer touches `campusview_data`. See [ACCESS.md](ACCESS.md) and [DECISIONS.md](DECISIONS.md).
@@ -132,4 +132,4 @@ The 25 Decisions for Austin in [METRICS.md](METRICS.md) and the 18 TO CONFIRM ex
 
 ## Parked for later
 
-Everything in the [parking lot](../FEATURES.md#parking-lot): the deferred Django pages and screens, Redis and Celery (async queries, alerts and reports, caching), emailed scheduled reports, ClassLink sign-in, caseload-based access, small-group hiding for totals-only roles, mappings for other student information systems, drag-and-drop card layout, and trend lines and change-from-last-year on cards.
+Everything in the [parking lot](../FEATURES.md#parking-lot): the deferred Django pages and screens, Redis and Celery (async queries, alerts and reports, caching), emailed scheduled reports, Google sign-in, ClassLink sign-in, caseload-based access, small-group hiding for totals-only roles, mappings for other student information systems, drag-and-drop card layout, and trend lines and change-from-last-year on cards.
