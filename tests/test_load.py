@@ -1,5 +1,6 @@
 import csv
 import os
+from datetime import date
 from pathlib import Path
 
 import psycopg
@@ -27,6 +28,15 @@ def fill(folder: Path, **extra) -> None:
 
 def cells(filename: str, **values) -> list[str]:
     return [values.get(column, "") for column in FILES[filename]]
+
+
+def loadable(folder: Path, **extra) -> None:
+    rows = {
+        "school.csv": [cells("school.csv", schoolID="1", name="School A")],
+        "calendar.csv": [cells("calendar.csv", calendarID="1", schoolID="1", endYear="2026")],
+    }
+    rows.update(extra)
+    fill(folder, **rows)
 
 
 @pytest.fixture
@@ -84,6 +94,7 @@ def test_text_blanks_quotes_and_cutoff(db, tmp_path):
             ],
             "day.csv": [cells("day.csv", calendarID="1", date="2026-01-05")],
             "school.csv": [cells("school.csv", schoolID="1", name="School A, North", address='say "hi"')],
+            "calendar.csv": [cells("calendar.csv", calendarID="9", schoolID="1", endYear="2026")],
         },
     )
     quoted = {"currentIdentityID": '""', "personID": "1", "stateID": "001", "studentNumber": "STU-001"}
@@ -93,6 +104,9 @@ def test_text_blanks_quotes_and_cutoff(db, tmp_path):
     assert ok and saved
     assert stored('SELECT "stateID", "currentIdentityID" FROM raw.person') == [("001", None)]
     assert stored("SELECT name, address FROM raw.school") == [("School A, North", 'say "hi"')]
+    assert stored("SELECT name, address FROM ic.school") == [("School A, North", 'say "hi"')]
+    assert stored('SELECT "stateID" FROM ic.person') == [("001",)]
+    assert stored('SELECT "endYear" FROM ic.calendar') == [(2026,)]
     assert "Warning: calendar 20 has enrollments and no Day rows." in report
     assert "Warning: calendar 245 has enrollments and no Day rows." in report
     assert report.index("calendar 20") < report.index("calendar 245")
@@ -127,11 +141,15 @@ def test_missing_file(tmp_path):
     (tmp_path / "day.csv").unlink()
     fault, lines, _ready = check_folder(tmp_path)
     assert fault == "extract"
-    assert lines == ["day.csv: fail. The file is missing from the folder."]
+    assert lines == [
+        "calendar.csv: fail. The file has no data rows.",
+        "day.csv: fail. The file is missing from the folder.",
+        "school.csv: fail. The file has no data rows.",
+    ]
 
 
 def test_bad_file_keeps_previous_rows(db, tmp_path):
-    fill(tmp_path, **{"person.csv": [cells("person.csv", personID="1", stateID="001")]})
+    loadable(tmp_path, **{"person.csv": [cells("person.csv", personID="1", stateID="001")]})
     assert load_drop(tmp_path)[0]
     person = tmp_path / "person.csv"
     person.write_text(person.read_text().replace("personID", "personId", 1))
@@ -140,6 +158,7 @@ def test_bad_file_keeps_previous_rows(db, tmp_path):
     assert "person.csv: fail. Unknown column personId." in report
     assert "att_day_aggregation.csv" not in report
     assert stored('SELECT "stateID" FROM raw.person') == [("001",)]
+    assert stored('SELECT "stateID" FROM ic.person') == [("001",)]
     header = ",".join(FILES["person.csv"])
     (tmp_path / "person.csv").write_text(header + "\n1,,001,,,,NOT-A-CELL\n")
     ok, saved, report = load_drop(tmp_path)
@@ -147,3 +166,302 @@ def test_bad_file_keeps_previous_rows(db, tmp_path):
     assert "person.csv: fail. Line 2:" in report
     assert "NOT-A-CELL" not in report
     assert stored('SELECT "stateID" FROM raw.person') == [("001",)]
+    assert stored('SELECT "stateID" FROM ic.person') == [("001",)]
+
+
+def test_zero_byte_file_is_not_also_empty(tmp_path):
+    fill(tmp_path)
+    (tmp_path / "school.csv").write_bytes(b"")
+    lines = "\n".join(check_folder(tmp_path)[1])
+    assert "school.csv: fail. The file has no header row." in lines
+    assert "school.csv: fail. The file has no data rows." not in lines
+
+
+def test_empty_calendar_keeps_previous_person(db, tmp_path):
+    loadable(tmp_path, **{"person.csv": [cells("person.csv", personID="1", stateID="001")]})
+    assert load_drop(tmp_path)[0]
+    write_csv(tmp_path / "calendar.csv", FILES["calendar.csv"], [])
+    ok, saved, report = load_drop(tmp_path)
+    assert not ok and saved
+    assert "calendar.csv: fail. The file has no data rows." in report
+    assert "Nothing was loaded." in report
+    assert stored('SELECT "stateID" FROM raw.person') == [("001",)]
+    assert stored('SELECT "stateID" FROM ic.person') == [("001",)]
+
+
+def test_header_only_day_warns(db, tmp_path):
+    loadable(tmp_path)
+    ok, saved, report = load_drop(tmp_path)
+    assert ok and saved
+    assert "day.csv: pass, 0 rows." in report
+    assert "Warning: day.csv has no data rows." in report
+    assert stored("SELECT count(*) FROM ic.day") == [(0,)]
+
+
+def test_bad_date_becomes_null(db, tmp_path):
+    loadable(
+        tmp_path,
+        **{
+            "day.csv": [
+                cells("day.csv", calendarID="1", date="2025-02-31"),
+                cells("day.csv", calendarID="1", date="1900-02-29"),
+                cells("day.csv", calendarID="1", date="2024-02-29"),
+            ]
+        },
+    )
+    ok, saved, report = load_drop(tmp_path)
+    assert ok and saved
+    assert stored("SELECT date FROM raw.day ORDER BY ctid") == [
+        ("2025-02-31",),
+        ("1900-02-29",),
+        ("2024-02-29",),
+    ]
+    assert stored("SELECT date FROM ic.day ORDER BY ctid") == [
+        (None,),
+        (None,),
+        (date(2024, 2, 29),),
+    ]
+    assert "column date:" in report
+    assert "bad date" in report
+    assert "first line" in report
+    assert "2025-02-31" not in report
+
+
+def test_two_grades_stay_and_warn(db, tmp_path):
+    fill(
+        tmp_path,
+        **{
+            "school.csv": [
+                cells("school.csv", schoolID="A", name="School A"),
+                cells("school.csv", schoolID="B", name="School A"),
+            ],
+            "calendar.csv": [
+                cells("calendar.csv", calendarID="A", schoolID="A", endYear="2026"),
+                cells("calendar.csv", calendarID="B", schoolID="A", endYear="2026"),
+            ],
+            "enrollment.csv": [
+                cells(
+                    "enrollment.csv",
+                    enrollmentID="E4",
+                    personID="1",
+                    calendarID="A",
+                    endYear="2026",
+                    grade="4",
+                    startDate="2026-08-01",
+                ),
+                cells(
+                    "enrollment.csv",
+                    enrollmentID="E5",
+                    personID="1",
+                    calendarID="A",
+                    endYear="2026",
+                    grade="5",
+                    startDate="2026-08-01",
+                ),
+            ],
+        },
+    )
+    ok, saved, report = load_drop(tmp_path)
+    assert ok and saved
+    assert stored("SELECT grade FROM ic.enrollment ORDER BY grade") == [("4",), ("5",)]
+    assert "two grades for the same student, school, and year" in report
+    assert "1" not in report
+
+
+def test_action_date_before_incident(db, tmp_path):
+    loadable(
+        tmp_path,
+        **{
+            "behavior_incident.csv": [
+                cells("behavior_incident.csv", incidentID="1", timestamp="2026-01-02 09:00:00")
+            ],
+            "behavior_event.csv": [cells("behavior_event.csv", eventID="1", incidentID="1")],
+            "behavior_role.csv": [cells("behavior_role.csv", roleID="1", eventID="1", personID="2")],
+            "behavior_resolution.csv": [
+                cells(
+                    "behavior_resolution.csv",
+                    resolutionID="1",
+                    roleID="1",
+                    discassignDate="2026-01-01",
+                )
+            ],
+        },
+    )
+    ok, saved, report = load_drop(tmp_path)
+    assert ok and saved
+    assert "action date before the incident was entered" in report
+    columns = [
+        row[0]
+        for row in stored(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'ic' AND table_name = 'behavior_resolution'
+            ORDER BY ordinal_position
+            """
+        )
+    ]
+    assert columns == FILES["behavior_resolution.csv"]
+    write_csv(
+        tmp_path / "behavior_resolution.csv",
+        FILES["behavior_resolution.csv"],
+        [cells("behavior_resolution.csv", resolutionID="1", roleID="1", discassignDate="2026-01-02")],
+    )
+    ok, saved, report = load_drop(tmp_path)
+    assert ok and saved
+    assert "action date before the incident was entered" not in report
+
+
+def test_attendance_outside_enrollment(db, tmp_path):
+    loadable(
+        tmp_path,
+        **{
+            "enrollment.csv": [
+                cells(
+                    "enrollment.csv",
+                    enrollmentID="1",
+                    personID="1",
+                    calendarID="1",
+                    endYear="2026",
+                    grade="4",
+                    startDate="2026-08-01",
+                )
+            ],
+            "attendance.csv": [
+                cells("attendance.csv", attendanceID="1", personID="1", calendarID="1", date="2026-07-15")
+            ],
+        },
+    )
+    ok, saved, report = load_drop(tmp_path)
+    assert ok and saved
+    assert stored("SELECT date FROM ic.attendance") == [(date(2026, 7, 15),)]
+    assert "Warning: attendance.csv column date: 1 row, attendance outside enrollment (first line 2)." in report
+    assert "2026-07-15" not in report
+    write_csv(
+        tmp_path / "attendance.csv",
+        FILES["attendance.csv"],
+        [cells("attendance.csv", attendanceID="1", personID="1", calendarID="1", date="2026-08-01")],
+    )
+    ok, saved, report = load_drop(tmp_path)
+    assert ok and saved
+    assert "attendance outside enrollment" not in report
+    write_csv(
+        tmp_path / "enrollment.csv",
+        FILES["enrollment.csv"],
+        [
+            cells(
+                "enrollment.csv",
+                enrollmentID="1",
+                personID="1",
+                calendarID="1",
+                endYear="2026",
+                grade="4",
+                startDate="2026-08-01",
+                endDate="2025-02-31",
+            )
+        ],
+    )
+    ok, saved, report = load_drop(tmp_path)
+    assert ok and saved
+    assert "attendance outside enrollment" in report
+    assert "2025-02-31" not in report
+
+
+def test_grades_compare_as_text(db, tmp_path):
+    rows = [
+        cells(
+            "enrollment.csv",
+            enrollmentID="1",
+            personID="1",
+            calendarID="1",
+            endYear="2026",
+            grade="01",
+            startDate="2026-08-01",
+        ),
+        cells(
+            "enrollment.csv",
+            enrollmentID="2",
+            personID="1",
+            calendarID="1",
+            endYear="2026",
+            grade="1",
+            startDate="2026-08-01",
+        ),
+    ]
+    loadable(tmp_path, **{"enrollment.csv": rows})
+    ok, saved, report = load_drop(tmp_path)
+    assert ok and saved
+    assert stored("SELECT grade FROM ic.enrollment ORDER BY grade") == [("01",), ("1",)]
+    assert "two grades for the same student, school, and year" in report
+    assert "01" not in report
+    rows[1] = cells(
+        "enrollment.csv",
+        enrollmentID="2",
+        personID="1",
+        calendarID="1",
+        endYear="2026",
+        grade="01",
+        startDate="2026-08-01",
+    )
+    write_csv(tmp_path / "enrollment.csv", FILES["enrollment.csv"], rows)
+    ok, saved, report = load_drop(tmp_path)
+    assert ok and saved
+    assert "two grades for the same student, school, and year" not in report
+
+
+def test_odd_id_becomes_null(db, tmp_path):
+    loadable(tmp_path, **{"school.csv": [cells("school.csv", schoolID="bad id", name="School A")]})
+    ok, saved, report = load_drop(tmp_path)
+    assert ok and saved
+    assert stored('SELECT "schoolID" FROM raw.school') == [("bad id",)]
+    assert stored('SELECT "schoolID" FROM ic.school') == [(None,)]
+    assert "odd id characters" in report
+    assert "bad id" not in report
+
+
+def test_bad_boolean_becomes_null(db, tmp_path):
+    loadable(
+        tmp_path,
+        **{
+            "school.csv": [
+                cells("school.csv", schoolID="1", name="School A", exclude="true"),
+                cells("school.csv", schoolID="2", name="School A", exclude="1"),
+            ]
+        },
+    )
+    ok, saved, report = load_drop(tmp_path)
+    assert ok and saved
+    assert stored("SELECT exclude FROM ic.school ORDER BY exclude NULLS LAST") == [(True,), (None,)]
+    assert "bad boolean" in report
+
+
+def test_control_character_becomes_null(db, tmp_path):
+    loadable(tmp_path, **{"school.csv": [cells("school.csv", schoolID="1", name="School A\nNorth")]})
+    ok, saved, report = load_drop(tmp_path)
+    assert ok and saved
+    assert stored("SELECT name FROM raw.school") == [("School A\nNorth",)]
+    assert stored("SELECT name FROM ic.school") == [(None,)]
+    assert "control character" in report
+    assert "North" not in report
+
+
+def test_blank_required_field_warns(db, tmp_path):
+    loadable(tmp_path, **{"school.csv": [cells("school.csv", schoolID="1")]})
+    ok, saved, report = load_drop(tmp_path)
+    assert ok and saved
+    assert stored("SELECT name FROM raw.school") == [(None,)]
+    assert stored("SELECT name FROM ic.school") == [(None,)]
+    assert "blank required field" in report
+
+
+def test_bad_school_year_becomes_null(db, tmp_path):
+    loadable(
+        tmp_path,
+        **{"calendar.csv": [cells("calendar.csv", calendarID="1", schoolID="1", endYear="2025-2026")]},
+    )
+    ok, saved, report = load_drop(tmp_path)
+    assert ok and saved
+    assert stored('SELECT "endYear" FROM raw.calendar') == [("2025-2026",)]
+    assert stored('SELECT "endYear" FROM ic.calendar') == [(None,)]
+    assert "bad school year" in report
+    assert "2025-2026" not in report

@@ -451,9 +451,11 @@ DO \$\$ BEGIN   -- earlier installs called the ref schema "mapping"
   IF to_regnamespace('mapping') IS NOT NULL AND to_regnamespace('ref') IS NULL THEN ALTER SCHEMA mapping RENAME TO ref; END IF;
 END \$\$;
 CREATE SCHEMA IF NOT EXISTS raw AUTHORIZATION campusview_owner;
+CREATE SCHEMA IF NOT EXISTS ic AUTHORIZATION campusview_owner;
 CREATE SCHEMA IF NOT EXISTS ref AUTHORIZATION campusview_owner;
 CREATE SCHEMA IF NOT EXISTS reporting AUTHORIZATION campusview_owner;
 ALTER SCHEMA raw OWNER TO campusview_owner;
+ALTER SCHEMA ic OWNER TO campusview_owner;
 ALTER SCHEMA ref OWNER TO campusview_owner;
 ALTER SCHEMA reporting OWNER TO campusview_owner;
 GRANT USAGE ON SCHEMA reporting TO campusview_reader;
@@ -762,7 +764,7 @@ E
 Connect with DBeaver (or another database tool)
   Host 127.0.0.1   Port $CV_PG_PORT   Database campusview_data
   campusview_reader  safe browsing: sees the reporting views only (empty until Step 1)
-  campusview_owner   full access to the raw, ref and reporting schemas; use with care
+  campusview_owner   full access to the raw, ic, ref and reporting schemas; use with care
   Passwords: CV_READER_DB_PASSWORD / CV_OWNER_DB_PASSWORD in $ENVF
   The database only listens on this server, so for either account turn on DBeaver's
   SSH tunnel to this server (or run: ssh -L $CV_PG_PORT:127.0.0.1:$CV_PG_PORT you@this-server).

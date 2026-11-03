@@ -32,7 +32,7 @@ flowchart TD
 5. Reporting views join the typed copy to those maps and expose every number the dashboards show. The SQL is in this repo. The metric list is [METRICS.md](METRICS.md).
 6. Superset dashboards read the views. Superset's roles and row-level security limit each person to their schools. See [ACCESS.md](ACCESS.md).
 
-**Built so far (step 1, on `dev`):** a loader that reads one folder of Infinite Campus CSV files and loads each file, as it arrives, into its own all-text table in `raw`. It checks file names and headers. It does not yet check types, keys, codes, or foreign keys, and it reads no code-mapping files. SFTP and the typed copy (step 4) are not built yet. The typed copy is the next step 1 pull request after the update command.
+**Built so far (step 1, on `dev`):** a loader that reads one folder of Infinite Campus CSV files and loads each file, as it arrives, into its own all-text table in `raw`. In the same transaction it builds the typed copy in schema `ic`. A bad value becomes NULL and the report warns. The three cross-row checks warn and keep the row. An empty `school.csv` or `calendar.csv` fails the load. Any other header-only file warns. It does not check duplicate keys, unknown codes, or foreign keys, and it reads no code-mapping files. The mapping-file failure and the impossible referral-flag check are not built, because this repo has no mapping file. SFTP is not built yet.
 
 No view restricts itself to a school, a year, a grade, or a gender. Superset applies those: school through row-level security, and year, grade, and gender through native filters. Views may omit rows that never count, such as a cancelled referral or a day that is not a school day.
 
@@ -65,14 +65,14 @@ Filters only narrow what row-level security already allows. A filter is never a 
 
 ## Module map
 
-Later code is expected to split along these lines. Only the `loader` package exists today. It reads the Infinite Campus CSV files and writes `raw` and `ops.load_batch`.
+Later code is expected to split along these lines. Only the `loader` package exists today. It reads the Infinite Campus CSV files and writes `raw`, `ic`, and `ops.load_batch`.
 
 | Module | Responsibility | Reads | Writes |
 | --- | --- | --- | --- |
 | `ingest.drop` | Watch the SFTP folder | Files on disk | Nothing |
-| `loader` (built) | Validate, then load all or nothing | Infinite Campus CSV | `raw`, `ops.load_batch` |
-| Typed copy (module name to be decided) | Typed, checked copy of each raw table, same names; bad values (stored as NULL), bad keys, unknown codes, and cross-row problems are warnings on the load report | `raw`, district maps | `ic` |
-| `warehouse.ic` | Typed copy tables. Not built | | |
+| `loader` (built) | Validate, then load all or nothing | Infinite Campus CSV | `raw`, `ic`, `ops.load_batch` |
+| `loader/typed.py` (built) | Rebuild each `ic` table from `raw` in the load transaction. Bad values become NULL and warn. The three cross-row checks warn and keep the row | `raw` | `ic` |
+| `warehouse.ic` | Typed copy tables. The installer creates the empty schema. The loader creates the schema if it is missing and rebuilds the tables | | |
 | `warehouse.raw` | Snapshot tables, all text | | |
 | `warehouse.ref` | Code-mapping tables | | |
 | `warehouse.reporting` | Views only, as SQL files in this repo | The typed copy, `ref` | |
@@ -81,7 +81,7 @@ Dashboards, charts, filters, roles, and row-level security are Superset settings
 
 ## Loader interface
 
-**Built today:** `python -m loader FOLDER`, which calls `load_drop(folder)` in `loader/load.py` and returns whether the load passed, whether the report was saved, and the report text. Exit code 0 means it passed and the report was saved, 1 means anything else, and 2 means the command was used wrong. It checks the 24 file names and the headers in `loader/contract.py`, loads all or nothing in one transaction, and stores the report text in `ops.load_batch`. It takes a lock, and a second load fails at once instead of waiting. It reads no district folder, does no history purge, and runs by hand, not on a timer. The guide is [guides/sftp-and-extracts.md](guides/sftp-and-extracts.md).
+**Built today:** `python -m loader FOLDER`, which calls `load_drop(folder)` in `loader/load.py` and returns whether the load passed, whether the report was saved, and the report text. Exit code 0 means it passed and the report was saved, 1 means anything else, and 2 means the command was used wrong. It checks the 24 file names and the headers in `loader/contract.py`, loads all or nothing in one transaction, and rebuilds `ic` in that same transaction. The loader creates `ic` if it is missing. The installer creates the empty schema, owned by `campusview_owner`, with no grant to `campusview_reader`. It stores the report text in `ops.load_batch`. It takes a lock, and a second load fails at once instead of waiting. It reads no district folder, does no history purge, and runs by hand, not on a timer. The guide is [guides/sftp-and-extracts.md](guides/sftp-and-extracts.md).
 
 Planned: `load(drop_dir, district_config_dir) -> LoadResult`
 
@@ -108,7 +108,7 @@ Schemas in `campusview_data`:
 | Schema | Holds | Who may read it |
 | --- | --- | --- |
 | `raw` | One table per Infinite Campus file, every column text, no load metadata columns | Loader (`campusview_owner`). Not Superset. |
-| `ic` | The typed copy: one table per raw table, same names, real dates and numbers, for example `ic.enrollment`. Not created yet; it comes with the typed-copy pull request | Loader (`campusview_owner`), and the reporting views. Not Superset. Same owner and grants as `raw` |
+| `ic` | The typed copy: one table per raw table, same names, real dates and numbers, for example `ic.enrollment`. The installer creates the empty schema. The loader creates the schema if it is missing | Loader (`campusview_owner`). Reporting views read it as their owner. Not Superset. Same owner as `raw`, and no grant to `campusview_reader` |
 | `ref` | Code-mapping tables | Loader (`campusview_owner`), and the reporting views |
 | `reporting` | Views | `campusview_reader` (Superset's data connection), `SELECT` only |
 | `ops` | `load_batch`: `batch_id`, `started_at`, `finished_at`, `outcome`, `fault`, `report`. The loader creates the schema and the table on its first run | `campusview_owner` only. No grant is made to `campusview_reader` |
