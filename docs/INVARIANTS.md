@@ -10,7 +10,7 @@ A new number on a dashboard gets a view, then a hand-checked test, and only then
 
 ## Test data lives only outside production
 
-Production loads district extracts. Tests, fixtures, and the testing install use Infinite Campus training-database extracts that Austin supplies (fake people, per Austin). Those files stay outside the repo until Austin answers whether the Infinite Campus vendor agreement allows them there. Real student rows, real names, and real extracts never go into the product repo, a test, a log message, or a commit.
+Production loads district extracts. Tests, fixtures, and the testing install use Infinite Campus training-database extracts that Austin supplies. That database is completely fictional, so it counts as fake data (Austin, relayed by CampusView Engineer, 2026-11-03). Those files never go in the public repo; they stay on the builder's computer. Real student rows, real names, and real extracts never go into the product repo, a test, a log message, or a commit.
 
 The testing install runs the same release tag as production. It is the only place the sandbox database user exists.
 
@@ -30,7 +30,7 @@ Secrets are not in either repo. They live only on the server, outside git, in `/
 
 ## No student data and no org-specific values in the product repo
 
-The product repo has no student information, no real staff names or emails, no school names from a real district, no local code lists, no logos, and no keys. Examples in docs use placeholders. The district's identity stays in the district repo and on the server.
+The product repo has no student information, no real staff names or emails, no school names from a real district, no local code lists, no logos, and no keys. Examples in docs use placeholders. No screenshots go in the public repo (Austin, relayed by CampusView Engineer, 2026-11-03). The district's identity stays in the district repo and on the server. Exception: the Infinite Campus start year, the extract cutoff date, and the homeroom attendance rule stay in the product docs (Austin, relayed by CampusView Engineer, 2026-11-03).
 
 ## Every release is upgrade-tested
 
@@ -41,9 +41,9 @@ CI installs the release on a clean machine and upgrades a machine that was on th
 These follow from the same plan and are just as binding.
 
 - **Default deny.** No role, or no school, means no rows.
-- **Keep every table and column.** The loader keeps every table and column the district's extract sends. No table or column is dropped or banned. Production tables will be built on them. See [DECISIONS.md](DECISIONS.md), 2026-11-03.
+- **Keep every listed column.** Every column the data contract lists is kept, and nothing is dropped. Nothing Austin pulls in is banned, including SSN, medical, email, or notes columns. An unknown or misspelled header fails the file with a clear report. A new column or table is added through the contract's change process. Production tables will be built on them. See [DECISIONS.md](DECISIONS.md), 2026-11-03.
 - **Files are the only ingest.** There is no direct connection to the student information system.
 - **No Celery and no Redis in v1.** Loads run as a timed job on the server. The `celery` and `redis` Python libraries come with Superset but nothing runs them.
-- **Only nginx faces the network.** PostgreSQL and gunicorn for Superset and Django listen on 127.0.0.1 only. PostgreSQL uses `listen_addresses = '127.0.0.1'`, not `localhost`, which also opens `[::1]`. When nginx is chosen in the installer, it is the only thing listening on the network. PostgreSQL is never exposed; DBeaver uses an SSH tunnel. Plain HTTP sends logins unencrypted, so it is only for test machines with fake data. Real student data needs HTTPS.
+- **Only nginx faces the network.** PostgreSQL and gunicorn for Superset and Django listen on 127.0.0.1 only. PostgreSQL uses `listen_addresses = '127.0.0.1'`, not `localhost`, which also opens `[::1]`. When nginx is chosen in the installer, it is the only thing listening on the network. PostgreSQL is never exposed; DBeaver uses an SSH tunnel. Plain HTTP sends logins unencrypted, so it is only for a test machine that is on-prem and not on the internet, such as Austin's test VM (Austin, relayed by CampusView Engineer, 2026-11-03). Real student data needs HTTPS.
 - **Agents do not edit exported dashboards.** Those files live in the district repo and stay as the system admin exported them.
 - **Parked work stays parked.** New ideas are written into the parking lot in [FEATURES.md](../FEATURES.md). Only Austin promotes one into a step. That includes the custom Django pages and the view and export log, which are parked.

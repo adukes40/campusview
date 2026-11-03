@@ -28,7 +28,7 @@ flowchart TD
 1. The district drops a full CSV snapshot on SFTP. CampusView never connects to the student information system.
 2. The mapping for that system rewrites the vendor files into CampusView's standard layouts. v1 ships the Infinite Campus mapping only. See [DATA_CONTRACT.md](DATA_CONTRACT.md).
 3. The loader checks every standard file and every code-mapping file. If any check fails, it loads nothing and leaves the previous data in place. If every check passes, it replaces the raw snapshot in one database transaction.
-4. Raw tables store the standard columns, checked, plus every other table and column the extract sends. Code-mapping tables, from the district repo, say what each local code means.
+4. Raw tables store every column the contract lists. Nothing is dropped, and an unknown header fails the file. Code-mapping tables, from the district repo, say what each local code means.
 5. Reporting views join raw rows to those maps and expose every number the dashboards show. The SQL is in this repo. The metric list is [METRICS.md](METRICS.md).
 6. Superset dashboards read the views. Superset's roles and row-level security limit each person to their schools. See [ACCESS.md](ACCESS.md).
 
@@ -45,7 +45,7 @@ These names are the vocabulary for later code and SQL. They are a sketch, not a 
 | Name | Meaning |
 | --- | --- |
 | `SchoolId` | Text id from the extract. Stable. Not invented by CampusView. |
-| `StudentId` | Text student number from the extract, the one staff see. Not the SSN or the state id; a state id the extract sends is kept as its own column. |
+| `StudentId` | Text student number from the extract, the one staff see. Not the SSN or the state id; a state id the extract sends is kept as its own listed column. |
 | `SchoolYear` | Text `YYYY-YYYY`, second year = first + 1. Example shape: `2026-2027`. |
 | `Grade` | Text `K` or `1` through `12`, after the grade map. |
 | `GenderLabel` | Text label from the gender map. |
@@ -83,7 +83,7 @@ Dashboards, charts, filters, roles, and row-level security are Superset settings
 `load(drop_dir, district_config_dir) -> LoadResult`
 
 - Look in `drop_dir` for the standard extract files and in `district_config_dir` for the code-mapping files. Both sets are required.
-- Validate every file first: headers, types, keys, allowed codes, and foreign keys. Details are in [DATA_CONTRACT.md](DATA_CONTRACT.md).
+- Validate every file first: headers (an unknown or misspelled header fails the file), types, keys, allowed codes, and foreign keys. Details are in [DATA_CONTRACT.md](DATA_CONTRACT.md).
 - On any error, leave the previous snapshot in place. Record the failed attempt on `ops.load_batch` with the file name, the row number, and the rule that failed. Do not record the cell value.
 - On success, replace the raw snapshot inside one transaction, purge school years outside the history window, and commit.
 - The drop is a full snapshot of the years to keep, not a file of changes. Running the same files twice leaves the same warehouse.

@@ -1,6 +1,6 @@
 # Data contract
 
-These are the CSV layouts CampusView loads. The columns listed here are the ones CampusView checks and uses. The loader also keeps every other table and column the extract sends (Austin, relayed by CampusView Engineer, 2026-11-03), such as a state student id, a date of birth, staff names, or a school's address and phone. It does not drop or reject them. How the raw schema stores those extra tables and columns is set in step 1. See [DECISIONS.md](DECISIONS.md), 2026-11-03.
+These are the CSV layouts CampusView loads. The columns listed here are the whole layout. Every column the contract lists is kept, and nothing is dropped. An unknown or misspelled header fails the file with a clear report (Austin, relayed by CampusView Engineer, 2026-11-03). Nothing Austin pulls in is banned: a state student id, a date of birth, staff names, a school's address and phone, and SSN, medical, email, or notes columns if he ever sends them. Each new column or table is added through the change process below. None of this data ever goes into the public repo. See [DECISIONS.md](DECISIONS.md), 2026-11-03.
 
 The Infinite Campus section says how a typical extract maps onto these files. It is general public knowledge of how that product is organized, not a description of one district's screens. Anything that depends on local setup is marked **TO CONFIRM** and collected at the end for Austin.
 
@@ -8,7 +8,7 @@ The Infinite Campus section says how a typical extract maps onto these files. It
 
 - UTF-8, comma-separated, a header row, quoting when a value contains a comma.
 - Header names match this document exactly, lowercase, in any column order.
-- A header not listed here is kept as an extra column. A missing required header fails the file.
+- An unknown or misspelled header fails the file, and the report names that header (Austin, relayed by CampusView Engineer, 2026-11-03). A missing required header fails the file.
 - Character set for every id: letters, digits, hyphen, underscore, length 1 to 64.
 - Dates are `YYYY-MM-DD`. Times are `HH:MM` in 24-hour local time.
 - Booleans are `true` or `false`.
@@ -26,7 +26,7 @@ The Infinite Campus section says how a typical extract maps onto these files. It
 
 ## Changing the contract
 
-File names, header names, and date formats stay fixed (Austin, relayed by CampusView Engineer, 2026-11-03). Adding a new column or a new table to this contract needs a documented process. **That process is not written yet.** Until it is, do not change a layout here without Austin.
+File names, header names, and date formats stay fixed (Austin, relayed by CampusView Engineer, 2026-11-03). Adding a new column or a new table to this contract needs a documented process. Until a column is added, a file that carries it fails with a clear report. **That process is not written yet.** Until it is, do not change a layout here without Austin.
 
 Load order inside the transaction follows the foreign keys: schools and students, then enrollments and calendar days, then attendance, incidents, incident behaviors, consequences, and plans. The check looks at the whole drop before anything is written.
 
@@ -255,7 +255,7 @@ What follows is the usual shape of Infinite Campus, from public product knowledg
 
 | CampusView field | Usual Infinite Campus source | Notes |
 | --- | --- | --- |
-| `students.student_id` | The student number shown on the student record | Use that visible number as `student_id`, not the internal person id or a state identifier. Any other id the extract sends is kept as its own column. |
+| `students.student_id` | The student number shown on the student record | Use that visible number as `student_id`, not the internal person id or a state identifier. Any other id the extract sends is kept as its own listed column. |
 | `students.first_name`, `last_name` | The identity name fields | Which name is the legal name is local. |
 | `students.gender_code` | Demographics gender, as stored | Codes are district-defined. Copy them through and map them. |
 | `students.race_code` | Federal race and ethnicity fields | Which field feeds equity groups is local. |
@@ -273,7 +273,7 @@ What follows is the usual shape of Infinite Campus, from public product knowledg
 | `plans` for an IEP | The special education plan: start, end, and annual review | Field names differ by state edition. |
 | `plans` for a 504 | `program_participation`, rows for the 504 program (Austin, relayed by CampusView Engineer, 2026-11-03) | Column details: set when the file arrives. |
 
-Keep every table and column Austin's extract sends. Tables and columns this table does not map, such as a state student identifier, a date of birth, a referral's staff name, or a school's address, phone, and principal, are kept so later production tables can be built on them.
+Keep every table and column Austin's extract sends, once the change process adds it to the contract. Tables and columns this table does not map, such as a state student identifier, a date of birth, a referral's staff name, or a school's address, phone, and principal, are kept so later production tables can be built on them.
 
 ### Expected Infinite Campus files
 
@@ -308,4 +308,4 @@ The mapper does not invent codes and does not decide that a code is excused. It 
 15. *Partly answered (Austin, relayed by CampusView Engineer, 2026-11-03): 504 status comes from `program_participation`, 504 program. IEP field names are still open.* Where 504 plans are stored in this district's Infinite Campus. IEP start, end, and annual review field names also need to be confirmed; they vary by state edition.
 16. Which race or ethnicity field should feed the equity groups.
 17. Grade values as stored, such as `K`, `KF`, `01`, or `1`, so the grade map can match them.
-18. *Partly answered (Austin, relayed by CampusView Engineer, 2026-11-03): keep every table and column sent.* The full list of tables and columns the scheduled extracts will carry. The loader keeps all of them; the list tells the docs what lands in the drop folder.
+18. *Partly answered (Austin, relayed by CampusView Engineer, 2026-11-03): keep every table and column sent; each one is added through the change process.* The full list of tables and columns the scheduled extracts will carry. The loader keeps all of them; the list tells the docs what lands in the drop folder.

@@ -12,7 +12,7 @@ Nothing organization-specific belongs in the code. Names, schools, code values, 
 - The district may not allow a direct connection to the student information system. Files are the only way data comes in.
 - Loads run nightly. How much history to keep is a setting. The default is the current school year plus one prior year. Older data is purged on load.
 - The install is on-premises, installed directly on an Ubuntu or Debian server (no containers), with no license costs.
-- No student data in code, tests, examples, or commits. Fake data only. Tests use Infinite Campus training-database extracts that Austin supplies (fake people, per Austin), kept outside the repo.
+- No student data in code, tests, examples, or commits. Fake data only. The Infinite Campus training database is completely fictional, so it counts as fake data and needs no PII or PHI removal (Austin, relayed by CampusView Engineer, 2026-11-03). Its files never go in the public repo.
 
 ## The screen staff use: plain Superset
 
@@ -24,7 +24,7 @@ Why: a small team should own as little custom AI-written code as possible. Super
 
 ## Data flow
 
-SIS extracts (CSV on SFTP) go to an SIS mapping, then to a validated loader. The loader checks every file before loading. Each load is all or nothing. The loader writes a raw schema: the standard layouts, plus every other table and column the extract sends. The loader does not drop a table or a column.
+SIS extracts (CSV on SFTP) go to an SIS mapping, then to a validated loader. The loader checks every file before loading. Each load is all or nothing. The loader writes a raw schema: every table and column the contract lists. Nothing is dropped, and an unknown header fails the file with a clear report.
 
 Reporting views in PostgreSQL sit on top of the raw schema. All metric logic lives in those views, and the SQL for every view is kept in this repo. The views use code-mapping tables from the district repo. Every view can be filtered by school and school year. No view filters itself.
 
@@ -76,12 +76,12 @@ The Django access list, the Django-to-Superset sync, guest tokens, and the share
 
 ## Build order
 
-One pull request per step. Merge when CI is green.
+One pull request per step. Merge when CI is green and the data tests pass on the builder's computer and Austin's test VM. CI on GitHub runs only the tests that need no data files (Austin, relayed by CampusView Engineer, 2026-11-03).
 
 | Step | Work | Done when |
 | --- | --- | --- |
-| 0 | Docs, plus the bare-bones base install: PostgreSQL 17, plain Superset 6.1.0, default Django 6.1.2, and the `install.sh` wizard. **In progress.** | Austin approves the docs, and `install.sh` brings up the base install on a clean Ubuntu or Debian machine |
-| 1 | Getting data in: the SFTP drop, the raw schema, the validated loader, and the Infinite Campus mapping. Test files are Infinite Campus training-database extracts that Austin supplies, kept outside the repo | Bad files are rejected, each load is all or nothing, every table and column Austin sends is kept, and a good drop built from the training extracts loads |
+| 0 | Docs, plus the bare-bones base install: PostgreSQL 17, plain Superset 6.1.0, default Django 6.1.2, and the `install.sh` wizard. **Built and merged.** | Austin approves the docs, and `install.sh` brings up the base install on a clean Ubuntu or Debian machine |
+| 1 | Getting data in: the SFTP drop, the raw schema, the validated loader, and the Infinite Campus mapping. Test files are Infinite Campus training-database extracts that Austin supplies, kept on the builder's computer | Bad files are rejected with a clear report, each load is all or nothing, every column the contract lists is kept, and a good drop built from the training extracts loads |
 | 2 | The first reporting views in PostgreSQL and the first Superset dashboard on them: an Overview, modeled on screenshots of Austin's current overview page (Austin, relayed by CampusView Engineer, 2026-11-03), with the three roles and school row-level security set up and checked | Each role sees exactly its schools on that dashboard, and each view's numbers match a hand-checked answer on the training extracts |
 
 Later steps, in an order Austin will set: the rest of the reporting views and the Attendance and Behavior dashboards; the nightly schedule and the history purge; and an adversarial review with fixes. Each new number gets a view and a hand-checked test before it gets a chart.
@@ -100,12 +100,16 @@ These are the numbers and charts v1 aims for. In plain Superset, a "card" is a b
 
 ## Test data
 
-There is no fake-data generator. Tests and the testing install use Infinite Campus training-database extracts that Austin supplies. Austin says the training database holds fake people. The files are kept outside the repo until Austin answers whether the Infinite Campus vendor agreement allows them in a public repo. Austin supplies whatever files a test needs. The loader keeps every table and column in them. The first sample was 23 CSV files with at most 1,000 rows each; that cap came from the DB Hub plugin Austin used to pull them, not from the extract. See [DECISIONS.md](DECISIONS.md), 2026-11-03.
+There is no fake-data generator. Tests and the testing install use Infinite Campus training-database extracts that Austin supplies. The training database is completely fictional, so it counts as fake data (Austin, relayed by CampusView Engineer, 2026-11-03). The files never go in the public repo. They are only for building. They stay on the builder's computer, and Austin can pull them again. Austin supplies whatever files a test needs.
+
+Workflow (Austin, relayed by CampusView Engineer, 2026-11-03): build and test on the builder's computer, push to Austin's test VM, then Austin updates production to `main`. CI on GitHub cannot use the training files, so it runs only the tests that need no data files. Tests that need data, including every hand-checked metric answer, run on the builder's computer and on the test VM.
+
+The loader keeps every column the contract lists. The first sample was 23 CSV files with at most 1,000 rows each; that cap came from the DB Hub plugin Austin used to pull them, not from the extract. See [DECISIONS.md](DECISIONS.md), 2026-11-03.
 
 ## Guarding against unwanted changes
 
 - Dashboards are exported from Superset into the district repo. AI agents never edit those exports.
-- Every metric has a test with a hand-checked answer.
+- Every metric has a test with a hand-checked answer, run on the builder's computer and the test VM.
 - Every release is tested as an upgrade from the previous release.
 - New ideas go to the FEATURES.md parking lot. Only Austin promotes them into the build.
 

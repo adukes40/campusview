@@ -56,6 +56,8 @@ Deactivating a user in Superset stops their sign-in.
 
 **Resolved 2026-11-02:** the installer now creates `campusview_owner` and `campusview_reader`, and `superset_user` no longer owns `campusview_data`. An older install is moved over when the installer runs again. The installer does not create Superset's data connection; when you add it, use `campusview_reader`. Passwords are in `/etc/campusview/campusview.env`: `CV_SUPERSET_DB_PASSWORD`, `CV_DJANGO_DB_PASSWORD`, `CV_OWNER_DB_PASSWORD`, `CV_READER_DB_PASSWORD`, plus `CV_SECRET_KEY` and `CV_ADMIN_PASSWORD`. See [DECISIONS.md](DECISIONS.md).
 
+State id and birthdate may appear in reporting views for now (Austin, relayed by CampusView Engineer, 2026-11-03). So a school admin can see them for their own schools when a chart shows them.
+
 SQL Lab for the system admin uses Superset's data connection as `campusview_reader`, so it can see reporting views and cannot see raw tables. Exploring raw data is a testing-sandbox task.
 
 ## Permissions check
