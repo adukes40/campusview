@@ -49,9 +49,9 @@ Deactivating a user in Superset stops their sign-in.
 | Database user | Allowed | Not allowed |
 | --- | --- | --- |
 | `superset_user` (Superset's settings) | Owns `superset_meta`, Superset's own settings and users. | Connecting to `campusview_data` at all. `CONNECT` on it is revoked from everyone by default. |
-| `campusview_reader` (Superset's report data connection, and safe DBeaver browsing) | Log in and connect to `campusview_data`. `USAGE` and `SELECT` on the `reporting` schema only. Tables and views the owner adds to `reporting` later are readable automatically. | The `raw` and `ref` schemas. Any write. Creating anything. |
+| `campusview_reader` (Superset's report data connection, and safe DBeaver browsing) | Log in and connect to `campusview_data`. `USAGE` and `SELECT` on the `reporting` schema only. Tables and views the owner adds to `reporting` later are readable automatically. | The `raw`, `ref`, and `ops` schemas. Any write. Creating anything. |
 | `django_user` (Django) | Owns `django_app`, Django's default tables. | `campusview_data`. Django has no v1 role. |
-| `campusview_owner` (the loader, from step 1) | Owns `campusview_data` and its schemas `raw`, `ref`, and `reporting`. The loader writes as this account. | Superset's and Django's databases. |
+| `campusview_owner` (the loader, from step 1) | Owns `campusview_data` and its schemas `raw`, `ref`, and `reporting`. The loader writes as this account. It also creates and owns the `ops` schema and `ops.load_batch` on its first run. | Superset's and Django's databases. |
 | Sandbox (testing install only) | `SELECT` on raw and reporting. Create objects in the scratch schema. | Production and the dev server. Neither database has this user; it exists only on the testing install (the builder's computer, or a fake-data server). |
 
 **Resolved 2026-11-02:** the installer now creates `campusview_owner` and `campusview_reader`, and `superset_user` no longer owns `campusview_data`. An older install is moved over when the installer runs again. The installer does not create Superset's data connection; when you add it, use `campusview_reader`. Passwords are in `/etc/campusview/campusview.env`: `CV_SUPERSET_DB_PASSWORD`, `CV_DJANGO_DB_PASSWORD`, `CV_OWNER_DB_PASSWORD`, `CV_READER_DB_PASSWORD`, plus `CV_SECRET_KEY` and `CV_ADMIN_PASSWORD`. See [DECISIONS.md](DECISIONS.md).

@@ -30,7 +30,7 @@ Reporting views in PostgreSQL sit on top of the raw schema. All metric logic liv
 
 Superset dashboards read those views. For each reporting page: first the PostgreSQL view, then the Superset dashboard on top of it.
 
-SFTP and the loader are not built yet.
+The loader is built on the `dev` branch (PR #10, commit 2f21b49). Today it loads the Infinite Campus CSV files as they arrive, one all-text table per file in `raw`, and checks file names and headers only. SFTP, the mapping, the standard files, and the type, key, and code checks are not built yet. See the proposed entry in [DECISIONS.md](DECISIONS.md), 2026-11-03, "The raw schema holds the Infinite Campus files as they arrive".
 
 ## Stack
 
@@ -77,12 +77,12 @@ The Django access list, the Django-to-Superset sync, guest tokens, and the share
 
 ## Build order
 
-One pull request per step. Merge when CI is green, the data tests pass on the builder's computer, and Austin has checked the change on the dev server. CI on GitHub runs only the tests that need no data files (Austin, relayed by CampusView Engineer, 2026-11-03). CI is built in step 1; until it exists, "CI is green" cannot be checked, and the builder runs the same no-data tests on its own computer.
+One pull request per step. Merge when CI is green, the data tests pass on the builder's computer, and Austin has checked the change on the dev server. CI on GitHub runs only the tests that need no data files (Austin, relayed by CampusView Engineer, 2026-11-03). Basic CI exists: `.github/workflows/ci.yml` runs the tests on every push and pull request. CI has no PostgreSQL, so the loader tests that need a database skip there; the builder runs those on its own computer.
 
 | Step | Work | Done when |
 | --- | --- | --- |
 | 0 | Docs, plus the bare-bones base install: PostgreSQL 17, plain Superset 6.1.0, default Django 6.1.2, and the `install.sh` wizard. **Built and merged.** | Austin approves the docs, and `install.sh` brings up the base install on a clean Ubuntu or Debian machine |
-| 1 | Getting data in: the SFTP drop, the raw schema, the validated loader, and the Infinite Campus mapping. Test files are Infinite Campus training-database extracts that Austin supplies, kept on the builder's computer. Also the release plumbing Austin moved into current work (Austin, relayed by CampusView Engineer, 2026-11-03): the district folder on each server and the mappings layout in the district repo; a product checkout on each server with a setting for the branch or tag it follows; an update command; and a `dev` branch with basic CI | Bad files are rejected with a clear report, each load is all or nothing, every column the contract lists is kept, a good drop built from the training extracts loads, the dev server follows `dev` and updates with the update command, and CI runs the no-data tests |
+| 1 | Getting data in: the SFTP drop, the raw schema, the validated loader, and the Infinite Campus mapping. Test files are Infinite Campus training-database extracts that Austin supplies, kept on the builder's computer. Also the release plumbing Austin moved into current work (Austin, relayed by CampusView Engineer, 2026-11-03): the district folder on each server and the mappings layout in the district repo; a product checkout on each server with a setting for the branch or tag it follows; an update command; and a `dev` branch with basic CI. **Built so far:** the loader (PR #10, commit 2f21b49), the `dev` branch, and basic CI. **Not built yet:** the SFTP drop, the mapping and the standard files, the mapping tables, the district folder and the mappings layout, the product checkout, the branch or tag setting, and the update command | Bad files are rejected with a clear report, each load is all or nothing, every column the contract lists is kept, a good drop built from the training extracts loads, the dev server follows `dev` and updates with the update command, and CI runs the no-data tests |
 | 2 | The first reporting views in PostgreSQL and the first Superset dashboard on them: an Overview, modeled on screenshots of Austin's current overview page (Austin, relayed by CampusView Engineer, 2026-11-03), with the three roles and school row-level security set up and checked | Each role sees exactly its schools on that dashboard, and each view's numbers match a hand-checked answer on the training extracts |
 
 Later steps, in an order Austin will set: the rest of the reporting views and the Attendance and Behavior dashboards; the nightly schedule and the history purge; and an adversarial review with fixes. Each new number gets a view and a hand-checked test before it gets a chart.

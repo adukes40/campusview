@@ -26,7 +26,7 @@ A district does not fork the product repo. Every district runs the same public c
 | Dev server, for example `cv-dev.example.org` | The `dev` branch | Austin checks changes here. It holds real district data and follows production rules for data and access: no sandbox database user, no training files, and no agent access. |
 | Production server, for example `cv.example.org` | A release tag cut from `main`, such as `v1.3.0` | Staff. |
 
-**Not built yet:** the product repo has no `dev` branch, no release tags, and no CI workflow today.
+The product repo has a `dev` branch and basic CI (`.github/workflows/ci.yml`), which runs the tests on every push and pull request. **Not built yet:** release tags.
 
 ## How a change reaches production
 
@@ -75,7 +75,7 @@ git push
 
 3. Give write access only to the people who change district settings. A server never gets write access.
 
-**Not built yet:** the folder layout inside the district repo. The loader in step 1 reads code-mapping files from it ([DATA_CONTRACT.md](../DATA_CONTRACT.md)). Branding, dashboard exports, and the settings file come later. Until the layout is set, the repo holds only its README.
+**Not built yet:** the folder layout inside the district repo. The loader will read code-mapping files from it once the mapping is built ([DATA_CONTRACT.md](../DATA_CONTRACT.md)). Branding, dashboard exports, and the settings file come later. Until the layout is set, the repo holds only its README.
 
 Before every commit to the district repo, run `git status` and `git diff --cached` and check that no password, key, extract, or screenshot is listed.
 
@@ -169,7 +169,7 @@ runuser -u cvadmin -- git -C /opt/campusview-district pull --ff-only
 
 On Ubuntu, use `sudo -u cvadmin` in place of `runuser -u cvadmin --`.
 
-**Not built yet:** how CampusView picks up new district settings after a pull. Mapping files are read on each load, once the loader exists. Whether branding or other settings need a restart is set when they are built.
+**Not built yet:** how CampusView picks up new district settings after a pull. Mapping files will be read on each load, once the mapping step exists. Whether branding or other settings need a restart is set when they are built.
 
 ## Set up a server
 
@@ -197,7 +197,7 @@ Today the installer is fetched from `main` as a single file. It does not clone t
 
 Cut a tag after Austin merges `dev` into `main` and the change looks right on the dev server. Tags look like `v1.3.0`: raise the last number for a fix, the middle number for new features, and the first number for a change that needs extra steps on upgrade.
 
-Before you tag, check that CI passed on that `main` commit, and that the release installs on a clean machine and upgrades a machine on the previous tag. **Not built yet:** CI, and the clean-install and upgrade checks in CI.
+Before you tag, check that CI passed on that `main` commit, and that the release installs on a clean machine and upgrades a machine on the previous tag. Basic CI exists. **Not built yet:** the clean-install and upgrade checks in CI.
 
 On your own computer, with write access to the product repo:
 

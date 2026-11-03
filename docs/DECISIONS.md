@@ -4,6 +4,16 @@ Dated log of decisions already made. The plan of record is [PLAN.md](PLAN.md). N
 
 Open metric questions are not listed here. They are the Decisions for Austin list in [METRICS.md](METRICS.md). Open extract questions are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md). Both lists are deferred for now and do not block step 0.
 
+## 2026-11-03 — The raw schema holds the Infinite Campus files as they arrive
+
+**What:** The step 1 loader (PR #10, commit 2f21b49) loads the Infinite Campus CSV files themselves, before any mapping. Each of the 24 files in `loader/contract.py` gets its own table in `raw`, named after the file (for example `raw.enrollment`), with every column stored as text. A column added to the list is added to the table. A column is never dropped. The loader creates the `ops` schema and `ops.load_batch` itself, owned by `campusview_owner`, with no grant to `campusview_reader`. The earlier design, in [ARCHITECTURE.md](ARCHITECTURE.md) and 2026-11-01 "Files are the only ingest" below, maps the vendor files to standard files first and loads those into `raw`.
+
+**Not decided:** where the standard-layout tables live once the mapping is built, and where the type, key, code, and foreign-key checks in [DATA_CONTRACT.md](DATA_CONTRACT.md) run.
+
+**Who:** Recorded by CampusView Keeper from the code on `dev`, 2026-11-03.
+
+**Status:** Proposed, confirmed by merging.
+
 ## 2026-11-03 — Plain HTTP on the dev server during early testing
 
 **What:** The on-prem dev server may use plain HTTP during early testing, even though it holds real production data. It moves to HTTPS before production gets Google sign-on or real users. Production always uses HTTPS. Plain HTTP on test machines with fake data is unchanged.

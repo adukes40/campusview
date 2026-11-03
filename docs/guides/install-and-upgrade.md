@@ -59,8 +59,9 @@ All passwords and the key are saved in `/etc/campusview/campusview.env`. Read th
 | `raw`, loaded data | `campusview_owner` | `campusview_owner` only |
 | `ref`, reference and lookup data | `campusview_owner` | `campusview_owner` only |
 | `reporting`, views for reports | `campusview_owner` | `campusview_owner`, and `campusview_reader` with read only access. Anything the owner adds here later is readable by `campusview_reader` automatically. |
+| `ops`, the load report table `load_batch` | `campusview_owner` | `campusview_owner` only. The installer does not create it. The loader creates it on its first run. |
 
-The schemas start empty. They fill up in Step 1. Earlier installs called `ref` by the name `mapping`. A second run renames `mapping` to `ref` when `ref` does not exist yet. No other account can connect to `campusview_data`.
+The schemas start empty. `raw` fills up when you run the loader ([sftp-and-extracts.md](sftp-and-extracts.md)). Earlier installs called `ref` by the name `mapping`. A second run renames `mapping` to `ref` when `ref` does not exist yet. No other account can connect to `campusview_data`.
 
 ### Connect with DBeaver
 
@@ -108,11 +109,11 @@ In order, the script does this work for you.
 9. Django 6.1.2 in its own Python environment, as a default project named `campusview_base`.
 10. Django pointed at `django_app`. Django reads the database password from the environment.
 11. `start.sh` and `stop.sh` in the install folder.
-12. If you chose HTTP or HTTPS: nginx from the distro's own apt repo, with one site, `/etc/nginx/sites-available/campusview`. For HTTPS with a self-signed certificate, the certificate too.
+12. If you chose HTTP or HTTPS: nginx from the distro's own apt repo, with one site, `/etc/nginx/sites-available/campusview`. For HTTPS with a self-signed certificate, the certificate too. The installer removes nginx's own `default` site from `/etc/nginx/sites-enabled` and makes CampusView the default site on its port, If nginx on this server already serves other sites, check them after the install.
 13. A check that the pages answer, described below.
 14. If you answered `yes`, the services `cv-superset` and `cv-django` start at boot.
 
-The installer does not add a Redis server, Celery, a Superset worker, Docker, a firewall, Let's Encrypt (certbot), example data, or theming. nginx is the optional web server from the decision in [../DECISIONS.md](../DECISIONS.md). It is installed only when you choose HTTP or HTTPS. No second proxy is added. The `redis` and `celery` Python libraries are installed only because Superset depends on them, and nothing runs them. SFTP and the loader come in Step 1.
+The installer does not add a Redis server, Celery, a Superset worker, Docker, a firewall, Let's Encrypt (certbot), example data, or theming. nginx is the optional web server from the decision in [../DECISIONS.md](../DECISIONS.md). It is installed only when you choose HTTP or HTTPS. No second proxy is added. The `redis` and `celery` Python libraries are installed only because Superset depends on them, and nothing runs them. It does not install or run the loader, and it does not set up SFTP. The loader runs from a checkout of this repo; see [sftp-and-extracts.md](sftp-and-extracts.md).
 
 ## Where the passwords live
 

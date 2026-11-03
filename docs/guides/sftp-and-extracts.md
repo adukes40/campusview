@@ -22,7 +22,7 @@ How to schedule the extracts this district confirmed in the TO CONFIRM list, tha
 
 The loader reads one folder of Infinite Campus CSV files and loads them into the `raw` schema. SFTP pickup and the mapping onto the standard layouts come later.
 
-The installer does not run the loader. From a checkout of this repository, load the password file into the environment. Do not put the password on the command line. The command below uses the Python 3.12 the installer already placed. It does not download Python, and it does not install the test tools. The first run installs the loader's database library into that checkout.
+The installer does not install or run the loader. From a checkout of this repository, load the password file into the environment. Do not put the password on the command line. The command below uses the Python 3.12 the installer already placed. It does not download Python, and it does not install the test tools. The first run installs the loader's database library into that checkout, so it needs internet access. If you chose another install folder, use it in place of `/opt/campusview`.
 
 ```
 set -a
@@ -34,17 +34,19 @@ UV_PYTHON_INSTALL_DIR=/opt/campusview/.uv/python \
   python -m loader /path/to/folder
 ```
 
-A good folder has every CSV file named in `loader/contract.py`. A CSV file that is not in that list fails the load. A listed file that is missing fails the load. Files that are not CSV are ignored.
+A good folder has every CSV file named in `loader/contract.py`, 24 files today, with the names spelled exactly. A CSV file that is not in that list fails the load. A listed file that is missing fails the load. Files that are not CSV, and folders, are ignored. A file fails when it is not UTF-8, has no header row, or has a blank, repeated, unknown, or missing header.
 
-You should see `Load passed.` and one line per file with its row count. The same text is stored in `ops.load_batch`, in the `report` column. `outcome` is `pass` or `fail`. `fault` is `extract` when the files are wrong, and `server` when the machine or the database is the problem. `fault` is empty on a pass. Read the table as `campusview_owner`.
+You should see `Load passed.` and one line per file with its row count. The same text is stored in `ops.load_batch`, in the `report` column. `outcome` is `pass` or `fail`. `fault` is `extract` when the files are wrong, and `server` when the machine or the database is the problem. `fault` is empty on a pass. The table also has `batch_id`, `started_at`, and `finished_at`. The loader creates `ops` and the table on its first run. Read the table as `campusview_owner`; `campusview_reader` cannot see it.
 
-A failed load writes nothing to `raw`. The previous rows stay. The report lists only the files that failed. A file that has only a header row is a pass, and it clears that table. Running the same folder again leaves the same rows.
+The exit code is 0 when the load passed and the report was saved, 1 otherwise, and 2 when the folder is missing from the command. When `CV_OWNER_DB_PASSWORD` is not set, or the database cannot be reached, the loader prints the report and saves nothing to `ops.load_batch`.
+
+A failed load writes nothing to `raw`. The previous rows stay. On a failure the report lists only the files that failed. A file that has only a header row is a pass, and it clears that table. Running the same folder again leaves the same rows.
 
 Every value is stored as text, so a leading zero stays. A blank cell is stored as NULL, including a quoted empty cell. Postgres reads the CSV, so a quoted comma or a quote inside a value is kept, and the line endings can be LF or CRLF.
 
-A calendar with no Day rows is a warning when an enrollment's end date, or its start date when the end date is empty, is on or after the extract cutoff date, 2025-07-01. An old enrollment with a blank end date is left out. The load still passes. The warning lists those calendar ids in numeric order. Day rows may repeat a date for one calendar. Older calendars do that when one date sits on more than one schedule structure. The loader allows the repeat.
+A calendar with no Day rows is a warning when an enrollment's end date, or its start date when the end date is empty, is on or after the extract cutoff date, 2025-07-01. The dates are compared as text, so they must be `YYYY-MM-DD`. Only numeric calendar ids are checked. An old enrollment with a blank end date is left out. The load still passes. The warning lists those calendar ids in numeric order. Day rows may repeat a date for one calendar. Older calendars do that when one date sits on more than one schedule structure. The loader allows the repeat.
 
-If a load is already running, the new one stops and names the server as the fault.
+If a load is already running, the new one stops at once, without waiting, and names the server as the fault.
 
 ## Add a column or a table
 
@@ -58,7 +60,7 @@ Until the list includes the new header, the loader fails that file and the repor
 
 ## When a load fails
 
-Read the loader output, or `ops.load_batch`. A failed load names only the files that failed, with the rule. You do not see the cell value. Use `fault` to decide where to look. `extract` means fix the files. `server` means check this machine, the database, or whether a load is already running. The previous rows stay in place.
+Read the loader output, or `ops.load_batch`. A failed load names only the files that failed, with the reason. When PostgreSQL rejects a row, it gives the line number. You do not see the cell value. Use `fault` to decide where to look. `extract` means fix the files. `server` means check this machine, the database, or whether a load is already running. The previous rows stay in place.
 
 ## Writing a mapping for another student information system
 

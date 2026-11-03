@@ -4,9 +4,23 @@ These are the CSV layouts CampusView loads. The columns listed here are the whol
 
 The Infinite Campus section says how a typical extract maps onto these files. It is general public knowledge of how that product is organized, not a description of one district's screens. Anything that depends on local setup is marked **TO CONFIRM** and collected at the end for Austin.
 
+## What the loader checks today
+
+The built loader (PR #10) reads the Infinite Campus files themselves, not the standard files below. It checks:
+
+- The folder holds all 24 files listed in `loader/contract.py`: `att_day_aggregation`, `attendance`, `attendance_excuse`, `behavior_event`, `behavior_incident`, `behavior_res_type`, `behavior_resolution`, `behavior_role`, `behavior_type`, `calendar`, `campus_attribute`, `campus_dictionary`, `day`, `enrollment`, `identity`, `identity_race_ethnicity`, `period`, `person`, `plan`, `plan_type`, `program`, `program_participation`, `race_ethnicity`, and `school`, each ending in `.csv`. A missing file fails the load. A `.csv` file that is not on the list fails the load. Other files and folders are ignored.
+- Each file is UTF-8 and has a header row. The headers match the list exactly, with the same spelling and case, in any order. An unknown, missing, repeated, or blank header fails the file.
+- PostgreSQL reads the rows as CSV. Any valid CSV quoting works, and the line endings can be LF or CRLF. A row PostgreSQL rejects fails the load, and the report gives the file and the line number.
+- Every value is stored as text. A blank cell, quoted or not, is stored as NULL. A header-only file passes.
+- A calendar with enrollments and no Day rows is a warning, not a failure. See [the extracts guide](guides/sftp-and-extracts.md).
+
+It does not check types, keys, codes, or foreign keys yet. Those rules, below, apply to the standard files the mapping will write.
+
 ## Shared file rules
 
-- UTF-8, comma-separated, a header row, quoting when a value contains a comma.
+These rules are for the standard files. The mapping that writes them is not built yet.
+
+- UTF-8, comma-separated, a header row, any valid CSV quoting.
 - Header names match this document exactly, lowercase, in any column order.
 - An unknown or misspelled header fails the file, and the report names that header (Austin, relayed by CampusView Engineer, 2026-11-03). A missing required header fails the file.
 - Character set for every id: letters, digits, hyphen, underscore, length 1 to 64.
@@ -22,7 +36,7 @@ The Infinite Campus section says how a typical extract maps onto these files. It
 - `schools.csv`, `students.csv`, `enrollments.csv`, and `calendar_days.csv` must each contain at least one data row. The other extract files may be header-only.
 - Mapping files live in the district repo, not in the SFTP drop. They are required on every load. A bad mapping fails the load the same way a bad extract does.
 - One failed file fails the whole load. The previous snapshot stays.
-- Error reports name the file, the row number, and the rule. They do not repeat the cell value.
+- Error reports name the file, the row number, and the rule. They do not repeat the cell value. Today's loader names the file and the reason, and gives a line number when PostgreSQL rejects a row.
 
 ## Changing the contract
 
@@ -77,7 +91,7 @@ Validation beyond types:
 
 - For one student, primary spans must not overlap in dates.
 - For one student, one school, and one school year, every row shares a single `grade`. Two grades in that combination fail the file. This is the working rule in Decisions for Austin, item 19, in [METRICS.md](METRICS.md): v1 does not represent a mid-year grade change unless Austin asks for it.
-- A school that has enrollments but no calendar days in that school year does not fail the file. It loads, and the load report shows a warning naming the school and year (Austin, relayed by CampusView Engineer, 2026-11-03). Its students have no membership days until calendar days arrive.
+- A school that has enrollments but no calendar days in that school year does not fail the file. It loads, and the load report shows a warning naming the school and year (Austin, relayed by CampusView Engineer, 2026-11-03). Today's loader checks this on the Infinite Campus files and names the calendar id instead. Its students have no membership days until calendar days arrive.
 
 ## calendar_days.csv
 
@@ -287,7 +301,7 @@ What is known so far (Austin, relayed by CampusView Engineer, 2026-11-03):
 - Extracts are capped to dates on or after 2025-07-01. Infinite Campus started in the 2025-26 school year, so the years kept are 2025-26 and 2026-27.
 - The Day table (calendar day records). Column details: set when the file arrives.
 - `program_participation`, for 504 status. Column details: set when the file arrives.
-- The first sample was 23 CSV files from the training database. Each had at most 1,000 rows because of the DB Hub plugin Austin used to pull them. The real extracts are not capped at 1,000 rows.
+- The first sample was 23 CSV files from the training database. Each had at most 1,000 rows because of the DB Hub plugin Austin used to pull them. The real extracts are not capped at 1,000 rows. The loader's list in `loader/contract.py` now has 24 files.
 
 The mapper does not invent codes and does not decide that a code is excused. It only reshapes rows. Meaning stays in the mapping tables so a code change is a district-repo edit, not a program change.
 
