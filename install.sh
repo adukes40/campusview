@@ -135,9 +135,6 @@ update_main(){
   classify_fetched_ref
   head=$(g rev-parse HEAD)
   running=$(g config --local --get campusview.running 2>/dev/null || true)
-  if [ "$head" = "$target" ] && [ "$running" = "$head" ]; then
-    echo "Already on $CV_REF at ${head:0:12}. Nothing to do."; exit 0
-  fi
   previous=$head
   if [ "$head" != "$target" ]; then
     if [ "$ref_kind" = branch ]; then
@@ -147,9 +144,22 @@ update_main(){
     fi
   fi
   pull_district
+  if [ "$head" = "$target" ] && [ "$running" = "$head" ]; then
+    echo "Already on $CV_REF at ${head:0:12}. Nothing to do."; exit 0
+  fi
   if [ "$head" != "$target" ]; then
     g checkout --detach "$target" || die "Could not check out $CV_REF."
   fi
+  # The checked-out install.sh carries this release's package versions. The copy above is the previous one.
+  CV_APPLY=1 exec bash -- "$B/install.sh" --apply "$previous"
+}
+apply_main(){
+  local previous now
+  [ "${CV_APPLY:-}" = 1 ] || usage
+  [ "$#" -eq 2 ] || usage
+  previous=$2
+  [[ $previous =~ ^[0-9a-f]{40}$ ]] || usage
+  read_env
   if ! have_python; then echo "Python 3.12 is not in the install folder. Run install.sh." >&2; exit 1; fi
   if ! sync_superset || ! sync_django; then
     g checkout --detach "$previous" || die "Could not put the checkout back."
@@ -162,13 +172,15 @@ update_main(){
   fi
   restart_apps || { echo "The new checkout is in place, and the services did not restart. Run the update command again." >&2; exit 1; }
   mark_running
-  echo "Updated $CV_REF from ${previous:0:12} to ${head:0:12}. Services restarted."
+  now=$(g rev-parse HEAD)
+  echo "Updated $CV_REF from ${previous:0:12} to ${now:0:12}. Services restarted."
   exit 0
 }
 
 case ${1:-} in
   "") ;;
   --update) update_main "$@"; exit 1 ;;
+  --apply) apply_main "$@"; exit 1 ;;
   *) usage ;;
 esac
 
