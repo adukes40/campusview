@@ -647,6 +647,16 @@ put(){ # put FILE MODE < content: replace FILE only when the content differs (re
 nginx_up(){ nginx -t -q || die "nginx rejected its configuration (see above)"
   if [ "$HAS_SYSTEMD" = yes ]; then systemctl enable -q nginx; systemctl reload-or-restart nginx
   elif [ -s /run/nginx.pid ] && kill -0 "$(cat /run/nginx.pid)" 2>/dev/null; then nginx -s reload; else nginx; fi; }
+# The distro welcome site only. An edited config or a page in /var/www/html is already in use.
+stock_welcome(){
+  [ -L /etc/nginx/sites-enabled/default ] || return 1
+  [ "$(readlink -f /etc/nginx/sites-enabled/default)" = /etc/nginx/sites-available/default ] || return 1
+  [ ! -e /var/www/html/index.html ] && [ ! -e /var/www/html/index.htm ] || return 1
+  local sum
+  sum=$(dpkg-query -W -f='${Conffiles}\n' nginx-common 2>/dev/null | awk '$1=="/etc/nginx/sites-available/default"{print $2}')
+  [ -n "$sum" ] && [ "$sum" = "$(md5sum /etc/nginx/sites-available/default | awk '{print $1}')" ] || return 1
+  cmp -s /usr/share/nginx/html/index.html /var/www/html/index.nginx-debian.html
+}
 SITE=/etc/nginx/sites-available/campusview
 if [ "$CV_ACCESS" = tunnel ]; then
   say "9. network access: SSH tunnel only (no web server)"
@@ -659,8 +669,24 @@ if [ "$CV_ACCESS" = tunnel ]; then
   fi
 else
   say "9. network access: nginx, $(access_desc)"
+  # The packaged welcome page is not a site anyone set up. Anything else keeps the IP.
+  LDEF=' default_server'; SNAME=_; real=
+  for f in /etc/nginx/sites-enabled/*; do
+    [ -e "$f" ] || continue
+    b=$(basename "$f"); [ "$b" = campusview ] && continue
+    if [ "$b" = default ] && stock_welcome; then continue; fi
+    [ -z "$real" ] && real=$b
+  done
+  if [ -n "$real" ]; then
+    LDEF=; SNAME=$CV_SERVER_NAME
+    if [[ $CV_SERVER_NAME =~ $RE_IP ]]; then
+      SNAME=$(hostname)
+      [[ $SNAME =~ $RE_HOST && ! $SNAME =~ $RE_IP ]] || SNAME=campusview.local
+    fi
+    echo "  Keeping the nginx site $real. CampusView answers for $SNAME."
+  else rm -f /etc/nginx/sites-enabled/default; fi
   L80=; L443=; if [ -f /proc/net/if_inet6 ]; then   # listen on IPv6 too, when the server has it
-    L80='    listen [::]:80 default_server;'$'\n'; L443='    listen [::]:443 ssl default_server;'$'\n'; fi
+    L80="    listen [::]:80${LDEF};"$'\n'; L443="    listen [::]:443 ssl${LDEF};"$'\n'; fi
   if [ "$CV_ACCESS" = https ]; then
     install -d -m 700 -o root -g root "$TLS"
     if [ "$CV_TLS_CERT_SOURCE" = own ]; then
@@ -683,12 +709,12 @@ else
   { echo "# CampusView, written by install.sh (re-running it rewrites this file)."
     echo "# Superset at /, Django at /app/. The apps and PostgreSQL listen on 127.0.0.1 only."
     if [ "$CV_ACCESS" = https ]; then
-      printf 'server {\n    listen 80 default_server;\n%s    server_name _;\n    return 301 https://$host$request_uri;\n}\n' "$L80"
-      printf 'server {\n    listen 443 ssl default_server;\n%s' "$L443"
+      printf 'server {\n    listen 80%s;\n%s    server_name %s;\n    return 301 https://$host$request_uri;\n}\n' "$LDEF" "$L80" "$SNAME"
+      printf 'server {\n    listen 443 ssl%s;\n%s' "$LDEF" "$L443"
       printf '    ssl_certificate     %s/campusview.crt;\n    ssl_certificate_key %s/campusview.key;\n    ssl_protocols TLSv1.2 TLSv1.3;\n' $TLS $TLS
-    else printf 'server {\n    listen 80 default_server;\n%s' "$L80"; fi
-    sed -e "s#@D@#$D#g" -e "s#@SP@#$CV_SUPERSET_PORT#g" -e "s#@DP@#$CV_DJANGO_PORT#g" <<'NGX'
-    server_name _;
+    else printf 'server {\n    listen 80%s;\n%s' "$LDEF" "$L80"; fi
+    sed -e "s#@D@#$D#g" -e "s#@SP@#$CV_SUPERSET_PORT#g" -e "s#@DP@#$CV_DJANGO_PORT#g" -e "s#@NAME@#$SNAME#g" <<'NGX'
+    server_name @NAME@;
     client_max_body_size 100m;
     proxy_http_version 1.1;
     proxy_read_timeout 300s;
@@ -706,7 +732,7 @@ else
 }
 NGX
   } | put "$SITE" 644 || true
-  ln -sfn "$SITE" /etc/nginx/sites-enabled/campusview; rm -f /etc/nginx/sites-enabled/default
+  ln -sfn "$SITE" /etc/nginx/sites-enabled/campusview
   nginx_up
   runuser -u www-data -- test -r "$D/static/admin/css/base.css" 2>/dev/null ||
     echo "  NOTE: nginx (www-data) can't read $D/static, so the Django admin pages will have no styling."
@@ -720,10 +746,13 @@ ok=1
 for u in "http://127.0.0.1:$CV_SUPERSET_PORT/health" "http://127.0.0.1:$CV_SUPERSET_PORT/login/" "http://127.0.0.1:$CV_DJANGO_PORT/admin/login/"; do
   wait200 "$u" || ok=0; echo "  $(code "$u")  $u"; done
 if [ "$CV_ACCESS" != tunnel ]; then   # through nginx, the way a browser comes in (curl -k: the certificate may be self-signed)
-  pcode(){ curl -sk --noproxy '*' --resolve "$CV_SERVER_NAME:80:127.0.0.1" --resolve "$CV_SERVER_NAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "$1" || true; }
+  hit=$CV_SERVER_NAME
+  if [ "$SNAME" != _ ] && [ "$SNAME" != "$CV_SERVER_NAME" ]; then
+    hit=$SNAME; URL_SS="$CV_ACCESS://$SNAME/"; URL_DJ="$CV_ACCESS://$SNAME/app/"; fi
+  pcode(){ curl -sk --noproxy '*' --resolve "$hit:80:127.0.0.1" --resolve "$hit:443:127.0.0.1" -o /dev/null -w '%{http_code}' "$1" || true; }
   for u in "${URL_SS}health" "${URL_SS}login/" "${URL_SS}app/admin/login/"; do
     for i in $(seq 30); do [ "$(pcode "$u")" = 200 ] && break; sleep 2; done; echo "  $(pcode "$u")  $u"; [ "$(pcode "$u")" = 200 ] || ok=0; done
-  if [ "$CV_ACCESS" = https ]; then u="http://$CV_SERVER_NAME/login/"; echo "  $(pcode "$u")  $u (should send you to https)"; [ "$(pcode "$u")" = 301 ] || ok=0; fi
+  if [ "$CV_ACCESS" = https ]; then u="http://$hit/login/"; echo "  $(pcode "$u")  $u (should send you to https)"; [ "$(pcode "$u")" = 301 ] || ok=0; fi
 fi
 dbs=$(psqlq -c "SELECT string_agg(datname, ' ' ORDER BY datname) FROM pg_database WHERE datname IN ('superset_meta','django_app','campusview_data')")
 echo "  databases: $dbs"; [ "$(wc -w <<<"$dbs")" = 3 ] || ok=0
