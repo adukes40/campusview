@@ -4,6 +4,27 @@ Dated log of decisions already made. The plan of record is [PLAN.md](PLAN.md). N
 
 Open metric questions are not listed here. They are the Decisions for Austin list in [METRICS.md](METRICS.md). Open extract questions are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md). Both lists are deferred for now and do not block step 0.
 
+## 2026-11-02 — Two warehouse accounts, and the schema name `ref`
+
+**What:** The installer creates two accounts for the report database, `campusview_data`:
+
+- **`campusview_owner`** owns the database and its schemas `raw`, `ref`, and `reporting`. The loader writes as this account in step 1.
+- **`campusview_reader`** can log in and connect, and can read the `reporting` schema only. Tables and views added there later are readable automatically. It cannot see `raw` or `ref`, cannot write, and cannot create anything. Superset's data connection should use it. The installer does not create that connection.
+
+`superset_user` now owns only `superset_meta`, and cannot connect to `campusview_data`. `django_user` owns `django_app`. The passwords are in `/etc/campusview/campusview.env`.
+
+The middle schema is named `ref`. Upgrades rename an existing `mapping` schema to `ref` automatically.
+
+**Why:** Superset should read finished report views, not raw loaded data. A separate owner for the loader keeps writing rights away from Superset. "Mapping" already names the step that turns vendor files into CampusView's standard files, so a schema with the same name would be confusing.
+
+**Who:** Austin asked for the read-only account, through the CampusView Engineer's scope check. The docs keeper chose the name `ref`.
+
+**Status:** Built and merged in the installer (PR #3).
+
+**Alternatives:** Keep `superset_user` as the owner of `campusview_data` until step 1. Set aside: Superset would have more than read access to student data. Keep the name `mapping`. Set aside: it clashes with the transform step.
+
+**Resolves:** Open question 5, "Warehouse database users", in [PLAN.md](PLAN.md).
+
 ## 2026-11-02 — Offer nginx with HTTP or HTTPS
 
 **What:** `install.sh` gets an optional nginx step. nginx is a web server that sits in front of the apps and is the one thing staff connect to. The wizard offers three choices:
@@ -14,7 +35,7 @@ Open metric questions are not listed here. They are the Decisions for Austin lis
 
 nginx comes from the distro's own apt repo. Superset is at `/` and Django is at `/app/`. gunicorn (Superset on 127.0.0.1:8088, Django on 127.0.0.1:8000) and PostgreSQL stay on 127.0.0.1. PostgreSQL is never exposed, and DBeaver keeps using an SSH tunnel. nginx is the only thing listening on the network. Nothing else is added: no Redis, no Docker.
 
-A re-run shows the saved choice and asks whether to change it. Which choice is the default is not recorded here yet; Austin settles it when he merges the installer pull request.
+A re-run shows the saved choice and asks whether to change it. The default is HTTPS on port 443 with a self-signed certificate, so pressing Enter gives a server reachable by its address. Austin accepted that default when he merged PR #5 on 2026-11-02.
 
 **Why:** Austin wants to open CampusView by the server's address from his own computer, without an SSH tunnel. His words: "build the install to allow http or https, I will reset the ct, and rerun the new installer once you have it complete."
 
@@ -22,7 +43,7 @@ A re-run shows the saved choice and asks whether to change it. Which choice is t
 
 **Tradeoff:** Plain HTTP sends logins and passwords unencrypted across the network. Austin accepted that for test machines because all data there is fake ("all data would be fake"). HTTP is for test machines with fake data only. Real student data needs HTTPS.
 
-**Status:** Decided. The docs describe this target. The installer step is in progress, in a separate pull request from the CampusView Engineer after PR #3.
+**Status:** Built. The installer step merged to `main` in PR #5.
 
 **Alternatives:** Local only with an SSH tunnel for everyone. Still available as one of the three choices. Deferring the proxy until later. Set aside because Austin wants network access on his test machine now.
 

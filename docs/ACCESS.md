@@ -6,7 +6,7 @@ Default deny is the starting point. A person with no role sees no rows. A person
 
 ## Roles
 
-The install sets up three Superset roles. A district may rename them, or add a role by copying one of these. Nothing in CampusView depends on the English name.
+There are three starter Superset roles. The installer does not create them; they are set up in step 2 (see [PLAN.md](PLAN.md)). A district may rename them, or add a role by copying one of these. Nothing in CampusView depends on the English name.
 
 | Capability | System admin | District admin | School admin |
 | --- | --- | --- | --- |
@@ -48,15 +48,15 @@ Deactivating a user in Superset stops their sign-in.
 
 | Database user | Allowed | Not allowed |
 | --- | --- | --- |
-| Superset (settings) | Owns `superset_meta`, Superset's own settings and users. | Student data. |
-| Superset (warehouse) | `SELECT` on reporting views in `campusview_data`. | Raw tables, mapping tables, load history. |
-| Django | Owns `django_app`, Django's default tables. | `campusview_data`. Django has no v1 role. |
-| Loader (step 1) | Write raw, mapping tables, and load history in `campusview_data`. | Superset's and Django's databases. |
+| `superset_user` (Superset's settings) | Owns `superset_meta`, Superset's own settings and users. | Connecting to `campusview_data` at all. `CONNECT` on it is revoked from everyone by default. |
+| `campusview_reader` (Superset's report data connection, and safe DBeaver browsing) | Log in and connect to `campusview_data`. `USAGE` and `SELECT` on the `reporting` schema only. Tables and views the owner adds to `reporting` later are readable automatically. | The `raw` and `ref` schemas. Any write. Creating anything. |
+| `django_user` (Django) | Owns `django_app`, Django's default tables. | `campusview_data`. Django has no v1 role. |
+| `campusview_owner` (the loader, from step 1) | Owns `campusview_data` and its schemas `raw`, `ref`, and `reporting`. The loader writes as this account. | Superset's and Django's databases. |
 | Sandbox (testing install only) | `SELECT` on raw and reporting. Create objects in the scratch schema. | Production. The production database does not have this user. |
 
-**To fix when the warehouse is set up:** the base install currently makes the Superset database user the owner of `campusview_data`. That gives Superset more than `SELECT` on reporting. Step 1 should give the loader its own owner user and connect Superset to the warehouse with a separate read-only user.
+**Resolved 2026-11-02:** the installer now creates `campusview_owner` and `campusview_reader`, and `superset_user` no longer owns `campusview_data`. An older install is moved over when the installer runs again. The installer does not create Superset's data connection; when you add it, use `campusview_reader`. Passwords are in `/etc/campusview/campusview.env`: `CV_SUPERSET_DB_PASSWORD`, `CV_DJANGO_DB_PASSWORD`, `CV_OWNER_DB_PASSWORD`, `CV_READER_DB_PASSWORD`, plus `CV_SECRET_KEY` and `CV_ADMIN_PASSWORD`. See [DECISIONS.md](DECISIONS.md).
 
-SQL Lab for the system admin uses the Superset warehouse user, so it can see reporting views and cannot see raw tables. Exploring raw data is a testing-sandbox task.
+SQL Lab for the system admin uses Superset's data connection as `campusview_reader`, so it can see reporting views and cannot see raw tables. Exploring raw data is a testing-sandbox task.
 
 ## Permissions check
 
@@ -78,4 +78,4 @@ Step 2 checks this table by hand in a browser, on fake data, as each role. Schoo
 
 The equity path is called out because that view is the only one built from race or ethnicity, and the check confirms that the result has no student id and no name.
 
-The check also covers the database grants: the Superset warehouse user's `SELECT` on a raw table fails.
+The check also covers the database grants: `campusview_reader`'s `SELECT` on a raw table fails.

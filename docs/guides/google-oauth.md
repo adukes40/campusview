@@ -12,7 +12,7 @@ What to create: one project for CampusView, one OAuth client of the kind a web s
 
 Which redirect URL must match Superset's sign-in callback. Which two values are needed (client id and client secret) and where the secret is stored (a config file on the server, not either git repo).
 
-Google sign-in also needs Superset to be reachable at a real web address, which needs the installer's HTTPS choice (nginx on port 443). That step is decided and in progress.
+Google sign-in also needs Superset to be reachable at a real web address, which needs the installer's HTTPS choice (nginx on port 443). The installer has that choice.
 
 ## Who may sign in
 
