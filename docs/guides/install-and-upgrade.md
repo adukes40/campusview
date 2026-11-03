@@ -8,7 +8,25 @@ This guide is for the person who runs the server. It stays generic. District set
 
 Use a server that meets [Server requirements](server-requirements.md). You need a login that can reach the server over SSH.
 
-`install.sh` is at the root of this repo. Copy it onto the server. On Ubuntu, start it with `sudo ./install.sh`. On Debian, where you are already root, start it with `./install.sh`.
+A minimal Debian install has no curl. As root, install it before you fetch the script.
+
+```bash
+apt-get update && apt-get install -y curl
+```
+
+On Ubuntu, if curl is missing, install it with sudo.
+
+```bash
+sudo apt-get install -y curl
+```
+
+Fetch the installer from main.
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/adukes40/campusview/main/install.sh
+```
+
+Debian often has no sudo. As root, run `bash install.sh`. Otherwise run `sudo bash install.sh`.
 
 The installer always uses PostgreSQL 17 from postgresql.org. It does not ask which PostgreSQL to use.
 
@@ -16,7 +34,7 @@ The installer always uses PostgreSQL 17 from postgresql.org. It does not ask whi
 
 Press Enter to accept the value shown in brackets. When you type a password, nothing appears on the screen. That is on purpose. If you type a password, you type it twice. If you press Enter on a password prompt on the first run, the installer makes a strong password for you. On a later run, Enter on a password that was already saved keeps the saved one.
 
-A password needs at least 8 characters. It cannot contain a space, an apostrophe (`'`), or a backslash (`\`). If a password breaks a rule, the installer says so and asks again.
+A password needs at least 8 characters. It cannot contain a space, a single quote (`'`), a double quote (`"`), or a backslash (`\`). The install folder may use only letters, digits, `.`, `_`, `-`, and `/`. The admin email must be a plain address, like `name@school.org`. If you break a rule, the installer says so and asks again. With an answers file, it stops and names the setting, and it changes nothing.
 
 ## Which account does what
 
@@ -26,7 +44,7 @@ A password needs at least 8 characters. It cannot contain a space, an apostrophe
 | `superset_user`, database | Superset, behind the scenes, for its own database `superset_meta` only. It cannot connect to `campusview_data`. | Nowhere. Only Superset uses it. |
 | `django_user`, database | Django, behind the scenes, for its database `django_app`. | Nowhere. Only Django uses it. |
 | `campusview_reader`, database, question 8 | Superset, to read report data. It can read the `reporting` schema of `campusview_data` and nothing else. It cannot change anything. | DBeaver, for safe browsing. Also the account to use when you add the report data connection in Superset. The installer does not create that connection. |
-| `campusview_owner`, database, question 9 | The data loader in Step 1. It owns `campusview_data` and its schemas `raw`, `mapping`, and `reporting`. | DBeaver, only when you need full access. Use it with care. It can change and delete data. |
+| `campusview_owner`, database, question 9 | The data loader in Step 1. It owns `campusview_data` and its schemas `raw`, `ref`, and `reporting`. | DBeaver, only when you need full access. Use it with care. It can change and delete data. |
 | Superset secret key | Superset. It locks the connection details Superset saves. | Nowhere. It must never change after the first install, or Superset can no longer read what it saved. |
 | Admin login, questions 11 to 13 | You. | Signing in to the Superset web page and the Django admin page. The username and password are the same for both. |
 
@@ -39,10 +57,10 @@ All passwords and the key are saved in `/etc/campusview/campusview.env`. Read th
 | Schema | Owner | Who can read it |
 | --- | --- | --- |
 | `raw`, loaded data | `campusview_owner` | `campusview_owner` only |
-| `mapping` | `campusview_owner` | `campusview_owner` only |
+| `ref`, reference and lookup data | `campusview_owner` | `campusview_owner` only |
 | `reporting`, views for reports | `campusview_owner` | `campusview_owner`, and `campusview_reader` with read only access. Anything the owner adds here later is readable by `campusview_reader` automatically. |
 
-The schemas start empty. They fill up in Step 1. No other account can connect to `campusview_data`.
+The schemas start empty. They fill up in Step 1. Earlier installs called `ref` by the name `mapping`. A second run renames `mapping` to `ref` when `ref` does not exist yet. No other account can connect to `campusview_data`.
 
 ### Connect with DBeaver
 
@@ -59,7 +77,7 @@ Each group is shown under its heading, such as `--- Where CampusView goes ---`.
 | # | Heading | Prompt on screen | Default in brackets | Secret? | Help text shown above it |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Where CampusView goes | Linux account that runs CampusView | The account you ran sudo from. On Debian, that is `root`. | No | An existing login on this server. The apps run as this account, and it owns their files and the password file. |
-| 2 | | Install folder | `/opt/campusview` | No | Where the programs go. It is created for you, owned by that account. |
+| 2 | | Install folder | `/opt/campusview` | No | Where the programs go. It is created for you, owned by that account. Letters, digits, . _ - and / only. |
 | 3 | Network ports | Database (PostgreSQL) port | `5432` | No | Keep these unless something else on this server already uses them. |
 | 4 | | Superset web page port | `8088` | No | |
 | 5 | | Django admin page port | `8000` | No | |
@@ -69,9 +87,9 @@ Each group is shown under its heading, such as `--- Where CampusView goes ---`.
 | 9 | | Password for campusview_owner | Enter = make one for me | Yes | `campusview_owner: full access to the data, used by the loader; use with care.` |
 | 10 | Superset secret key | Superset secret key | Enter = make one for me | Yes | Locks (encrypts) the connection details Superset saves. Never change it after the first install, or Superset can no longer read them. Press Enter to have one made. |
 | 11 | Your admin login | Admin username | `admin` | No | The username and password YOU sign in with, on both the Superset web page and the Django admin page. |
-| 12 | | Admin email | `admin@example.invalid` when the username is `admin` | No | Type a real address. That advice is not shown on screen. |
+| 12 | | Admin email | `admin@example.invalid` when the username is `admin` | No | Not shown on screen. Type a real address. It must be a plain address, like `name@school.org`. |
 | 13 | | Admin password | Enter = make one for me | Yes | |
-| 14 | Starting up | Start CampusView automatically when the server boots (yes/no) | `yes` | No | Not shown on screen. `yes` sets up the services `cv-superset` and `cv-django`. If systemd is not running, the installer says so and uses `start.sh` instead. |
+| 14 | Starting up | Start CampusView automatically when the server boots (yes/no) | `yes` | No | Not shown on screen. `yes` sets up the services `cv-superset` and `cv-django`. With `no`, use `start.sh` and `stop.sh` in the install folder. Run them as root or as the CampusView account. As root they switch accounts with `runuser`. Otherwise they use `sudo`. If neither works, they say to run them as root or as that account. If systemd is not running, the installer says so and uses `start.sh` instead. |
 
 After the questions, the installer shows a summary, then `Go ahead? [Y/n]`. Press Enter to accept `Y`. Answer `n` to quit, and the installer changes nothing.
 
@@ -131,6 +149,8 @@ A second run has not been tested after a change to the install folder, the Linux
 
 An earlier installer made `superset_user` the owner of `campusview_data`. Run the current `install.sh` on that server. It creates `campusview_owner` and `campusview_reader` with new passwords, saves those passwords in the password file, and hands `campusview_data` and everything in it to `campusview_owner`. Superset keeps working. The install folder you already chose is kept.
 
+If the database still has a schema named `mapping`, and `ref` does not exist yet, the same run renames `mapping` to `ref`.
+
 If you had already added a Superset data connection to `campusview_data` as `superset_user`, that connection stops working. Switch it to `campusview_reader`.
 
 This older-layout upgrade was tested once, on Debian 12.
@@ -164,6 +184,6 @@ The same release, loaded with fake data, is not part of this installer. Producti
 
 ## Uninstall
 
-This installer does not remove CampusView. To stop the apps, run `stop.sh` in the install folder. If you answered `yes` to start at boot, stop the services `cv-superset` and `cv-django` instead.
+This installer does not remove CampusView. To stop the apps, run `stop.sh` in the install folder. Run it as root or as the CampusView account. As root it uses `runuser`. Otherwise it uses `sudo`. If neither works, it tells you to run it as root or as that account. If you answered `yes` to start at boot, stop the services `cv-superset` and `cv-django` instead.
 
 Dropping the `campusview_data` database deletes the warehouse. The district repo is a separate checkout and is not removed.

@@ -30,7 +30,8 @@ HAS_SYSTEMD=no; [ -d /run/systemd/system ] && HAS_SYSTEMD=yes
 
 # value rules (shared by the wizard and the answers file)
 RE_PORT='^[0-9]{2,5}$'; RE_YN='^(yes|no)$'; RE_NAME='^[A-Za-z0-9_.@+-]+$'
-RE_SECRET='^[^'"'"'\[:space:]]{8,}$'   # 8+ chars, no spaces, no ' or \
+RE_SECRET='^[^'"'"'"\[:space:]]{8,}$'   # 8+ chars, no spaces, no ' " or \
+RE_PATH='^/[A-Za-z0-9._/-]*$'; RE_EMAIL='^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$'   # nothing that could break the saved file
 
 say(){ printf '\n==> %s\n' "$*"; }
 section(){ printf '\n--- %s ---\n' "$1"; }   # wizard section heading
@@ -45,7 +46,7 @@ ask(){ # ask VAR REGEX "Prompt" ["help line"] [secret]
       local hint="Enter = make one for me"; [ -n "${!var}" ] && hint="Enter = keep the saved one"
       read -r -s -p "  $prompt [$hint]: " ans; echo
       [ -z "$ans" ] && return 0
-      [[ $ans =~ $re ]] || { echo "  Use at least 8 characters, with no spaces, quotes or backslashes."; continue; }
+      [[ $ans =~ $re ]] || { echo "  Use at least 8 characters, with no spaces, quotes (' or \") or backslashes."; continue; }
       read -r -s -p "  Type it again: " again; echo
       [ "$ans" = "$again" ] || { echo "  Those didn't match. Try again."; continue; }
     else
@@ -72,7 +73,7 @@ B
   section "Where CampusView goes"
   ask CV_RUN_USER "$RE_NAME" "Linux account that runs CampusView" "An existing login on this server. The apps run as this account, and it owns their files and the password file."
   until getent passwd "$CV_RUN_USER" >/dev/null; do echo "  There is no Linux user called $CV_RUN_USER."; ask CV_RUN_USER "$RE_NAME" "Linux account that runs CampusView"; done
-  ask CV_INSTALL_DIR '^/' "Install folder" "Where the programs go. It is created for you, owned by that account."
+  ask CV_INSTALL_DIR "$RE_PATH" "Install folder" "Where the programs go. It is created for you, owned by that account. Letters, digits, . _ - and / only."
   section "Network ports"
   ask CV_PG_PORT "$RE_PORT" "Database (PostgreSQL) port" "Keep these unless something else on this server already uses them."
   ask CV_SUPERSET_PORT "$RE_PORT" "Superset web page port"
@@ -93,7 +94,7 @@ B
     printf '\n  The username and password YOU sign in with, on both the Superset web page\n  and the Django admin page.\n'
     ask CV_ADMIN_USER "$RE_NAME" "Admin username"
     [ -z "$CV_ADMIN_EMAIL" ] && CV_ADMIN_EMAIL="$CV_ADMIN_USER@example.invalid"
-    ask CV_ADMIN_EMAIL '^[^[:space:]]+@[^[:space:]]+$' "Admin email"
+    ask CV_ADMIN_EMAIL "$RE_EMAIL" "Admin email"
     ask CV_ADMIN_PASSWORD "$RE_SECRET" "Admin password" "" secret
   else
     section "Report data accounts, Superset secret key and your admin login"
@@ -104,7 +105,7 @@ B
 fi
 
 # ---------- validate, fill in generated secrets ----------
-chk(){ [[ ${!1} =~ $2 ]] || die "$1 has an invalid value"; }
+chk(){ [[ ${!1} =~ $2 ]] || die "$1 has an invalid value${3:+ ($3)}"; }
 [ -z "$CV_SUPERSET_DB_PASSWORD" ] && CV_SUPERSET_DB_PASSWORD=$(openssl rand -hex 16)
 [ -z "$CV_DJANGO_DB_PASSWORD" ] && CV_DJANGO_DB_PASSWORD=$(openssl rand -hex 16)
 [ -z "$CV_OWNER_DB_PASSWORD" ] && CV_OWNER_DB_PASSWORD=$(openssl rand -hex 16)
@@ -112,10 +113,11 @@ chk(){ [[ ${!1} =~ $2 ]] || die "$1 has an invalid value"; }
 [ -z "$CV_SECRET_KEY" ] && CV_SECRET_KEY=$(openssl rand -base64 42)
 [ -z "$CV_ADMIN_PASSWORD" ] && CV_ADMIN_PASSWORD=$(openssl rand -hex 10)
 [ -z "$CV_ADMIN_EMAIL" ] && CV_ADMIN_EMAIL="$CV_ADMIN_USER@example.invalid"
-chk CV_INSTALL_DIR '^/'; chk CV_SYSTEMD "$RE_YN"
+chk CV_INSTALL_DIR "$RE_PATH" "use a full path with letters, digits, . _ - and / only"; chk CV_SYSTEMD "$RE_YN"
+chk CV_ADMIN_EMAIL "$RE_EMAIL" "use a plain address like name@school.org"
 for v in CV_PG_PORT CV_SUPERSET_PORT CV_DJANGO_PORT; do chk $v "$RE_PORT"; done
 for v in CV_RUN_USER CV_ADMIN_USER CV_SUPERSET_DB_USER CV_DJANGO_DB_USER; do chk $v "$RE_NAME"; done
-for v in CV_SUPERSET_DB_PASSWORD CV_DJANGO_DB_PASSWORD CV_OWNER_DB_PASSWORD CV_READER_DB_PASSWORD CV_SECRET_KEY CV_ADMIN_PASSWORD; do chk $v "$RE_SECRET"; done
+for v in CV_SUPERSET_DB_PASSWORD CV_DJANGO_DB_PASSWORD CV_OWNER_DB_PASSWORD CV_READER_DB_PASSWORD CV_SECRET_KEY CV_ADMIN_PASSWORD; do chk $v "$RE_SECRET" "8+ characters, no spaces, quotes or backslashes"; done
 getent passwd "$CV_RUN_USER" >/dev/null || die "Linux user $CV_RUN_USER does not exist"
 [ "$CV_SYSTEMD" = yes ] && [ "$HAS_SYSTEMD" = no ] && { echo "systemd is not running here; using start.sh instead."; CV_SYSTEMD=no; }
 
@@ -148,6 +150,8 @@ B=$CV_INSTALL_DIR; S=$B/superset; D=$B/django
 as_run(){ if [ "$CV_RUN_USER" = root ]; then "$@"; else runuser -u "$CV_RUN_USER" -- "$@"; fi; }
 as_pg(){ (cd /tmp && runuser -u postgres -- "$@"); }
 
+cd /   # the run user may not be able to read the folder the installer was started from (uv reads ./uv.toml)
+
 # ---------- 1. packages ----------
 say "1. system packages"
 export DEBIAN_FRONTEND=noninteractive
@@ -178,7 +182,10 @@ say "3. database roles and databases"
 psqlq(){ as_pg psql -p "$CV_PG_PORT" -v ON_ERROR_STOP=1 -qAt "$@"; }
 mkrole(){ local r=$1 p=$2
   [ "$(psqlq -c "SELECT 1 FROM pg_roles WHERE rolname='$r'")" = 1 ] || psqlq -c "CREATE ROLE $r LOGIN"
-  psqlq <<<"ALTER ROLE $r WITH LOGIN PASSWORD '${p//\'/\'\'}';"; }
+  # On failure psql (and the server log) can quote the statement, so keep the server from logging it and
+  # hide the password in anything shown.
+  local err; err=$(psqlq 2>&1 >/dev/null <<<"SET log_min_error_statement = panic; ALTER ROLE $r WITH LOGIN PASSWORD '$p';") ||
+    die "could not set the password for database role $r: ${err//"$p"/<hidden>}"; }
 mkdb(){ [ "$(psqlq -c "SELECT 1 FROM pg_database WHERE datname='$1'")" = 1 ] || psqlq -c "CREATE DATABASE $1 OWNER $2"; }
 mkrole "$CV_SUPERSET_DB_USER" "$CV_SUPERSET_DB_PASSWORD"
 mkrole "$CV_DJANGO_DB_USER" "$CV_DJANGO_DB_PASSWORD"
@@ -200,11 +207,14 @@ DO \$\$ DECLARE r record; BEGIN
              AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = c.oid AND d.deptype IN ('a','i')) LOOP
     EXECUTE format('ALTER %s %s OWNER TO campusview_owner', r.k, r.t); END LOOP;
 END \$\$;
+DO \$\$ BEGIN   -- earlier installs called the ref schema "mapping"
+  IF to_regnamespace('mapping') IS NOT NULL AND to_regnamespace('ref') IS NULL THEN ALTER SCHEMA mapping RENAME TO ref; END IF;
+END \$\$;
 CREATE SCHEMA IF NOT EXISTS raw AUTHORIZATION campusview_owner;
-CREATE SCHEMA IF NOT EXISTS mapping AUTHORIZATION campusview_owner;
+CREATE SCHEMA IF NOT EXISTS ref AUTHORIZATION campusview_owner;
 CREATE SCHEMA IF NOT EXISTS reporting AUTHORIZATION campusview_owner;
 ALTER SCHEMA raw OWNER TO campusview_owner;
-ALTER SCHEMA mapping OWNER TO campusview_owner;
+ALTER SCHEMA ref OWNER TO campusview_owner;
 ALTER SCHEMA reporting OWNER TO campusview_owner;
 GRANT USAGE ON SCHEMA reporting TO campusview_reader;
 GRANT SELECT ON ALL TABLES IN SCHEMA reporting TO campusview_reader;
@@ -299,10 +309,16 @@ say "7. start.sh / stop.sh"
 cat > "$B/start.sh" <<'C'
 #!/usr/bin/env bash
 # Start Superset and Django without systemd (use systemctl instead if you said yes to start-at-boot).
-U=$(stat -c %U /etc/campusview/campusview.env)
-[ "$(id -un)" = "$U" ] || exec sudo -u "$U" "$0" "$@"     # run as the account that owns the secrets
+U=$(stat -c %U "$0")                                      # the install's account owns this script and the secrets
+if [ "$(id -un)" != "$U" ]; then
+  if [ "$(id -u)" = 0 ]; then exec runuser -u "$U" -- "$0" "$@"
+  elif command -v sudo >/dev/null; then exec sudo -u "$U" "$0" "$@"
+  else echo "Run this as $U or as root (sudo is not installed)." >&2; exit 1; fi
+fi
+export HOME=$(getent passwd "$U" | cut -d: -f6)          # runuser keeps root's HOME; Superset writes under ~
 set -a; . /etc/campusview/campusview.env; set +a
 B=$CV_INSTALL_DIR; export SUPERSET_CONFIG_PATH=$B/superset/superset_config.py
+cd "$B/superset"                                          # gunicorn fails if it cannot read the starting folder
 running(){ [ -f "$B/$1.pid" ] && kill -0 "$(cat "$B/$1.pid")" 2>/dev/null; }
 running superset || nohup "$B/superset/venv/bin/gunicorn" -w "$CV_SUPERSET_WORKERS" -k gthread --threads 2 --timeout 120 \
   -b "127.0.0.1:$CV_SUPERSET_PORT" --limit-request-line 0 --limit-request-field_size 0 --pid "$B/superset.pid" \
@@ -313,8 +329,12 @@ echo started
 C
 cat > "$B/stop.sh" <<'C'
 #!/usr/bin/env bash
-U=$(stat -c %U /etc/campusview/campusview.env)
-[ "$(id -un)" = "$U" ] || exec sudo -u "$U" "$0" "$@"
+U=$(stat -c %U "$0")                                      # the install's account owns this script and the secrets
+if [ "$(id -un)" != "$U" ]; then
+  if [ "$(id -u)" = 0 ]; then exec runuser -u "$U" -- "$0" "$@"
+  elif command -v sudo >/dev/null; then exec sudo -u "$U" "$0" "$@"
+  else echo "Run this as $U or as root (sudo is not installed)." >&2; exit 1; fi
+fi
 cd "$(dirname "$0")"; B=$PWD
 for p in superset django; do [ -f $B/$p.pid ] && kill "$(cat $B/$p.pid)" 2>/dev/null && echo "stopped $p"; rm -f $B/$p.pid; done
 C
@@ -380,7 +400,7 @@ INSTALL OK
 Connect with DBeaver (or another database tool)
   Host 127.0.0.1   Port $CV_PG_PORT   Database campusview_data
   campusview_reader  safe browsing: sees the reporting views only (empty until Step 1)
-  campusview_owner   full access to the data; use with care
+  campusview_owner   full access to the raw, ref and reporting schemas; use with care
   Passwords: CV_READER_DB_PASSWORD / CV_OWNER_DB_PASSWORD in $ENVF
   The database only listens on this server, so for either account turn on DBeaver's
   SSH tunnel to this server (or run: ssh -L $CV_PG_PORT:127.0.0.1:$CV_PG_PORT you@this-server).
