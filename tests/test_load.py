@@ -76,6 +76,7 @@ def test_text_blanks_quotes_and_cutoff(db, tmp_path):
         **{
             "enrollment.csv": [
                 cells("enrollment.csv", enrollmentID="1", personID="1", calendarID="104", endDate="2017-06-01"),
+                cells("enrollment.csv", enrollmentID="6", personID="1", calendarID="226", startDate="2023-08-01"),
                 cells("enrollment.csv", enrollmentID="2", personID="1", calendarID="20", endDate="2029-06-01"),
                 cells("enrollment.csv", enrollmentID="3", personID="1", calendarID="3", endDate="2025-06-30"),
                 cells("enrollment.csv", enrollmentID="4", personID="1", calendarID="245", startDate="2025-08-01"),
@@ -96,6 +97,7 @@ def test_text_blanks_quotes_and_cutoff(db, tmp_path):
     assert "Warning: calendar 245 has enrollments and no Day rows." in report
     assert report.index("calendar 20") < report.index("calendar 245")
     assert "calendar 104" not in report
+    assert "calendar 226" not in report
     assert "calendar 3 " not in report
     assert "calendar 1 " not in report
 

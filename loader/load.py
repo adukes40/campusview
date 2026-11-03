@@ -79,14 +79,23 @@ def copy_failure(exc, name) -> str:
 
 
 def check_folder(folder: Path):
+    message = ""
+    names = []
     if not folder.exists():
-        return "server", ["The folder is not on this machine."], []
-    if not folder.is_dir():
-        return "server", ["That path is not a folder."], []
-    try:
-        names = [entry.name for entry in folder.iterdir() if entry.is_file() and entry.name.lower().endswith(".csv")]
-    except OSError:
-        return "server", ["The server could not read the folder."], []
+        message = "The folder is not on this machine."
+    elif not folder.is_dir():
+        message = "That path is not a folder."
+    else:
+        try:
+            names = [
+                entry.name
+                for entry in folder.iterdir()
+                if entry.is_file() and entry.name.lower().endswith(".csv")
+            ]
+        except OSError:
+            message = "The server could not read the folder."
+    if message:
+        return "server", [message], []
     problems = []
     ready = []
 
@@ -95,7 +104,7 @@ def check_folder(folder: Path):
 
     for name, columns in FILES.items():
         path = folder / name
-        if name not in names and not path.is_file():
+        if not path.is_file():
             problem(name, "The file is missing from the folder.")
             continue
         reason, header = check_header(path, columns)
@@ -188,7 +197,7 @@ def day_warnings(conn) -> list[str]:
         SELECT e."calendarID"
         FROM raw.enrollment e
         WHERE e."calendarID" ~ '^[0-9]+$'
-          AND (e."endDate" IS NULL OR e."endDate" >= %s)
+          AND COALESCE(e."endDate", e."startDate") >= %s
           AND NOT EXISTS (
               SELECT 1 FROM raw.day d WHERE d."calendarID" = e."calendarID"
           )
