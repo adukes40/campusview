@@ -1,6 +1,6 @@
 # Data contract
 
-These are the CSV layouts CampusView loads. Columns listed here are the whole layout. A file with an extra column is rejected, so a narrative, a comment, or an SSN cannot ride along quietly. Do not add free-text narrative columns or highly sensitive identifiers (SSN, state student id, medical id, address, phone, email, date of birth).
+These are the CSV layouts CampusView loads. The columns listed here are the whole layout. Every column the contract lists is kept, and nothing is dropped. An unknown or misspelled header fails the file with a clear report (Austin, relayed by CampusView Engineer, 2026-11-03). Nothing Austin pulls in is banned: a state student id, a date of birth, staff names, a school's address and phone, and SSN, medical, email, or notes columns if he ever sends them. Each new column or table is added through the change process below. None of this data ever goes into the public repo. See [DECISIONS.md](DECISIONS.md), 2026-11-03.
 
 The Infinite Campus section says how a typical extract maps onto these files. It is general public knowledge of how that product is organized, not a description of one district's screens. Anything that depends on local setup is marked **TO CONFIRM** and collected at the end for Austin.
 
@@ -8,7 +8,7 @@ The Infinite Campus section says how a typical extract maps onto these files. It
 
 - UTF-8, comma-separated, a header row, quoting when a value contains a comma.
 - Header names match this document exactly, lowercase, in any column order.
-- An unknown header fails the file. A missing required header fails the file.
+- An unknown or misspelled header fails the file, and the report names that header (Austin, relayed by CampusView Engineer, 2026-11-03). A missing required header fails the file.
 - Character set for every id: letters, digits, hyphen, underscore, length 1 to 64.
 - Dates are `YYYY-MM-DD`. Times are `HH:MM` in 24-hour local time.
 - Booleans are `true` or `false`.
@@ -23,6 +23,10 @@ The Infinite Campus section says how a typical extract maps onto these files. It
 - Mapping files live in the district repo, not in the SFTP drop. They are required on every load. A bad mapping fails the load the same way a bad extract does.
 - One failed file fails the whole load. The previous snapshot stays.
 - Error reports name the file, the row number, and the rule. They do not repeat the cell value.
+
+## Changing the contract
+
+File names, header names, and date formats stay fixed (Austin, relayed by CampusView Engineer, 2026-11-03). Adding a new column or a new table to this contract needs a documented process. Until a column is added, a file that carries it fails with a clear report. **That process is not written yet.** Until it is, do not change a layout here without Austin.
 
 Load order inside the transaction follows the foreign keys: schools and students, then enrollments and calendar days, then attendance, incidents, incident behaviors, consequences, and plans. The check looks at the whole drop before anything is written.
 
@@ -69,7 +73,7 @@ Validation beyond types:
 
 - For one student, primary spans must not overlap in dates.
 - For one student, one school, and one school year, every row shares a single `grade`. Two grades in that combination fail the file. This is the working rule in Decisions for Austin, item 19, in [METRICS.md](METRICS.md): v1 does not represent a mid-year grade change unless Austin asks for it.
-- Every `school_id` that has an enrollment also has at least one calendar day in that school year.
+- A school that has enrollments but no calendar days in that school year does not fail the file. It loads, and the load report shows a warning naming the school and year (Austin, relayed by CampusView Engineer, 2026-11-03). Its students have no membership days until calendar days arrive.
 
 ## calendar_days.csv
 
@@ -80,8 +84,8 @@ One row per school per date. Key: (`school_id`, `calendar_date`).
 | `school_id` | text | yes | Must exist in `schools.csv`. |
 | `school_year` | school year | yes | |
 | `calendar_date` | date | yes | Unique with `school_id`. |
-| `is_school_day` | boolean | yes | `true` only when the day counts as membership. |
-| `day_value` | decimal | yes | Greater than 0 and at most 1. A full day is `1`. A half day is `0.5`. Required on every row so a half day is never guessed. |
+| `is_school_day` | boolean | yes | `true` only when the day counts as membership. From Infinite Campus, this is the Day table's `instruction` flag, not `schoolDay` (Austin, relayed by CampusView Engineer, 2026-11-03). |
+| `day_value` | decimal | yes | Greater than 0 and at most 1. A full day is `1`. A half day is `0.5`. Required on every row so a half day is never guessed. For now, every instruction day counts as 1 day, so the Infinite Campus mapping writes `1` on every row (Austin, relayed by CampusView Engineer, 2026-11-03, 10:32 AM ET). |
 
 Non-school days may be omitted. If they are included, `is_school_day` is `false` and reporting views ignore them. `day_value` on a non-school day is not used.
 
@@ -175,7 +179,7 @@ Key: `attendance_code`.
 | `counts_as` | text | yes | One of `PRESENT`, `ABSENT_EXCUSED`, `ABSENT_UNEXCUSED`, `TARDY_EXCUSED`, `TARDY_UNEXCUSED`, `PARTIAL`. |
 | `absence_portion` | decimal | yes | 0 through 1. |
 
-A `PRESENT` code has portion 0. An excused or unexcused absence typically has portion 1. `PARTIAL` is the half-day (or other partial) absence, and the portion says how much. A tardy code uses portion 0 unless this district has chosen that the tardy also removes part of the day. Views increment the tardy count from `counts_as` and apply `absence_portion` separately, so a tardy with portion 0 does not lower the attendance rate.
+A `PRESENT` code has portion 0. An excused or unexcused absence typically has portion 1. `PARTIAL` is the half-day (or other partial) absence, and the portion says how much. For now, the Infinite Campus mapping gives half-day absence codes portion 1, so a half-day absence counts as a full day absent, the same as any other absence (Austin, relayed by CampusView Engineer, 2026-11-03, 10:32 AM ET). This is provisional; see the follow-ups for the SIS person below. A tardy code uses portion 0 unless this district has chosen that the tardy also removes part of the day. Views increment the tardy count from `counts_as` and apply `absence_portion` separately, so a tardy with portion 0 does not lower the attendance rate.
 
 ### map_behavior_types.csv
 
@@ -251,25 +255,35 @@ What follows is the usual shape of Infinite Campus, from public product knowledg
 
 | CampusView field | Usual Infinite Campus source | Notes |
 | --- | --- | --- |
-| `students.student_id` | The student number shown on the student record | Use that visible number. Do not use the internal person id, and do not export the SSN or a state identifier. |
+| `students.student_id` | The student number shown on the student record | Use that visible number as `student_id`, not the internal person id or a state identifier. Any other id the extract sends is kept as its own listed column. |
 | `students.first_name`, `last_name` | The identity name fields | Which name is the legal name is local. |
 | `students.gender_code` | Demographics gender, as stored | Codes are district-defined. Copy them through and map them. |
 | `students.race_code` | Federal race and ethnicity fields | Which field feeds equity groups is local. |
 | `schools.school_id`, `school_name` | The school record attached to a calendar | Confirm whether the extract uses a number, a code, or an internal id. The same value must appear on enrollments, calendar days, and attendance. |
 | `enrollments` | An enrollment tied to a calendar: start date, end date, grade, service type | A primary service type becomes `is_primary` true. Other service types become false so they do not double-count membership. |
 | `enrollments.school_year` | The school year on that calendar | Infinite Campus often stores an end year. The mapping converts it to `YYYY-YYYY`. |
-| `calendar_days` | Calendar days flagged as instructional, plus the day's duration | Duration is the clue for `day_value`. A full instructional day becomes `1`. How a half day is flagged is local. |
-| `attendance` | A daily attendance result, if the district can export one | Otherwise period rows are rolled up to one row per student per date before they fit this contract. The roll-up rule is local. |
+| `calendar_days` | The Infinite Campus Day table (the school calendar's day records), which Austin will upload (Austin, relayed by CampusView Engineer, 2026-11-03) | Column details: set when the file arrives. A day counts for attendance when its `instruction` flag is set, not `schoolDay`. For now, every instruction day counts as 1 day, and a half-day absence counts as a full day absent (Austin, relayed by CampusView Engineer, 2026-11-03, 10:32 AM ET). A calendar with enrollments but no Day rows loads with a warning. *Suggested by the CampusView Engineer, not decided:* add `dayID` and `structureID` to the Day extract query (`day.sql`), because a calendar with more than one schedule structure repeats dates. `day.sql` is not in this repo. |
+| `attendance` | The daily attendance result | A student is present for the day when marked present in homeroom, even if they leave during homeroom. Tardies come from Infinite Campus's overnight attendance calculation (Austin, relayed by CampusView Engineer, 2026-11-03). Which columns carry the homeroom mark: set when the file arrives. |
 | `attendance.attendance_code` | The district's attendance code | The code's status (present, absent, tardy) and excuse (excused, unexcused) are configured in Infinite Campus. Copy the code. Put the meaning in `map_attendance_codes.csv`. |
 | `incidents` | A behavior incident, a behavior referral, or both | Staff in different districts use these words for different records. The mapping has to match Austin's workflow. |
 | `incident_behaviors` | The coded offense (behavior event) for the offender role | One event with two codes becomes two rows. Several offenders become several incident rows. |
 | `incidents.location_code`, `incident_time` | Location and time on the incident | Both are only as good as local entry. |
 | `incidents.status_code` | The referral or incident status in the local workflow | Map each real status to processed, open, and cancelled. |
-| `consequences` | The behavior resolution: type, dates, duration | Comments on the resolution are not exported. |
+| `consequences` | The behavior resolution: type, dates, duration | Other resolution columns the extract sends are kept. |
 | `plans` for an IEP | The special education plan: start, end, and annual review | Field names differ by state edition. |
-| `plans` for a 504 | Whichever place this district stores Section 504 | This is not the same module everywhere. It may be a plan type, a program record, or something configured locally. |
+| `plans` for a 504 | `program_participation`, rows for the 504 program (Austin, relayed by CampusView Engineer, 2026-11-03) | Column details: set when the file arrives. |
 
-Leave these Infinite Campus values out of every export file: SSN, state student identifier, addresses, phone numbers, emails, dates of birth, attendance comments, behavior narratives, resolution comments, and participant notes.
+Keep every table and column Austin's extract sends, once the change process adds it to the contract. Tables and columns this table does not map, such as a state student identifier, a date of birth, a referral's staff name, or a school's address, phone, and principal, are kept so later production tables can be built on them.
+
+### Expected Infinite Campus files
+
+What is known so far (Austin, relayed by CampusView Engineer, 2026-11-03):
+
+- Delivery is SFTP for now.
+- Extracts are capped to dates on or after 2025-07-01. Infinite Campus started in the 2025-26 school year, so the years kept are 2025-26 and 2026-27.
+- The Day table (calendar day records). Column details: set when the file arrives.
+- `program_participation`, for 504 status. Column details: set when the file arrives.
+- The first sample was 23 CSV files from the training database. Each had at most 1,000 rows because of the DB Hub plugin Austin used to pull them. The real extracts are not capped at 1,000 rows.
 
 The mapper does not invent codes and does not decide that a code is excused. It only reshapes rows. Meaning stays in the mapping tables so a code change is a district-repo edit, not a program change.
 
@@ -277,21 +291,29 @@ The mapper does not invent codes and does not decide that a code is excused. It 
 
 **Deferred, not blocking step 0.** For Austin, before the Infinite Campus mapping is written in step 1. The working text above is general product knowledge, not a claim about this district's files.
 
-1. Which export will actually be scheduled onto SFTP: an Ad Hoc filter CSV, the data-extract utility, or another report. CampusView will not connect to the Infinite Campus database.
-2. That each nightly file set is a full snapshot of every school year that should be kept (current year and the prior year, by default), not a file of changes since the previous night.
-3. The student number to use as `student_id`: the number staff see on the student record. Confirm the extract will omit the internal person id, the SSN, and any state identifier.
+1. *Partly answered (Austin, relayed by CampusView Engineer, 2026-11-03): delivery is SFTP for now. Which export builds the files is still open.* Which export will actually be scheduled onto SFTP: an Ad Hoc filter CSV, the data-extract utility, or another report. CampusView will not connect to the Infinite Campus database.
+2. *Partly answered (Austin, relayed by CampusView Engineer, 2026-11-03): keep 2025-26 and 2026-27; extracts start 2025-07-01. Whether each file set is a full snapshot is still open.* That each nightly file set is a full snapshot of every school year that should be kept (current year and the prior year, by default), not a file of changes since the previous night.
+3. The student number to use as `student_id`: the number staff see on the student record, not the internal person id or a state identifier.
 4. The school identifier to use as `school_id`, so the same value can be used in Superset's row-level security rules.
 5. How the calendar's school year is stored, including an end-year number if that is what Infinite Campus shows, so the mapping can write `YYYY-YYYY`.
-6. Whether secondary schools record period attendance, elementary schools record daily attendance, or both already have a daily result. The standard file is one row per student per date.
-7. The local rule that turns periods into a full-day or half-day absence, or confirmation that Infinite Campus already calculates a daily attendance value the extract should take instead.
+6. **Answered** (Austin, relayed by CampusView Engineer, 2026-11-03): the daily result is the homeroom mark. Whether secondary schools record period attendance, elementary schools record daily attendance, or both already have a daily result. The standard file is one row per student per date.
+7. **Answered** (Austin, relayed by CampusView Engineer, 2026-11-03): present for the day if marked present in homeroom, even if the student leaves during homeroom; tardies come from Infinite Campus's overnight calculation. The local rule that turns periods into a full-day or half-day absence, or confirmation that Infinite Campus already calculates a daily attendance value the extract should take instead.
 8. The attendance code list, and for each code whether it is present, an excused absence, an unexcused absence, an excused tardy, an unexcused tardy, or a partial day, plus the portion of the day.
-9. How a half instructional day shows up on the calendar, so `day_value` can be set to `0.5` instead of `1`.
+9. *Partly answered (Austin, relayed by CampusView Engineer, 2026-11-03): the Day table; attendance counts `instruction` days; for now, every instruction day counts as 1 day and a half-day absence counts as a full day absent (Austin, relayed by CampusView Engineer, 2026-11-03, 10:32 AM ET). How half days are marked, and whether they should ever count as half, is a follow-up below.* How a half instructional day shows up on the calendar, so `day_value` can be set to `0.5` instead of `1`.
 10. Which behavior record is "a referral" here: the behavior referral, the behavior incident, or both. Public material shows incidents, coded events, and resolutions; the referral workflow itself is configured per district.
 11. The status values staff really use, and which ones mean not yet processed, still open, closed, or void or cancelled.
 12. That one incident with several students should become one CampusView incident row per student.
 13. The location code list, and whether incident time is entered often enough to support an hour-of-day heatmap.
 14. The consequence code list, and which codes are exclusionary.
-15. Where 504 plans are stored in this district's Infinite Campus. IEP start, end, and annual review field names also need to be confirmed; they vary by state edition.
+15. *Partly answered (Austin, relayed by CampusView Engineer, 2026-11-03): 504 status comes from `program_participation`, 504 program. IEP field names are still open.* Where 504 plans are stored in this district's Infinite Campus. IEP start, end, and annual review field names also need to be confirmed; they vary by state edition.
 16. Which race or ethnicity field should feed the equity groups.
 17. Grade values as stored, such as `K`, `KF`, `01`, or `1`, so the grade map can match them.
-18. Whether the scheduled extracts will be built to omit comments, narratives, and highly sensitive identifiers, so those columns never land in the drop folder.
+18. *Partly answered (Austin, relayed by CampusView Engineer, 2026-11-03): keep every table and column sent; each one is added through the change process.* The full list of tables and columns the scheduled extracts will carry. The loader keeps all of them; the list tells the docs what lands in the drop folder.
+
+### Open follow-ups for the SIS person
+
+Raised from the Day table rules above (2026-11-03). Ask the district's Infinite Campus (SIS) person:
+
+1. `instruction` or `schoolDay`: which Day table flag is right for counting attendance days? CampusView uses `instruction` for now.
+2. Are there half-day, AM, or PM schedules, and how are half days marked in the Day table? Should a half day, or a half-day absence, ever count as half? For now, CampusView counts every instruction day as 1 day and every half-day absence as a full day absent.
+3. Should a calendar ever have enrollments but no Day rows? CampusView loads it with a warning for now.

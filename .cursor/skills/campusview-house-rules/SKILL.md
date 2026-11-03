@@ -2,7 +2,7 @@
 name: campusview-house-rules
 description: >-
   House rules for every change in the CampusView repository. Covers the
-  stack, security, fake data, the parking lot, one pull request per step,
+  stack, security, test data, the parking lot, one pull request per step,
   CI, hand-checked metric tests, and updating docs with the code. Use
   before any CampusView work.
 ---
@@ -23,16 +23,19 @@ Step 0 is documentation and the base install. Do not add application code in a d
 - No Redis, no Celery, no Superset worker or beat. The `celery` and `redis` libraries come with Superset; do not start or rely on them. The nightly load is a timed job on the server, not Celery.
 - Native install on Ubuntu or Debian. No containers. The CampusView Engineer owns the `install.sh` wizard and all engineering.
 - Files on SFTP are the only ingest. Do not add a direct connection to a student information system.
-- The product repo stays generic. District settings, code mappings, branding, and exported dashboards belong in the private district repo. Production pulls release tags, never raw `main`.
+- The product repo stays generic. District settings, code mappings, branding, and exported dashboards belong in the private district repo. Production pins a release tag cut from `main`. The dev server follows `dev`. No server pulls `main`. After each merge to `main`, remind Austin to cut a tag.
+- The dev server holds real data and is treated like production: no sandbox user, no training files, no agent access.
 
 ## Security
 
-- Fake data only, outside production. No real names, emails, student information, school names from a real district, keys, or district-specific values in code, tests, fixtures, logs, docs, or commits. Examples use obvious placeholders such as `STU-001` and `School A`.
-- Production must refuse the fake-data generator. The testing install uses the same release tag and the generator.
+- Fake data only, outside production. The Infinite Campus training database is completely fictional and counts as fake data. No real names, emails, student information, school names from a real district, keys, screenshots, or district-specific values in code, tests, fixtures, logs, docs, or commits. Exception: the IC start year, the extract cutoff date, and the homeroom rule stay in the docs. Examples use obvious placeholders such as `STU-001` and `School A`.
+- There is no fake-data generator. Tests and the testing install use Infinite Campus training-database extracts that Austin supplies. They never go in the repo; they stay on the builder's computer. Production and the dev server do not load them. The testing install is the builder's computer, or a fake-data server later, never the dev server.
+- Every column the data contract lists is kept. Do not drop or ban a column. An unknown or misspelled header fails the file with a clear report.
+- File names, header names, and date formats in the data contract stay fixed. Adding a column or table to the contract needs a documented process, which is not written yet.
 - Secrets live only in `/etc/campusview/campusview.env` on the server (mode 600, owned by the account that runs CampusView, folder mode 700), loaded by systemd `EnvironmentFile=` or `start.sh`. `superset_config.py` and `settings.py` read them from the environment. Only Django's own generated `SECRET_KEY` stays in `settings.py`, which is mode 600. Never in source, argv, a fixture, or either git repo.
 - Default deny. No role, or no school, means no rows. Superset self-signup stays off.
 - Access lives in Superset roles and row-level security on `school_id`. Do not publish a dataset that has no `school_id`. A native filter is never a permission.
-- PostgreSQL and gunicorn (Superset and Django) listen on 127.0.0.1 only. PostgreSQL uses `listen_addresses = '127.0.0.1'`, not `localhost` (that also opens `[::1]`). nginx, when chosen in the installer, is the only listener on the network: HTTP on 80, or HTTPS on 443 with 80 redirecting to 443. Never expose PostgreSQL; DBeaver uses an SSH tunnel. Plain HTTP only on test machines with fake data; real student data needs HTTPS. Do not open any other port without Austin's decision.
+- PostgreSQL and gunicorn (Superset and Django) listen on 127.0.0.1 only. PostgreSQL uses `listen_addresses = '127.0.0.1'`, not `localhost` (that also opens `[::1]`). nginx, when chosen in the installer, is the only listener on the network: HTTP on 80, or HTTPS on 443 with 80 redirecting to 443. Never expose PostgreSQL; DBeaver uses an SSH tunnel. Plain HTTP only on an on-prem test machine that is not on the internet; real student data needs HTTPS. One exception, accepted by Austin: the on-prem dev server may use plain HTTP during early testing, and must move to HTTPS before production gets Google sign-on or real users. Production always uses HTTPS. Do not open any other port without Austin's decision.
 - Do not log cell values, secrets, or full row dumps. A loader error names the file, the row number, and the rule.
 - Named working lists have no race column. Equity output has group totals only.
 
@@ -47,7 +50,8 @@ A new idea, including one that appears mid-build, is written into the Parking lo
 ## How work lands
 
 - One pull request per plan step. Do not mix two steps.
-- CI must pass before the step is done. Once releases exist, CI includes a fresh install and an upgrade from the previous release.
-- Every metric has a test with a hand-checked answer on fake data. The test reads the reporting view. It does not reimplement the formula.
+- CI on GitHub must pass before the step is done. It runs only the tests that need no data files. CI is built in step 1; until then, run the same no-data tests on your own computer. Once releases exist, CI includes a fresh install and an upgrade from the previous tag.
+- Tests that need data run on the builder's computer, or a fake-data server, and must pass there too. Never on the dev server. Workflow: build and test on the builder's computer, push to `dev`, Austin checks the dev server and merges to `main`, then a tag is cut for production.
+- Every metric has a test with a hand-checked answer on the training extracts, run on the builder's computer. The test reads the reporting view. It does not reimplement the formula.
 - Definition choices still listed under Decisions for Austin in [docs/METRICS.md](../../../docs/METRICS.md) are open. Do not treat them as approved until Austin answers them. If Austin approves that document without changing an item, the item's working proposal becomes the definition.
 - Update the docs in the same pull request as the code. A step is not done while its guides are still stubs for behavior the step just added.

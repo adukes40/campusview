@@ -16,7 +16,7 @@ Where they live (the district repo, not the SFTP drop). Who edits them when the 
 
 ## Infinite Campus
 
-How to schedule the extracts this district confirmed in the TO CONFIRM list, which columns to leave out (narratives and highly sensitive identifiers), and what the mapping step does before the loader runs. Field-level notes stay in the data contract so this guide does not drift from it.
+How to schedule the extracts this district confirmed in the TO CONFIRM list, that the loader keeps every column the extract sends, and what the mapping step does before the loader runs. Field-level notes stay in the data contract so this guide does not drift from it.
 
 ## When a load fails
 
@@ -24,7 +24,7 @@ Where the system admin looks (the load history table, `ops.load_batch`, and the 
 
 ## Writing a mapping for another student information system
 
-The contract another system must meet: produce these standard files, with these keys, and do not connect CampusView to that system. v1 does not ship that mapping. The steps here will be: list the source files, map each CampusView column to a source field, roll daily attendance up to one row per student per date, omit narratives and sensitive identifiers, and run the same loader. Promote a real second mapping out of the parking lot before building it.
+The contract another system must meet: produce these standard files, with these keys, and do not connect CampusView to that system. v1 does not ship that mapping. The steps here will be: list the source files, map each CampusView column to a source field, roll daily attendance up to one row per student per date, keep the other columns, and run the same loader. Promote a real second mapping out of the parking lot before building it.
 
 ## History
 

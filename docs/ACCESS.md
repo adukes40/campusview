@@ -36,7 +36,7 @@ Native filters never grant access. A school picked in a filter can only narrow w
 
 The base install uses Superset's own user accounts, created by the system admin. There is no open registration: self-signup stays off.
 
-**Open question: Google sign-in.** The approved plan said staff sign in with Google. Superset can be set up for Google sign-in through its config file, but that is not in the base install, and whether and when to turn it on is not decided. See [guides/google-oauth.md](guides/google-oauth.md).
+**Google sign-in: future, not built.** The approved plan said staff sign in with Google. Austin has confirmed it is a future item, not in the plan (Austin, relayed by CampusView Engineer, 2026-11-03). Superset can be set up for Google sign-in through its config file, but that is not in the base install. v1 uses Superset's own login. When Google sign-in arrives, the dev server moves to HTTPS first. See [guides/google-oauth.md](guides/google-oauth.md).
 
 Deactivating a user in Superset stops their sign-in.
 
@@ -52,15 +52,17 @@ Deactivating a user in Superset stops their sign-in.
 | `campusview_reader` (Superset's report data connection, and safe DBeaver browsing) | Log in and connect to `campusview_data`. `USAGE` and `SELECT` on the `reporting` schema only. Tables and views the owner adds to `reporting` later are readable automatically. | The `raw` and `ref` schemas. Any write. Creating anything. |
 | `django_user` (Django) | Owns `django_app`, Django's default tables. | `campusview_data`. Django has no v1 role. |
 | `campusview_owner` (the loader, from step 1) | Owns `campusview_data` and its schemas `raw`, `ref`, and `reporting`. The loader writes as this account. | Superset's and Django's databases. |
-| Sandbox (testing install only) | `SELECT` on raw and reporting. Create objects in the scratch schema. | Production. The production database does not have this user. |
+| Sandbox (testing install only) | `SELECT` on raw and reporting. Create objects in the scratch schema. | Production and the dev server. Neither database has this user; it exists only on the testing install (the builder's computer, or a fake-data server). |
 
 **Resolved 2026-11-02:** the installer now creates `campusview_owner` and `campusview_reader`, and `superset_user` no longer owns `campusview_data`. An older install is moved over when the installer runs again. The installer does not create Superset's data connection; when you add it, use `campusview_reader`. Passwords are in `/etc/campusview/campusview.env`: `CV_SUPERSET_DB_PASSWORD`, `CV_DJANGO_DB_PASSWORD`, `CV_OWNER_DB_PASSWORD`, `CV_READER_DB_PASSWORD`, plus `CV_SECRET_KEY` and `CV_ADMIN_PASSWORD`. See [DECISIONS.md](DECISIONS.md).
+
+State id and birthdate may appear in reporting views for now (Austin, relayed by CampusView Engineer, 2026-11-03). So a school admin can see them for their own schools when a chart shows them.
 
 SQL Lab for the system admin uses Superset's data connection as `campusview_reader`, so it can see reporting views and cannot see raw tables. Exploring raw data is a testing-sandbox task.
 
 ## Permissions check
 
-Step 2 checks this table by hand in a browser, on fake data, as each role. School admin cases are run twice: once for one of their schools, and once trying a school that is not theirs. The second try must return no rows.
+Step 2 checks this table by hand in a browser, on the Infinite Campus training extracts, as each role. School admin cases are run twice: once for one of their schools, and once trying a school that is not theirs. The second try must return no rows.
 
 "Own schools" means only that person's schools. "All schools" means every school in the snapshot. "Nothing" means no student rows and no totals.
 

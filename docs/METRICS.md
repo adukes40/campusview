@@ -8,19 +8,23 @@ Views do the classifying. A chart may only sum, count, average, or divide column
 
 The preview's sparklines and the "versus last year" text on the headline numbers are parked. They are not metrics in v1. The absence number does name the day it counts. That part is in scope.
 
-A hand-checked test, when the views are built, uses the fake-data generator and a known answer for each formula below. The test reads the view. It does not reimplement the formula in Python.
+A hand-checked test, when the views are built, uses the Infinite Campus training extracts Austin supplies and a known answer for each formula below. The test reads the view. It does not reimplement the formula in Python.
 
 ## Shared rules
 
 **Who is enrolled on a date.** A student is enrolled at a school on a date when a primary enrollment covers that date: `start_date` is on or before the date, and `end_date` is blank or on or after the date. Non-primary enrollments do not create membership and do not count in any denominator.
 
-**Membership day.** An enrolled student on a calendar row with `is_school_day` true. The day's weight is `day_value` (1, or 0.5 for a half day).
+**Membership day.** An enrolled student on a calendar row with `is_school_day` true. From Infinite Campus, that is a Day row with `instruction` set, not `schoolDay` (Austin, relayed by CampusView Engineer, 2026-11-03). The day's weight is `day_value`. For now, every instruction day counts as 1 day, so every weight is 1, and a half-day absence code has `absence_portion` 1, so it counts as a full day absent (Austin, relayed by CampusView Engineer, 2026-11-03, 10:32 AM ET). The formulas below still accept other values in case half days are counted as half later.
+
+**No calendar days.** A school with enrollments but no calendar days in the year loads with a warning on the load report. Its students have no membership days there, so they add nothing to any rate until calendar days arrive.
 
 **Present and absent portions.** For a membership day:
 
 - If there is an attendance row, `absence_portion` comes from that code's map, and `present_portion` is `1 - absence_portion`.
 - If there is no attendance row, the working proposal counts the day as present: `absence_portion` 0, `present_portion` 1.
 - A tardy adds 1 to the tardy count. It changes the portions only when its mapped `absence_portion` is greater than 0.
+
+**This district's daily rule** (Austin, relayed by CampusView Engineer, 2026-11-03). A student counts present for the day when marked present in homeroom, even if they leave during homeroom. Tardies come from Infinite Campus's overnight attendance calculation. CampusView does not recompute them. It maps the codes that calculation produces.
 
 **Year to date.** Membership days in the selected school year whose date is on or before today. Today is the current date in the district time zone from the district config. A future day in the calendar is not in the rate. When the selected year is entirely in the past, every membership day in that year is included.
 
@@ -34,14 +38,16 @@ A hand-checked test, when the views are built, uses the fake-data generator and 
 
 ### Worked attendance example
 
-A student has 100 membership days of weight 1, plus one half instructional day (`day_value` 0.5) on which they were fully absent. They also have 4 full-day absences and one separate half-day absence (`absence_portion` 0.5) on a full instructional day.
+For now, every instruction day counts as 1 day, and a half-day absence counts as a full day absent (Austin, relayed by CampusView Engineer, 2026-11-03, 10:32 AM ET).
 
-- Membership = 100 + 0.5 = 100.5
-- Absence equivalents = 4 + 0.5 + 0.5 = 5
-- Present equivalents = 100.5 - 5 = 95.5
-- Attendance rate = 95.5 / 100.5 = 95.0%
+A student has 101 membership days, each of weight 1. One of them was a half instructional day, and the student was absent that day. The student also has 4 full-day absences and one half-day absence code on another day.
 
-The half instructional day contributes 0.5 to the denominator even though the student was absent, because the day itself was only half a day.
+- Membership = 101
+- Absence equivalents = 4 + 1 (the half-day absence code counts as a full day) + 1 (the absence on the half instructional day counts as a full day) = 6
+- Present equivalents = 101 - 6 = 95
+- Attendance rate = 95 / 101 = 94.1%
+
+The half instructional day counts as a whole membership day, and each half-day absence counts as a whole day absent.
 
 ## Overview headline numbers
 
@@ -275,9 +281,9 @@ Working proposals are in the body above. Each item below is the choice that woul
 
 2. **Pooled rate.** The year-to-date attendance rate is total present-day equivalents divided by total membership-day equivalents, so a larger school counts more than a smaller one. Confirm, or say you want the average of each student's own rate.
 
-3. **Half days.** A calendar day with day value 0.5 counts as half a membership day. An absence code with portion 0.5 counts as half a day absent. A full absence on a half day counts as 0.5. Confirm this matches how the district records half days.
+3. *Answered for now (Austin, relayed by CampusView Engineer, 2026-11-03, 10:32 AM ET): every instruction day counts as 1 day, and a half-day absence counts as a full day absent, the same as any other absence. Provisional. Whether half days should ever count as half is a follow-up for the SIS person in [DATA_CONTRACT.md](DATA_CONTRACT.md).* The text below is the earlier proposal, set aside for now. **Half days.** A calendar day with day value 0.5 counts as half a membership day. An absence code with portion 0.5 counts as half a day absent. A full absence on a half day counts as 0.5. Confirm this matches how the district records half days.
 
-4. **Tardies and the rate.** A tardy does not lower the attendance rate unless that code's absence portion is greater than zero. Confirm.
+4. *Partly answered (Austin, relayed by CampusView Engineer, 2026-11-03): tardies come from Infinite Campus's overnight calculation; the effect of each tardy code on the rate is still set in the code map.* **Tardies and the rate.** A tardy does not lower the attendance rate unless that code's absence portion is greater than zero. Confirm.
 
 5. **Last school day.** "Absent on the last school day" uses each school's own latest school day on or before today, in the district time zone. If the selected schools do not share that date, the chart title says so and still counts each student on their own school's date. Confirm, or say you want one shared date for the whole filter.
 
@@ -313,7 +319,7 @@ Working proposals are in the body above. Each item below is the choice that woul
 
 21. **Unexcused absences and tardies.** The unexcused total sums portions for codes mapped as unexcused absences only. The tardy headline counts unexcused tardies. Excused tardies are stored separately and are not in that headline. Confirm.
 
-22. **Last-year line.** The monthly attendance trend compares each month with the same month in the prior school year, using the students enrolled in each year. It does not follow this year's students backward. If history is set to the current year only, the prior-year line is empty. Confirm.
+22. *Note (Austin, relayed by CampusView Engineer, 2026-11-03): history is 2025-26 and 2026-27. Infinite Campus started in 2025-26, so 2025-26 has no prior-year line.* **Last-year line.** The monthly attendance trend compares each month with the same month in the prior school year, using the students enrolled in each year. It does not follow this year's students backward. If history is set to the current year only, the prior-year line is empty. Confirm.
 
 23. **Heatmap buckets.** The heatmap is location by clock hour. Referrals with no time are left off the heatmap and still count on the other behavior charts. Confirm hourly buckets are the breakdown you want.
 

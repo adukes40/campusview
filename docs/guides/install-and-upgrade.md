@@ -20,7 +20,7 @@ On Ubuntu, if curl is missing, install it with sudo.
 sudo apt-get install -y curl
 ```
 
-Fetch the installer from main.
+Fetch the installer from main. **Not built yet:** once release tags exist, production fetches it from its tag, for example `.../campusview/v1.3.0/install.sh`, and the dev server from `dev`.
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/adukes40/campusview/main/install.sh
@@ -150,7 +150,7 @@ The wizard asks `How should people reach CampusView?` right after the ports.
 
 In every mode, Superset, Django (gunicorn) and PostgreSQL keep listening on `127.0.0.1` only. nginx passes `/` to Superset and `/app/` to Django. DBeaver still connects through the SSH tunnel, exactly as above.
 
-HTTP sends passwords across the network unencrypted. Use it only for testing with fake data.
+HTTP sends passwords across the network unencrypted. Use it only for testing with fake data. The one exception is Austin's on-prem dev server during early testing; it moves to HTTPS before production gets Google sign-on or real users. Production uses HTTPS.
 
 ### Certificates for HTTPS
 
@@ -186,7 +186,7 @@ If you had already added a Superset data connection to `campusview_data` as `sup
 
 This older-layout upgrade was tested once, on Debian 12.
 
-Moving from one release tag to the next is not in this script yet. When releases exist, the server pulls a tag, never a branch. Migrations run. The district repo, the password file, and the server's own config stay as they are. If a migration fails, leave the previous tag running. Do not repair it by editing the district repo.
+Moving from one release tag to the next is not in this script yet. **Not built yet (step 1):** an update command. Production moves to a new tag; the dev server pulls `dev`. Both pull the district repo fast-forward only. Migrations run. The district repo, the password file, and the server's own config stay as they are. If a migration fails, leave the previous tag running. Do not repair it by editing the district repo.
 
 ## Run it from an answers file
 
@@ -212,7 +212,7 @@ The file uses the same names as the saved password file.
 
 ## The testing install
 
-The same release, loaded with fake data, is not part of this installer. Production must refuse the fake-data command. That command is not built yet.
+The testing install is the builder's own computer, or a separate fake-data server later, loaded with Infinite Campus training-database extracts that Austin supplies. It is not part of this installer. It is never the dev server. Production and the dev server do not load those files, and they never get the sandbox database user.
 
 ## Uninstall
 

@@ -4,6 +4,138 @@ Dated log of decisions already made. The plan of record is [PLAN.md](PLAN.md). N
 
 Open metric questions are not listed here. They are the Decisions for Austin list in [METRICS.md](METRICS.md). Open extract questions are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md). Both lists are deferred for now and do not block step 0.
 
+## 2026-11-03 — Plain HTTP on the dev server during early testing
+
+**What:** The on-prem dev server may use plain HTTP during early testing, even though it holds real production data. It moves to HTTPS before production gets Google sign-on or real users. Production always uses HTTPS. Plain HTTP on test machines with fake data is unchanged.
+
+**Why:** Austin's choice. He wants plain HTTP for early testing, and will move the dev server to HTTPS when production gets Google sign-on and real users.
+
+**Tradeoff:** Plain HTTP sends logins, and the real data on the dev server, unencrypted across the district network. The CampusView Engineer flagged this risk to Austin once, and Austin accepted it.
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03.
+
+**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed by merging PR #8.
+
+**Amends:** the tradeoff in 2026-11-02 "Offer nginx with HTTP or HTTPS" (below).
+
+## 2026-11-03 — Day table rules for attendance
+
+**What:**
+
+- Attendance counts Day rows with the `instruction` flag set, not `schoolDay`.
+- For now, every instruction day counts as 1 day (weight 1), and a half-day absence counts as a full day absent, the same as any other absence (Austin, relayed by CampusView Engineer, 2026-11-03, 10:32 AM ET). The half-day absence codes map to `absence_portion` 1. This is provisional; whether half days should ever count as half is a follow-up for the SIS person.
+- A calendar with enrollments but no Day rows loads with a warning on the load report. It does not fail the file. This replaces the earlier rule that every school with an enrollment must have a calendar day.
+
+**Not decided:** the CampusView Engineer suggests adding `dayID` and `structureID` to the Day extract query (`day.sql`), because a calendar with more than one schedule structure repeats dates.
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03.
+
+**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed by merging PR #8. The SIS person still has three follow-ups, listed in [DATA_CONTRACT.md](DATA_CONTRACT.md).
+
+## 2026-11-03 — Release flow: dev branch, dev server, then a tag for production
+
+**What:**
+
+1. The builder builds and tests on its own computer and shows Austin screenshots. Screenshots never go in the public repo.
+2. Changes go to the `dev` branch (`main` plus the new changes).
+3. The dev server follows `dev`. It holds real district data, so Austin can see how a change will look. It follows production rules for data and access: no sandbox user, no training files, no agent access. The testing install is the builder's computer, or a separate fake-data server if Austin sets one up.
+4. If it looks good, Austin merges `dev` into `main`.
+5. A release tag is cut from `main`, and production moves to that tag. After each merge, the CampusView Engineer reminds Austin to cut a tag.
+
+**Why:** Austin's words on the dev server: "ideally the dev server is going to run production data, because I need to see how it will look... If need be, I can always set up like a different server that has just the fake data in it." On tags, the CampusView Engineer explained tags against `main` and recommended tags. Austin replied: "that sounds fine, as long as you can remind me about it."
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03. Production pinning tags is the CampusView Engineer's reading of Austin's reply.
+
+**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed by merging PR #8.
+
+**Amends:** 2026-11-01 "Tag-based releases" (below).
+
+## 2026-11-03 — Release plumbing moves into step 1
+
+**What:** Austin moved these into current work, as step 1: a product checkout on each server with a setting for the branch or tag it follows; an update command that pulls the product ref and the district repo fast-forward only, runs migrations, restarts, and leaves the env file and the SFTP drop alone; and a `dev` branch with basic CI that runs only the tests that need no data. The district folder on each server and the mappings layout in the district repo are step 1 work too. Three smaller items from the same scoping are parked in [FEATURES.md](../FEATURES.md#parking-lot).
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03 ("that sounds fine, as long as you can remind me about it").
+
+**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed by merging PR #8.
+
+## 2026-11-03 — Answers to the open questions on PR #8
+
+**What:**
+
+- **Training data is fake data.** The IC training database is completely fictional, so no PII or PHI removal is needed.
+- **Training files never go in the public repo.** They are only for building, they stay on the builder's computer, and Austin can pull them again.
+- **Workflow and CI.** Build and test on the builder's computer, push to Austin's test VM, then Austin updates production to `main` (*amended by "Release flow" above: the dev server holds real data, data tests run on the builder's computer, and production pins a tag*). CI on GitHub cannot use the training files, so it runs only the tests that need no data files. Data tests, including every hand-checked metric answer, run on the builder's computer and the test VM. **Rule change:** "CI must pass" and "Every metric has a test with a hand-checked answer" in the house rules, PLAN, and FEATURES are reworded to say this.
+- **Keep everything he pulls in,** including SSN, medical, email, and notes if he ever sends them. None of it goes in the public repo.
+- **Validated imports.** Every column the contract lists is kept, and nothing is dropped. An unknown or misspelled header fails the file with a clear report. A new column goes through the contract's change process. An email alert on a failed import is parked in [FEATURES.md](../FEATURES.md#parking-lot) for Austin to promote.
+- **State id and birthdate** may appear in reporting views for now.
+- **Plain HTTP** is OK on Austin's test VM, which is on-prem and not on the internet. *See also "Plain HTTP on the dev server during early testing" above.*
+- **District specifics** (IC start year, extract cutoff, homeroom rule) stay in the product docs.
+- **No screenshots** go in the public repo.
+- **The jump box stays parked.**
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03.
+
+**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed by merging PR #8.
+
+## 2026-11-03 — First dashboard is an Overview
+
+**What:** Step 2's first Superset dashboard is an Overview, modeled on screenshots of Austin's current overview page. Attendance and Behavior dashboards come later.
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03.
+
+**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed by merging PR #8.
+
+## 2026-11-03 — Fixed contract, with a change process still to write
+
+**What:** CSV file names, header names, and date formats stay fixed. Adding a new column or table to the contract needs a documented process. That process is not written yet. See "Changing the contract" in [DATA_CONTRACT.md](DATA_CONTRACT.md).
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03.
+
+**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed by merging PR #8.
+
+## 2026-11-03 — 504 status from program participation
+
+**What:** 504 status comes from Infinite Campus `program_participation`, using the 504 program. Column details are set when the file arrives.
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03.
+
+**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed by merging PR #8.
+
+## 2026-11-03 — Daily attendance is the homeroom mark
+
+**What:** A student counts present for the day when marked present in homeroom, even if they leave during homeroom. Tardies come from Infinite Campus's overnight attendance calculation; CampusView does not recompute them. See [METRICS.md](METRICS.md).
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03.
+
+**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed by merging PR #8.
+
+## 2026-11-03 — Years kept, the Day table, and SFTP for now
+
+**What:** Infinite Campus started in the 2025-26 school year. Keep 2025-26 and 2026-27, which matches the default history of the current year plus one prior year. Extracts are capped to dates on or after 2025-07-01. Austin will upload the Infinite Campus Day table as the calendar source; column details are set when the file arrives. Delivery is SFTP for now. A later jump box that queries Infinite Campus is logged in the [parking lot](../FEATURES.md#parking-lot), not built.
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03.
+
+**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed by merging PR #8.
+
+## 2026-11-03 — Test with IC training data and keep every column
+
+**What:** Two changes.
+
+- **No fake-data generator.** Tests, fixtures, and the testing install use Infinite Campus (IC) training-database extracts that Austin supplies. The first sample is 23 CSV files, each with at most 1,000 rows; that cap came from the DB Hub plugin Austin used to pull them, not from the extract. They never go in the public repo.
+- **Keep every table and column.** Nothing Austin pulls in is banned or dropped, including a state student id (`stateID`), birthdate, staff names (`referralName`), a school's address, phone, and principal, and SSN, medical, email, or notes columns if he ever sends them. Each is added to the contract and kept. (Refined below: an unknown header fails the file.)
+
+**Why:** Austin's words: "You don't need to build a fake data generator, because I can just get you whatever you need from the training database... I'd rather use actual data from the training database... do not drop any columns that I'm bringing in, please... in my production build, I will have that information in there because there will be tables and stuff that are built off of it."
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03. The training database is completely fictional.
+
+**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed by merging PR #8.
+
+**Student ids in views:** Student ids, including the state id, do not need to be excluded from reporting views, though charts usually won't show them (Austin, relayed by CampusView Engineer, 2026-11-03).
+
+State id and birthdate may appear in reporting views for now (Austin, relayed by CampusView Engineer, 2026-11-03).
+
+**Replaces:** "Fake data only, from one deterministic generator" in the 2026-11-01 list below, and the data contract's ban on highly sensitive identifiers.
+
 ## 2026-11-02 — Two warehouse accounts, and the schema name `ref`
 
 **What:** The installer creates two accounts for the report database, `campusview_data`:
@@ -41,7 +173,7 @@ A re-run shows the saved choice and asks whether to change it. The default is HT
 
 **Who:** Austin's decision, relayed by the CampusView Engineer.
 
-**Tradeoff:** Plain HTTP sends logins and passwords unencrypted across the network. Austin accepted that for test machines because all data there is fake ("all data would be fake"). HTTP is for test machines with fake data only. Real student data needs HTTPS.
+**Tradeoff:** Plain HTTP sends logins and passwords unencrypted across the network. Austin accepted that for test machines because all data there is fake ("all data would be fake"). HTTP is for test machines with fake data only. Real student data needs HTTPS. *Amended 2026-11-03: Austin accepted plain HTTP on the on-prem dev server during early testing. See "Plain HTTP on the dev server during early testing" above.*
 
 **Status:** Built. The installer step merged to `main` in PR #5.
 
@@ -123,6 +255,8 @@ For each reporting page, the metric logic is a PostgreSQL view whose SQL is in t
 
 ## 2026-11-01 — Tag-based releases
 
+**Amended 2026-11-03:** production still pins tags, now cut after Austin checks `dev` on the dev server and merges it. The dev server follows `dev`. See "Release flow" above.
+
 **What:** Work merges to `main` only when CI passes. A release is a tag such as `v1.3.0`. The live server pulls tags and does not pull raw `main`.
 
 **Why:** Production should move only when a release has been cut, and CI has already installed that release. Day-to-day branch state stays off the server.
@@ -152,14 +286,14 @@ These were approved in the same plan. Each is the rule the build follows. Rows c
 | Decision | Why | Alternative set aside |
 | --- | --- | --- |
 | Infinite Campus is the only mapping built and tested in v1. Docs explain how to write another. | One real extract is enough to prove the contract. | Building several SIS mappings up front. |
-| Google sign-in now. *Open since 2026-11-01: plain Superset does not do this out of the box. See the open questions in [PLAN.md](PLAN.md).* | The district can use accounts it already has. | ClassLink, which is parked. Local passwords as the main sign-in. |
+| Google sign-in now. *Open since 2026-11-01: plain Superset does not do this out of the box. **Superseded 2026-11-03:** Austin confirmed Google sign-in is a future item, not in the plan; it is parked in [FEATURES.md](../FEATURES.md#parking-lot).* | The district can use accounts it already has. | ClassLink, which is parked. Local passwords as the main sign-in. |
 | History defaults to the current school year plus one prior year, then purges. | Attendance needs a last-year comparison. Unbounded history is unnecessary for v1. | Keeping every year, or keeping only the current year. |
 | All metric logic lives in PostgreSQL reporting views. Charts only filter and aggregate those views. | A number is defined once. | Computing metrics in Python or inside each chart. |
 | Materialize a view only after a query is proven slow. | Ordinary views stay correct for "today" without a refresh job. | Materializing everything at the start. |
 | Default deny. SQL Lab and chart building only for system admin. *Changed 2026-11-01: roles and school limits now live in Superset (roles plus row-level security). The Django access list and its sync are deferred.* | Staff see only their schools. | Editing access in two places. |
 | *Deferred 2026-11-01:* profile views and named exports go to an append-only log. | Named student data needs a record of who looked. | — |
 | A permissions test covers every role on every place data can be reached. *Now that means Superset.* | A school boundary that is only checked by hand will be skipped. | Manual checking before each release. |
-| Fake data only, from one deterministic generator. The testing install uses the same release as production. | Tests need stable answers, and real student rows must never enter the product repo. | Hand-written spreadsheets of realistic students. |
+| **Superseded 2026-11-03:** no generator; tests use Infinite Campus training extracts. See the entries at the top. Fake data only, from one deterministic generator. The testing install uses the same release as production. | Tests need stable answers, and real student rows must never enter the product repo. | Hand-written spreadsheets of realistic students. |
 | The testing install is also the AI sandbox: read raw, write views only in a scratch schema, ship finished views as tested SQL in the repo. | Try queries without touching production. | Letting an assistant write views on the production database. |
 | Named working lists have no race column. Equity is a rate per 100 students, totals only. | Staff need equity rates without a named list sorted by race. | A race column on the open-referrals list. Small-group hiding, which is parked. |
 | *Deferred 2026-11-01:* card layout as an admin setting, and per-user preferences. | — | Drag-and-drop layout, which is parked. |

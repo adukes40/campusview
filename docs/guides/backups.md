@@ -24,4 +24,4 @@ The order: stop Superset and Django, restore the three databases, confirm the se
 
 ## A restore drill
 
-What "tested" means: restore onto the testing install or a spare machine, confirm a known fake-data snapshot, and confirm production data was not used on a machine that shares files with development.
+What "tested" means: restore onto the testing install or a spare machine, confirm a known training-data snapshot, and confirm production data was not used on a machine that shares files with development.

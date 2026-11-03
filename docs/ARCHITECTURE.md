@@ -28,7 +28,7 @@ flowchart TD
 1. The district drops a full CSV snapshot on SFTP. CampusView never connects to the student information system.
 2. The mapping for that system rewrites the vendor files into CampusView's standard layouts. v1 ships the Infinite Campus mapping only. See [DATA_CONTRACT.md](DATA_CONTRACT.md).
 3. The loader checks every standard file and every code-mapping file. If any check fails, it loads nothing and leaves the previous data in place. If every check passes, it replaces the raw snapshot in one database transaction.
-4. Raw tables store explicit columns only. Code-mapping tables, from the district repo, say what each local code means.
+4. Raw tables store every column the contract lists. Nothing is dropped, and an unknown header fails the file. Code-mapping tables, from the district repo, say what each local code means.
 5. Reporting views join raw rows to those maps and expose every number the dashboards show. The SQL is in this repo. The metric list is [METRICS.md](METRICS.md).
 6. Superset dashboards read the views. Superset's roles and row-level security limit each person to their schools. See [ACCESS.md](ACCESS.md).
 
@@ -45,7 +45,7 @@ These names are the vocabulary for later code and SQL. They are a sketch, not a 
 | Name | Meaning |
 | --- | --- |
 | `SchoolId` | Text id from the extract. Stable. Not invented by CampusView. |
-| `StudentId` | Text student number from the extract. Never an SSN or a state id. |
+| `StudentId` | Text student number from the extract, the one staff see. Not the SSN or the state id; a state id the extract sends is kept as its own listed column. |
 | `SchoolYear` | Text `YYYY-YYYY`, second year = first + 1. Example shape: `2026-2027`. |
 | `Grade` | Text `K` or `1` through `12`, after the grade map. |
 | `GenderLabel` | Text label from the gender map. |
@@ -83,7 +83,7 @@ Dashboards, charts, filters, roles, and row-level security are Superset settings
 `load(drop_dir, district_config_dir) -> LoadResult`
 
 - Look in `drop_dir` for the standard extract files and in `district_config_dir` for the code-mapping files. Both sets are required.
-- Validate every file first: headers, types, keys, allowed codes, and foreign keys. Details are in [DATA_CONTRACT.md](DATA_CONTRACT.md).
+- Validate every file first: headers (an unknown or misspelled header fails the file), types, keys, allowed codes, and foreign keys. Details are in [DATA_CONTRACT.md](DATA_CONTRACT.md).
 - On any error, leave the previous snapshot in place. Record the failed attempt on `ops.load_batch` with the file name, the row number, and the rule that failed. Do not record the cell value.
 - On success, replace the raw snapshot inside one transaction, purge school years outside the history window, and commit.
 - The drop is a full snapshot of the years to keep, not a file of changes. Running the same files twice leaves the same warehouse.
@@ -184,7 +184,7 @@ flowchart LR
 | Superset web | Apache Superset 6.1.0, Python 3.12 (verified on 3.12.16), gunicorn. Installed with Superset's tested package list (`requirements/base.txt` from the 6.1.0 release) as pip constraints | 127.0.0.1:8088 |
 | Django | A default `startproject campusview_base` on Django 6.1.2, Python 3.12, in its own Python environment, gunicorn. No role in v1 features | 127.0.0.1:8000 |
 
-Optional nginx (decided 2026-11-02, in the installer on `main`; HTTPS with a self-signed certificate is the default): the installer can add nginx from the distro's apt repo as the only thing listening on the network. Choices are local only through an SSH tunnel, HTTP on port 80, or HTTPS on port 443 with a self-signed or supplied certificate (80 redirects to 443). A re-run shows the saved choice and asks whether to change it. nginx sends `/` to Superset and `/app/` to Django. PostgreSQL is never exposed. Plain HTTP is for test machines with fake data only. See [DECISIONS.md](DECISIONS.md).
+Optional nginx (decided 2026-11-02, in the installer on `main`; HTTPS with a self-signed certificate is the default): the installer can add nginx from the distro's apt repo as the only thing listening on the network. Choices are local only through an SSH tunnel, HTTP on port 80, or HTTPS on port 443 with a self-signed or supplied certificate (80 redirects to 443). A re-run shows the saved choice and asks whether to change it. nginx sends `/` to Superset and `/app/` to Django. PostgreSQL is never exposed. Plain HTTP is for test machines with fake data, plus Austin's accepted exception for the on-prem dev server during early testing. Production uses HTTPS. See [DECISIONS.md](DECISIONS.md).
 
 Not in the base install:
 
@@ -200,9 +200,9 @@ The district repo holds code mappings, branding, exported dashboards, display na
 
 `install.sh` is one script with a step-by-step wizard. It asks for every setting the base install needs, installs the pieces above, creates the three databases and their users, and sets up the first Superset admin. The CampusView Engineer built it, and it passed clean installs and re-runs on Debian 12, Ubuntu 24.04, and Ubuntu 22.04. It is merged to `main`. How to run it is in [guides/install-and-upgrade.md](guides/install-and-upgrade.md). Non-secret district settings live in the district repo, not in the product repo.
 
-The product repo builds a release only as a tag such as `v1.3.0`. The live server pulls a tag. CI for a release installs that tag on a clean machine and upgrades a machine that was on the previous tag. The testing install runs the same tag and may load fake data. Production refuses the fake-data command.
+The product repo builds a release only as a tag such as `v1.3.0`, cut from `main`. Production pins a tag. The dev server follows the `dev` branch, holds real data, and follows production rules for data and access. Before a tag is cut, the release is installed on a clean machine and upgrades a machine that was on the previous tag. The testing install is the builder's computer, or a fake-data server later; it loads Infinite Campus training-database extracts that Austin supplies. Production and the dev server do not load them. **Not built yet:** the per-server product checkout, the branch or tag setting, the update command, the `dev` branch, and CI (all step 1).
 
-The testing database has one extra user for the AI sandbox: it can read `raw` and `reporting`, and it can create objects only in `scratch`. Production does not have this user. A view that is ready to keep is added as SQL in the product repo, with a hand-checked test, and arrives through a release.
+The testing database has one extra user for the AI sandbox: it can read `raw` and `reporting`, and it can create objects only in `scratch`. Production and the dev server do not have this user. A view that is ready to keep is added as SQL in the product repo, with a hand-checked test, and arrives through a release.
 
 ## Dashboards, in product terms
 
