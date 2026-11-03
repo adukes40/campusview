@@ -142,7 +142,7 @@ One referral, one student. If the source system records several students on one 
 | `incident_time` | time | no | Blank if the time was not recorded. |
 | `location_code` | text | no | If present, must exist in `map_locations.csv`. |
 | `status_code` | text | yes | Must exist in `map_referral_statuses.csv`. |
-| `action_date` | date | no | Date of the first action or consequence. Blank if there is no action yet. Must be on or after the date the referral was entered into Infinite Campus when set (Austin, 2026-11-03, 12:55 PM ET). An earlier date is a warning; the row is kept and still counts (Austin, 2026-11-03, 12:56 PM ET). **Blocked:** the extract has no confirmed entered date yet, so until it does the check compares against `incident_date`. |
+| `action_date` | date | no | Date of the first action or consequence. Blank if there is no action yet. Must be on or after `behavior_incident.timestamp`, the date the referral was entered into Infinite Campus, when set (Austin, 2026-11-03, 12:55 PM ET; the column per Austin, 2026-11-03, 1:16 PM ET). An earlier date is a warning; the row is kept and still counts (Austin, 2026-11-03, 12:56 PM ET). |
 
 No narrative, participant notes, or victim names.
 
@@ -340,4 +340,4 @@ Raised from the Day table rules above (2026-11-03). Ask the district's Infinite 
 1. `instruction` or `schoolDay`: which Day table flag is right for counting attendance days? CampusView uses `instruction` for now.
 2. Are there half-day, AM, or PM schedules, and how are half days marked in the Day table? Should a half day, or a half-day absence, ever count as half? For now, CampusView counts every instruction day as 1 day and every half-day absence as a full day absent.
 3. Should a calendar ever have enrollments but no Day rows? CampusView loads it with a warning for now.
-4. Days to action start when the referral is entered into Infinite Campus (Austin, 2026-11-03, 12:55 PM ET). Which column holds that date? None of the files in `loader/contract.py` has a column named as an entered or created date. The date-like columns in the behavior files are `behavior_incident.timestamp`, and `behavior_resolution.discassignDate`, `timestamp`, `endDate`, and `endtimeStamp`. It is not documented whether `behavior_incident.timestamp` is when the incident happened or when it was entered. If none of them is the entered date, add it to the extract.
+4. Confirm `behavior_incident.timestamp` is the entry date (Austin believes it is, Austin, 2026-11-03, 1:16 PM ET). Days to action and days open count from it.

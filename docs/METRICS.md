@@ -96,9 +96,9 @@ The view is an ordinary view, because the date depends on today. No attendance r
 | --- | --- |
 | Shows | A number, one decimal. The plan's name for this number is average days to resolve or action. The working definition uses the first action. |
 | View | `reporting.v_incident`, rows where `days_to_action` is not null. |
-| Formula | Average of `days_to_action`. That column is the calendar-day difference from the date the referral was entered into Infinite Campus to `action_date`, not from `incident_date` (Austin, 2026-11-03, 12:55 PM ET). **Blocked:** the extract has no confirmed entered date yet; see the open follow-ups in [DATA_CONTRACT.md](DATA_CONTRACT.md). |
+| Formula | Average of `days_to_action`. That column is the calendar-day difference from `behavior_incident.timestamp`, the date the referral was entered into Infinite Campus, to `action_date`. It does not start at the incident date (Austin, 2026-11-03, 12:55 PM ET; the column per Austin, 2026-11-03, 1:16 PM ET). |
 | Denominator | The count of referrals in the filter that have an action date. Referrals with no action yet are excluded, not treated as still running. |
-| Edge | Same-day action is 0. A negative span (an action date before the entered date) is flagged on the load report. The row is kept and counts in the average (Austin, 2026-11-03, 12:56 PM ET). |
+| Edge | Same-day action is 0. A negative span (an action date before `behavior_incident.timestamp`) is flagged on the load report. The row is kept and counts in the average (Austin, 2026-11-03, 12:56 PM ET). |
 | Table columns | Student id, name, school, incident date, action date, days. |
 
 ### Active 504 plans
@@ -144,7 +144,7 @@ These are Superset charts on the dashboard. They read the view named here and us
 | --- | --- |
 | View | `reporting.v_open_referral` |
 | Who is on it | Incident rows with `is_open` true. That includes not-yet-processed referrals and referrals that have an action and are not closed. |
-| Days open | Calendar days from `incident_date` through today. |
+| Days open | Calendar days from `behavior_incident.timestamp`, the date the referral was entered, through today (Austin, 2026-11-03, 1:16 PM ET). |
 | Color | Under 18 days, plain. 18 through 29, warning. 30 or more, strong warning. Cutoffs are a display rule from the approved preview. |
 | Sort | Days open descending, then student id. |
 | Columns | Name, school, grade, behavior labels, days open. No race. |
@@ -295,7 +295,7 @@ Working proposals are in the body above. Each item below is the choice that woul
 
 9. **Two referral lists.** "Not yet processed" means the status map says there has been no action. "Open" means the status map says the referral is not closed, including ones already acted on. The overview headline number counts the first. The list shows the second. Confirm these are two different lists in your office, or say they should be the same list.
 
-10. **Days to action.** *Partly answered (Austin, 2026-11-03, 12:55 PM ET): the clock starts when the referral is entered into Infinite Campus, not on the incident date. Blocked until the extract has an entered date.* The average is calendar days from the entered date to the first action date. Referrals with no action yet are left out. Same-day action is 0. A negative span is flagged on the load report and the row still counts (Austin, 2026-11-03, 12:56 PM ET). Still open: whether the clock should stop on the closed date instead, and whether referrals that are still waiting should count.
+10. **Days to action.** *Start date answered (Austin, 2026-11-03, 1:16 PM ET): the clock starts at `behavior_incident.timestamp`, when the referral was entered into Infinite Campus, not on the incident date. Days open counts from the same timestamp.* The average is calendar days from that timestamp to the first action date. Referrals with no action yet are left out. Same-day action is 0. A negative span is flagged on the load report and the row still counts (Austin, 2026-11-03, 12:56 PM ET). Still open: whether the clock should stop on the closed date instead, and whether referrals that are still waiting should count.
 
 11. **Days-open colors.** The open list colors days at 18 and at 30, matching the approved preview. Confirm those cutoffs, or give different ones, or say no color until you choose.
 

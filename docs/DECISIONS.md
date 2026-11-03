@@ -4,13 +4,11 @@ Dated log of decisions already made. The plan of record is [PLAN.md](PLAN.md). N
 
 Open metric questions are not listed here. They are the Decisions for Austin list in [METRICS.md](METRICS.md). Open extract questions are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md). Both lists are deferred for now and do not block step 0.
 
-## 2026-11-03 — Days to action start when the referral is entered
+## 2026-11-03 — Days to action and days open start when the referral is entered
 
-**What:** discipline days to action count from the date the referral or incident was entered into Infinite Campus, not from the incident date. The action-date check compares against the entered date. A negative span is flagged on the load report, and the row is kept and counted (see the next entry).
+**What:** discipline days to action and days open count from the date the referral was entered into Infinite Campus, not from the incident date. That date is `behavior_incident.timestamp`. This is Austin's understanding ("I do believe"); the SIS person is asked to confirm it, and the work does not wait on that. The action-date check compares against `behavior_incident.timestamp`. A negative span is flagged on the load report, and the row is kept and counted (see the next entry).
 
-**Blocked:** the extract has no confirmed entered date yet. No file in `loader/contract.py` has a column named as an entered or created date. Until one is confirmed, the check compares against the incident date. The candidate columns are listed in the open follow-ups in [DATA_CONTRACT.md](DATA_CONTRACT.md).
-
-**Who:** Austin, 2026-11-03, 12:55 PM ET, in his words: "discipline actions count from the time that they are entered into the system, not when the incident occurred. It's whenever the person or the referee put it in the system, not when the incidents took place."
+**Who:** Austin, 2026-11-03, 12:55 PM ET, in his words: "discipline actions count from the time that they are entered into the system, not when the incident occurred. It's whenever the person or the referee put it in the system, not when the incidents took place." Then Austin, 2026-11-03, 1:16 PM ET, on the column and on days open: "I do believe that's the date it was entered. No, you would use the timestamp from the first question because that's when it was entered. Yes, I should count from the same timestamp."
 
 **Status:** Decided by Austin; confirmed by merging PR #11.
 
