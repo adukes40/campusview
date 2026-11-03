@@ -36,11 +36,11 @@ No port is opened to the network. To use Superset from a laptop, open an SSH tun
 
 ## Disk layout
 
-Where the PostgreSQL data, the CampusView folder with the two Python environments, the secrets file `/etc/campusview/campusview.env` (mode 600, in a folder with mode 700), the SFTP drop, the loaded-file archive, and the district repo checkout live. A reminder that none of those belong in the product git repo.
+The installer puts the programs in `/opt/campusview` unless you choose another folder. That folder holds the two Python environments. Passwords and the other saved answers go in `/etc/campusview/campusview.env`. The file mode is 600, and the folder `/etc/campusview` is mode 700. PostgreSQL keeps its data under `/var/lib/postgresql`. The SFTP drop, the loaded-file archive, and the district repo checkout are not created by this installer. None of these belong in the product git repo.
 
 ## Accounts on the machine
 
-The unprivileged user that runs CampusView. In step 1, a separate upload user that can write the SFTP drop and cannot read the database.
+The installer asks for an existing Linux login. It does not create one. The apps run as that login, and that login owns the program folder and the password file. On Debian the login is often root. In step 1, a separate upload user can write the SFTP drop and cannot read the database.
 
 ## What this guide will not cover
 
