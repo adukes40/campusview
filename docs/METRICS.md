@@ -315,7 +315,7 @@ Working proposals are in the body above. Each item below is the choice that woul
 
 19. **Grade native filter.** The Superset native filter for grade offers All, or one grade (K, 1, 2, and so on through 12), read from the `grade` column on each view. The preview's bands (K-5, 6-8, 9-12) are not in v1. A student may have only one grade per school per year; otherwise the enrollment file is rejected. Confirm a single-grade native filter is enough, and confirm that a mid-year grade change does not need to be represented.
 
-20. **Blank gender.** A gender code that is not in the gender map fails the load. A blank gender is allowed, stays inside All, and is not counted under a named gender. Confirm blanks should be allowed.
+20. **Blank gender.** A gender code that is not in the gender map is a warning on the load report, and loading continues (Austin, relayed by CampusView Engineer, 2026-11-03). A blank gender is allowed, stays inside All, and is not counted under a named gender. Confirm blanks should be allowed.
 
 21. **Unexcused absences and tardies.** The unexcused total sums portions for codes mapped as unexcused absences only. The tardy headline counts unexcused tardies. Excused tardies are stored separately and are not in that headline. Confirm.
 
