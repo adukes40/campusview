@@ -41,7 +41,7 @@ CI installs the release on a clean machine and upgrades a machine that was on th
 These follow from the same plan and are just as binding.
 
 - **Default deny.** No role, or no school, means no rows.
-- **Keep every column.** The loader keeps every column the district's extract sends. No column is dropped or banned. Production tables will be built on them. See [DECISIONS.md](DECISIONS.md), 2026-11-03.
+- **Keep every table and column.** The loader keeps every table and column the district's extract sends. No table or column is dropped or banned. Production tables will be built on them. See [DECISIONS.md](DECISIONS.md), 2026-11-03.
 - **Files are the only ingest.** There is no direct connection to the student information system.
 - **No Celery and no Redis in v1.** Loads run as a timed job on the server. The `celery` and `redis` Python libraries come with Superset but nothing runs them.
 - **Only nginx faces the network.** PostgreSQL and gunicorn for Superset and Django listen on 127.0.0.1 only. PostgreSQL uses `listen_addresses = '127.0.0.1'`, not `localhost`, which also opens `[::1]`. When nginx is chosen in the installer, it is the only thing listening on the network. PostgreSQL is never exposed; DBeaver uses an SSH tunnel. Plain HTTP sends logins unencrypted, so it is only for test machines with fake data. Real student data needs HTTPS.

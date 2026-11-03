@@ -24,7 +24,7 @@ Why: a small team should own as little custom AI-written code as possible. Super
 
 ## Data flow
 
-SIS extracts (CSV on SFTP) go to an SIS mapping, then to a validated loader. The loader checks every file before loading. Each load is all or nothing. The loader writes a raw schema: the standard layouts, plus every other column the extract sends. The loader does not drop a column.
+SIS extracts (CSV on SFTP) go to an SIS mapping, then to a validated loader. The loader checks every file before loading. Each load is all or nothing. The loader writes a raw schema: the standard layouts, plus every other table and column the extract sends. The loader does not drop a table or a column.
 
 Reporting views in PostgreSQL sit on top of the raw schema. All metric logic lives in those views, and the SQL for every view is kept in this repo. The views use code-mapping tables from the district repo. Every view can be filtered by school and school year. No view filters itself.
 
@@ -81,10 +81,10 @@ One pull request per step. Merge when CI is green.
 | Step | Work | Done when |
 | --- | --- | --- |
 | 0 | Docs, plus the bare-bones base install: PostgreSQL 17, plain Superset 6.1.0, default Django 6.1.2, and the `install.sh` wizard. **In progress.** | Austin approves the docs, and `install.sh` brings up the base install on a clean Ubuntu or Debian machine |
-| 1 | Getting data in: the SFTP drop, the raw schema, the validated loader, and the Infinite Campus mapping. Test files are Infinite Campus training-database extracts that Austin supplies, kept outside the repo | Bad files are rejected, each load is all or nothing, every column Austin sends is kept, and a good drop built from the training extracts loads |
-| 2 | The first reporting view in PostgreSQL and the first Superset dashboard on it, with the three roles and school row-level security set up and checked | Each role sees exactly its schools on that dashboard, and the view's numbers match a hand-checked answer on the training extracts |
+| 1 | Getting data in: the SFTP drop, the raw schema, the validated loader, and the Infinite Campus mapping. Test files are Infinite Campus training-database extracts that Austin supplies, kept outside the repo | Bad files are rejected, each load is all or nothing, every table and column Austin sends is kept, and a good drop built from the training extracts loads |
+| 2 | The first reporting views in PostgreSQL and the first Superset dashboard on them: an Overview, modeled on screenshots of Austin's current overview page (Austin, relayed by CampusView Engineer, 2026-11-03), with the three roles and school row-level security set up and checked | Each role sees exactly its schools on that dashboard, and each view's numbers match a hand-checked answer on the training extracts |
 
-Later steps, in an order Austin will set: the rest of the reporting views and the Overview, Attendance, and Behavior dashboards; the nightly schedule and the history purge; and an adversarial review with fixes. Each new number gets a view and a hand-checked test before it gets a chart.
+Later steps, in an order Austin will set: the rest of the reporting views and the Attendance and Behavior dashboards; the nightly schedule and the history purge; and an adversarial review with fixes. Each new number gets a view and a hand-checked test before it gets a chart.
 
 ## Dashboard design
 
@@ -100,7 +100,7 @@ These are the numbers and charts v1 aims for. In plain Superset, a "card" is a b
 
 ## Test data
 
-There is no fake-data generator. Tests and the testing install use Infinite Campus training-database extracts that Austin supplies. Austin says the training database holds fake people. The files are kept outside the repo until Austin answers whether the Infinite Campus vendor agreement allows them in a public repo. Austin supplies whatever files a test needs. The loader keeps every column in them. See [DECISIONS.md](DECISIONS.md), 2026-11-03.
+There is no fake-data generator. Tests and the testing install use Infinite Campus training-database extracts that Austin supplies. Austin says the training database holds fake people. The files are kept outside the repo until Austin answers whether the Infinite Campus vendor agreement allows them in a public repo. Austin supplies whatever files a test needs. The loader keeps every table and column in them. The first sample was 23 CSV files with at most 1,000 rows each; that cap came from the DB Hub plugin Austin used to pull them, not from the extract. See [DECISIONS.md](DECISIONS.md), 2026-11-03.
 
 ## Guarding against unwanted changes
 

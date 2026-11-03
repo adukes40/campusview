@@ -22,6 +22,8 @@ A hand-checked test, when the views are built, uses the Infinite Campus training
 - If there is no attendance row, the working proposal counts the day as present: `absence_portion` 0, `present_portion` 1.
 - A tardy adds 1 to the tardy count. It changes the portions only when its mapped `absence_portion` is greater than 0.
 
+**This district's daily rule** (Austin, relayed by CampusView Engineer, 2026-11-03). A student counts present for the day when marked present in homeroom, even if they leave during homeroom. Tardies come from Infinite Campus's overnight attendance calculation. CampusView does not recompute them. It maps the codes that calculation produces.
+
 **Year to date.** Membership days in the selected school year whose date is on or before today. Today is the current date in the district time zone from the district config. A future day in the calendar is not in the rate. When the selected year is entirely in the past, every membership day in that year is included.
 
 **Cancelled referrals.** A status mapped `is_cancelled` is dropped inside the behavior views. It appears in no count, list, average, or equity numerator.
@@ -277,7 +279,7 @@ Working proposals are in the body above. Each item below is the choice that woul
 
 3. **Half days.** A calendar day with day value 0.5 counts as half a membership day. An absence code with portion 0.5 counts as half a day absent. A full absence on a half day counts as 0.5. Confirm this matches how the district records half days.
 
-4. **Tardies and the rate.** A tardy does not lower the attendance rate unless that code's absence portion is greater than zero. Confirm.
+4. *Partly answered (Austin, relayed by CampusView Engineer, 2026-11-03): tardies come from Infinite Campus's overnight calculation; the effect of each tardy code on the rate is still set in the code map.* **Tardies and the rate.** A tardy does not lower the attendance rate unless that code's absence portion is greater than zero. Confirm.
 
 5. **Last school day.** "Absent on the last school day" uses each school's own latest school day on or before today, in the district time zone. If the selected schools do not share that date, the chart title says so and still counts each student on their own school's date. Confirm, or say you want one shared date for the whole filter.
 
@@ -313,7 +315,7 @@ Working proposals are in the body above. Each item below is the choice that woul
 
 21. **Unexcused absences and tardies.** The unexcused total sums portions for codes mapped as unexcused absences only. The tardy headline counts unexcused tardies. Excused tardies are stored separately and are not in that headline. Confirm.
 
-22. **Last-year line.** The monthly attendance trend compares each month with the same month in the prior school year, using the students enrolled in each year. It does not follow this year's students backward. If history is set to the current year only, the prior-year line is empty. Confirm.
+22. *Note (Austin, relayed by CampusView Engineer, 2026-11-03): history is 2025-26 and 2026-27. Infinite Campus started in 2025-26, so 2025-26 has no prior-year line.* **Last-year line.** The monthly attendance trend compares each month with the same month in the prior school year, using the students enrolled in each year. It does not follow this year's students backward. If history is set to the current year only, the prior-year line is empty. Confirm.
 
 23. **Heatmap buckets.** The heatmap is location by clock hour. Referrals with no time are left off the heatmap and still count on the other behavior charts. Confirm hourly buckets are the breakdown you want.
 

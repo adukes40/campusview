@@ -29,7 +29,8 @@ Step 0 is documentation and the base install. Do not add application code in a d
 
 - Fake data only, outside production. No real names, emails, student information, school names from a real district, keys, or district-specific values in code, tests, fixtures, logs, docs, or commits. Examples use obvious placeholders such as `STU-001` and `School A`.
 - There is no fake-data generator. Tests and the testing install use Infinite Campus training-database extracts that Austin supplies, kept outside the repo. Production does not load them. The testing install uses the same release tag.
-- The loader keeps every column the extract sends. Do not drop or ban a column.
+- The loader keeps every table and column the extract sends. Do not drop or ban a table or a column.
+- File names, header names, and date formats in the data contract stay fixed. Adding a column or table to the contract needs a documented process, which is not written yet.
 - Secrets live only in `/etc/campusview/campusview.env` on the server (mode 600, owned by the account that runs CampusView, folder mode 700), loaded by systemd `EnvironmentFile=` or `start.sh`. `superset_config.py` and `settings.py` read them from the environment. Only Django's own generated `SECRET_KEY` stays in `settings.py`, which is mode 600. Never in source, argv, a fixture, or either git repo.
 - Default deny. No role, or no school, means no rows. Superset self-signup stays off.
 - Access lives in Superset roles and row-level security on `school_id`. Do not publish a dataset that has no `school_id`. A native filter is never a permission.

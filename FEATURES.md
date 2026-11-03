@@ -19,26 +19,27 @@ Done when Austin approves the docs, and `install.sh` brings up the base install 
 - Standard files and mapping tables from [docs/DATA_CONTRACT.md](docs/DATA_CONTRACT.md), and the raw schema in `campusview_data`.
 - The loader: check every file, reject a bad file, load all or nothing.
 - The Infinite Campus mapping onto those files.
-- Test files from Infinite Campus training-database extracts that Austin supplies, kept outside the repo. No fake-data generator. The loader keeps every column in them.
+- Test files from Infinite Campus training-database extracts that Austin supplies, kept outside the repo. No fake-data generator. The loader keeps every table and column in them.
 - The guide on how to write a mapping for another student information system. The mapping itself is not built.
 
 Done when a bad file leaves the previous data in place, and a good file set replaces the snapshot in one transaction.
 
 ## Step 2 — First view and first dashboard
 
-- The first reporting view from [docs/METRICS.md](docs/METRICS.md), as SQL in this repo, with a hand-checked test on the training extracts.
+- The first dashboard is an Overview, modeled on screenshots of Austin's current overview page (Austin, relayed by CampusView Engineer, 2026-11-03).
+- The reporting views it needs from [docs/METRICS.md](docs/METRICS.md), as SQL in this repo, each with a hand-checked test on the training extracts.
 - The three starter roles in Superset, with row-level security on `school_id`.
-- The first Superset dashboard on that view, with native filters.
+- The Overview dashboard in Superset on those views, with native filters.
 - Checked in a browser as a school admin, a district admin, and a system admin.
 
-Done when each role sees exactly its schools on that dashboard, and the view's numbers match the hand-checked answer.
+Done when each role sees exactly its schools on that dashboard, and each view's numbers match the hand-checked answer.
 
 ## Later steps
 
 Order to be set by Austin.
 
 - The rest of the reporting views in [docs/METRICS.md](docs/METRICS.md), each with a hand-checked test.
-- The Overview, Attendance, and Behavior dashboards in Superset, with native filters for school year, school, grade, and gender.
+- The Attendance and Behavior dashboards in Superset, with native filters for school year, school, grade, and gender.
 - The loader on a nightly timer, with the history purge. History kept is a setting, default the current school year plus one prior year.
 - An adversarial review that tries to break school limits, the loader's all-or-nothing rule, and the "no real student data" rule. Each fix includes a test.
 
@@ -58,6 +59,7 @@ Not in v1 unless Austin promotes one.
 - Embedded Superset charts in Django pages, with guest tokens — deferred 2026-11-01: plain Superset first; revisit only if base install shows real need.
 - One shared Django query path for cards, modals, exports, and profiles — deferred 2026-11-01: plain Superset first; revisit only if base install shows real need.
 - Django as a thin front door to Superset — deferred 2026-11-01: plain Superset first; revisit only if base install shows real need.
+- Jump box for Infinite Campus — logged 2026-11-03 (Austin, relayed by CampusView Engineer, 2026-11-03); Austin asked for it to be logged, not built. Later, a jump box would be the only host allowed to query the Infinite Campus database. CampusView sends it scripts, it queries Infinite Campus and returns files, the files are copied to the CampusView server, and the import runs there. Until then, delivery is SFTP.
 - Redis and Celery, with a Superset worker and beat: async queries, scheduled alerts and reports, and caching — deferred 2026-11-02: bare-bones install first; revisit only if base install shows real need.
 
 Held from the first approved plan:

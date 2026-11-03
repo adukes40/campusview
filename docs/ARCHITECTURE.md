@@ -28,7 +28,7 @@ flowchart TD
 1. The district drops a full CSV snapshot on SFTP. CampusView never connects to the student information system.
 2. The mapping for that system rewrites the vendor files into CampusView's standard layouts. v1 ships the Infinite Campus mapping only. See [DATA_CONTRACT.md](DATA_CONTRACT.md).
 3. The loader checks every standard file and every code-mapping file. If any check fails, it loads nothing and leaves the previous data in place. If every check passes, it replaces the raw snapshot in one database transaction.
-4. Raw tables store the standard columns, checked, plus every other column the extract sends. Code-mapping tables, from the district repo, say what each local code means.
+4. Raw tables store the standard columns, checked, plus every other table and column the extract sends. Code-mapping tables, from the district repo, say what each local code means.
 5. Reporting views join raw rows to those maps and expose every number the dashboards show. The SQL is in this repo. The metric list is [METRICS.md](METRICS.md).
 6. Superset dashboards read the views. Superset's roles and row-level security limit each person to their schools. See [ACCESS.md](ACCESS.md).
 

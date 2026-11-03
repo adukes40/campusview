@@ -4,12 +4,42 @@ Dated log of decisions already made. The plan of record is [PLAN.md](PLAN.md). N
 
 Open metric questions are not listed here. They are the Decisions for Austin list in [METRICS.md](METRICS.md). Open extract questions are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md). Both lists are deferred for now and do not block step 0.
 
+## 2026-11-03 — First dashboard is an Overview
+
+**What:** Step 2's first Superset dashboard is an Overview, modeled on screenshots of Austin's current overview page. Attendance and Behavior dashboards come later.
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03.
+
+## 2026-11-03 — Fixed contract, with a change process still to write
+
+**What:** CSV file names, header names, and date formats stay fixed. Adding a new column or table to the contract needs a documented process. That process is not written yet. See "Changing the contract" in [DATA_CONTRACT.md](DATA_CONTRACT.md).
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03.
+
+## 2026-11-03 — 504 status from program participation
+
+**What:** 504 status comes from Infinite Campus `program_participation`, using the 504 program. Column details are set when the file arrives.
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03.
+
+## 2026-11-03 — Daily attendance is the homeroom mark
+
+**What:** A student counts present for the day when marked present in homeroom, even if they leave during homeroom. Tardies come from Infinite Campus's overnight attendance calculation; CampusView does not recompute them. See [METRICS.md](METRICS.md).
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03.
+
+## 2026-11-03 — Years kept, the Day table, and SFTP for now
+
+**What:** Infinite Campus started in the 2025-26 school year. Keep 2025-26 and 2026-27, which matches the default history of the current year plus one prior year. Extracts are capped to dates on or after 2025-07-01. Austin will upload the Infinite Campus Day table as the calendar source; column details are set when the file arrives. Delivery is SFTP for now. A later jump box that queries Infinite Campus is logged in the [parking lot](../FEATURES.md#parking-lot), not built.
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03.
+
 ## 2026-11-03 — Test with IC training data and keep every column
 
 **What:** Two changes.
 
-- **No fake-data generator.** Tests, fixtures, and the testing install use Infinite Campus (IC) training-database extracts that Austin supplies. The first sample is 23 CSV files. They are kept outside the repo until Austin answers whether the IC vendor agreement allows them in a public repo.
-- **Keep every column.** The loader keeps every column Austin's extract sends, including a state student id (`stateID`), birthdate, staff names (`referralName`), and a school's address, phone, and principal. The data contract no longer bans or drops those columns.
+- **No fake-data generator.** Tests, fixtures, and the testing install use Infinite Campus (IC) training-database extracts that Austin supplies. The first sample is 23 CSV files, each with at most 1,000 rows; that cap came from the DB Hub plugin Austin used to pull them, not from the extract. They are kept outside the repo until Austin answers whether the IC vendor agreement allows them in a public repo.
+- **Keep every table and column.** The loader keeps every table and column Austin's extract sends, including a state student id (`stateID`), birthdate, staff names (`referralName`), and a school's address, phone, and principal. The data contract no longer bans or drops those columns.
 
 **Why:** Austin's words: "You don't need to build a fake data generator, because I can just get you whatever you need from the training database... I'd rather use actual data from the training database... do not drop any columns that I'm bringing in, please... in my production build, I will have that information in there because there will be tables and stuff that are built off of it."
 
@@ -17,7 +47,9 @@ Open metric questions are not listed here. They are the Decisions for Austin lis
 
 **Status:** Proposed (relayed by CampusView Engineer; Austin confirms by merging this PR).
 
-**Open:** Whether the IC vendor agreement allows training-database files in the public repo. Until then they stay outside it.
+**Student ids in views:** Student ids, including the state id, do not need to be excluded from reporting views, though charts usually won't show them (Austin, relayed by CampusView Engineer, 2026-11-03).
+
+**Open:** Whether the IC vendor agreement allows training-database files in the public repo. Until then they stay outside it. Whether birthdate may appear in reporting views.
 
 **Replaces:** "Fake data only, from one deterministic generator" in the 2026-11-01 list below, and the data contract's ban on highly sensitive identifiers.
 
