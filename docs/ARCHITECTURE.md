@@ -1,0 +1,212 @@
+# Architecture
+
+Living map of CampusView. In v1 the screen staff use is plain Apache Superset: its dashboards, charts, native filters, theme settings, roles, and row-level security. There are no custom Django pages. [PLAN.md](PLAN.md) wins if something here conflicts with it.
+
+A **view** is a saved query in PostgreSQL. Charts read views. They do not re-decide what "absent" or "open" means.
+
+## Path from file to dashboard
+
+```mermaid
+flowchart TD
+  extracts[Nightly SIS CSV extracts]
+  sftp[SFTP drop folder]
+  mapper[SIS mapping]
+  loader[Loader checks every file then writes one transaction]
+  raw[(Raw tables)]
+  maps[(Code-mapping tables from the district repo)]
+  views[Reporting views hold all metric logic]
+  superset[Superset dashboards and native filters]
+  roles[Superset roles and row-level security on school_id]
+
+  extracts --> sftp --> mapper --> loader --> raw
+  maps --> views
+  raw --> views
+  views --> superset
+  roles --> superset
+```
+
+1. The district drops a full CSV snapshot on SFTP. CampusView never connects to the student information system.
+2. The mapping for that system rewrites the vendor files into CampusView's standard layouts. v1 ships the Infinite Campus mapping only. See [DATA_CONTRACT.md](DATA_CONTRACT.md).
+3. The loader checks every standard file and every code-mapping file. If any check fails, it loads nothing and leaves the previous data in place. If every check passes, it replaces the raw snapshot in one database transaction.
+4. Raw tables store explicit columns only. Code-mapping tables, from the district repo, say what each local code means.
+5. Reporting views join raw rows to those maps and expose every number the dashboards show. The SQL is in this repo. The metric list is [METRICS.md](METRICS.md).
+6. Superset dashboards read the views. Superset's roles and row-level security limit each person to their schools. See [ACCESS.md](ACCESS.md).
+
+SFTP, the mapping, and the loader are not built yet. They are step 1.
+
+No view restricts itself to a school, a year, a grade, or a gender. Superset applies those: school through row-level security, and year, grade, and gender through native filters. Views may omit rows that never count, such as a cancelled referral or a day that is not a school day.
+
+Ordinary views, not materialized views, are the default. "Today" and "expiring in 30 days" have to move forward each morning. A view is materialized only after a real query is proven slow, and a materialized view that depends on today's date is refreshed on a schedule that keeps it honest.
+
+## Types
+
+These names are the vocabulary for later code and SQL. They are a sketch, not a program.
+
+| Name | Meaning |
+| --- | --- |
+| `SchoolId` | Text id from the extract. Stable. Not invented by CampusView. |
+| `StudentId` | Text student number from the extract. Never an SSN or a state id. |
+| `SchoolYear` | Text `YYYY-YYYY`, second year = first + 1. Example shape: `2026-2027`. |
+| `Grade` | Text `K` or `1` through `12`, after the grade map. |
+| `GenderLabel` | Text label from the gender map. |
+| `Portion` | Decimal from 0 through 1. `1` is a full day, `0.5` is a half day. |
+| `RoleName` | A Superset role name. The three starter roles can be renamed. |
+
+Native filters, on every dashboard:
+
+| Filter | Value |
+| --- | --- |
+| School year | One `SchoolYear`. Starts on the latest year in the loaded calendar. |
+| School | All schools the person may see, or one `SchoolId`. |
+| Grade | All, or one `Grade`. |
+| Gender | All, or one `GenderLabel`. |
+
+Filters only narrow what row-level security already allows. A filter is never a permission.
+
+## Module map
+
+Later code is expected to split along these lines. None of it exists yet.
+
+| Module | Responsibility | Reads | Writes |
+| --- | --- | --- | --- |
+| `ingest.drop` | Watch the SFTP folder | Files on disk | Nothing |
+| `ingest.map.infinite_campus` | Vendor files to standard files | Vendor CSV | Standard CSV in a temp folder |
+| `ingest.loader` | Validate, then load all or nothing | Standard CSV, district maps | `raw`, `ref`, `ops.load_batch` |
+| `warehouse.raw` | Snapshot tables | | |
+| `warehouse.ref` | Code-mapping tables | | |
+| `warehouse.reporting` | Views only, as SQL files in this repo | `raw`, `ref` | |
+
+Dashboards, charts, filters, roles, and row-level security are Superset settings, not code in this repo. Dashboards are exported to the district repo.
+
+## Loader interface
+
+`load(drop_dir, district_config_dir) -> LoadResult`
+
+- Look in `drop_dir` for the standard extract files and in `district_config_dir` for the code-mapping files. Both sets are required.
+- Validate every file first: headers, types, keys, allowed codes, and foreign keys. Details are in [DATA_CONTRACT.md](DATA_CONTRACT.md).
+- On any error, leave the previous snapshot in place. Record the failed attempt on `ops.load_batch` with the file name, the row number, and the rule that failed. Do not record the cell value.
+- On success, replace the raw snapshot inside one transaction, purge school years outside the history window, and commit.
+- The drop is a full snapshot of the years to keep, not a file of changes. Running the same files twice leaves the same warehouse.
+- History length is a district setting, default 2: the newest school year in the drop and the one before it.
+- After a successful commit, a school that is new to the drop has no school admin yet. Until someone adds it to a Superset role's row-level security, only the all-schools roles see it. See the open question on school assignments in [ACCESS.md](ACCESS.md).
+
+The load runs as a timed job on the server. Its exact form is chosen when the loader is built in step 1. It takes a lock so two runs cannot overlap. It does not use Celery; there is no Celery or Redis in v1.
+
+Logs and `ops.load_batch` may include file names, row counts, row numbers, and rule names. They may not include cell values, student names, or ids from the row that failed.
+
+## Raw schema and mapping tables
+
+These schemas live in the `campusview_data` database. Superset's own settings are in `superset_meta`, and Django's default tables are in `django_app`. Neither of those holds student data.
+
+**To fix when the warehouse is set up:** the base install currently makes the Superset database user the owner of `campusview_data`. The rule below is that Superset only reads `reporting`. When step 1 creates the schemas, the loader gets its own owner user, and Superset connects to `campusview_data` with a separate read-only user that can `SELECT` from `reporting` only.
+
+Schemas in `campusview_data`:
+
+| Schema | Holds | Who may read it |
+| --- | --- | --- |
+| `raw` | One table per standard file, plus load metadata columns (`load_id`, `loaded_at`) | Loader. Not Superset. |
+| `ref` | Code-mapping tables | Loader, and the reporting views |
+| `reporting` | Views | The Superset database user, `SELECT` only |
+| `ops` | `load_batch` | Loader writes; system admin reads |
+| `scratch` | Empty on a normal install | Testing install only, and only the sandbox database user |
+
+Table names match the files in [DATA_CONTRACT.md](DATA_CONTRACT.md): `raw.schools`, `raw.students`, `raw.enrollments`, `raw.calendar_days`, `raw.attendance`, `raw.incidents`, `raw.incident_behaviors`, `raw.consequences`, `raw.plans`.
+
+Relationships, all by the text ids in the files:
+
+- An enrollment belongs to one student and one school.
+- A calendar day belongs to one school.
+- An attendance row belongs to one student, one school, and one calendar day.
+- An incident belongs to one student and one school. Behavior rows and consequences belong to one incident.
+- A plan belongs to one student. The school it reports under is chosen in the reporting view, from the student's primary enrollment.
+
+Only a primary enrollment creates membership days. A second, non-primary enrollment must not double-count a day.
+
+## Reporting views
+
+Each dashboard number reads one of these views. The SQL for every view is kept in this repo. A Superset chart may sum, count, average, or divide columns the view already computed. It may not re-code attendance or behavior. Superset datasets point only at these views, never at raw tables.
+
+| View | One row is | Used by |
+| --- | --- | --- |
+| `reporting.v_attendance_student_day` | One enrolled student on one school day | Year-to-date rate, monthly trend, unexcused absences, tardies |
+| `reporting.v_attendance_month` | One school, year, month, grade, and gender, with the day totals already summed (including unexcused absence days) | Monthly trend, and unexcused absences by month |
+| `reporting.v_chronic_student_school` | One student at one school in one year | Chronic absenteeism by grade |
+| `reporting.v_last_school_day_absence` | One student absent on their school's last school day | Absence number |
+| `reporting.v_incident` | One referral | Referral counts, days to action, top 10 students |
+| `reporting.v_behavior_event` | One coded behavior on a referral | Behavior bars, month, grade, location, heatmap |
+| `reporting.v_referrals_by_student` | One student at one school in one year | Top 10 students, repeat referrals |
+| `reporting.v_open_referral` | One open referral | Open referrals list |
+| `reporting.v_consequence` | One consequence | Consequences chart |
+| `reporting.v_plan` | One plan | Active 504 and IEP numbers |
+| `reporting.v_equity_referral_rate` | Totals for one group | Equity chart. No student id and no name column |
+
+`v_equity_referral_rate` is the only view that uses race or ethnicity, and only as a group label on a total. Named views do not have a race column, so a chart builder cannot drop one onto a working list.
+
+Every view above includes `school_id` and `school_year`. Views that can be filtered by grade or gender include those columns too. Superset datasets are these views. A dataset without `school_id` is not published, because row-level security needs that column.
+
+Column-level formulas are in [METRICS.md](METRICS.md). Items still waiting on Austin are listed there and are not settled by this map.
+
+## Access in Superset
+
+Superset's roles and row-level security are the access control in v1. [ACCESS.md](ACCESS.md) has the roles, the rules, and the open question about how school assignments are kept up to date.
+
+- System admin, district admin, and school admin are Superset roles.
+- A row-level security rule on `school_id` limits a school admin to their schools.
+- The all-schools roles have no school rule.
+- SQL Lab, chart editing, and dashboard editing are for the system admin only.
+
+Grade and gender are never treated as permissions. School is the only row-level restriction in v1. Caseload-based access is parked.
+
+## The base install
+
+Installed directly on one Ubuntu or Debian server. No containers.
+
+```mermaid
+flowchart LR
+  ss[Superset 6.1.0 under gunicorn, 127.0.0.1:8088]
+  dj[Django 6.1.2 under gunicorn, 127.0.0.1:8000]
+  meta[(superset_meta)]
+  djdb[(django_app)]
+  data[(campusview_data)]
+  loader[Loader on a timer, step 1]
+  drop[SFTP drop on disk, step 1]
+
+  ss --> meta
+  ss --> data
+  dj --> djdb
+  loader --> drop
+  loader --> data
+```
+
+| Process | What it is | Listens on |
+| --- | --- | --- |
+| PostgreSQL 17 | From the PGDG apt repo, added over https with its signing key. `listen_addresses = '127.0.0.1'`. Three databases: `superset_meta` (Superset's own settings and users), `django_app` (Django's default tables), `campusview_data` (the warehouse) | 127.0.0.1:5432 |
+| Superset web | Apache Superset 6.1.0, Python 3.12 (verified on 3.12.16), gunicorn. Installed with Superset's tested package list (`requirements/base.txt` from the 6.1.0 release) as pip constraints | 127.0.0.1:8088 |
+| Django | A default `startproject campusview_base` on Django 6.1.2, Python 3.12, in its own Python environment, gunicorn. No role in v1 features | 127.0.0.1:8000 |
+
+Not in the base install:
+
+- **No Redis, no Celery, no Superset worker or beat.** The `celery` and `redis` Python libraries are installed only because Superset's package list pulls them in. Nothing runs them. Async queries, alerts and reports, and caching are parked.
+- **No reverse proxy or TLS yet.** Everything listens only on the server itself. From a laptop, use an SSH tunnel. When a proxy is added is an open question in [PLAN.md](PLAN.md).
+- **No SFTP or loader yet.** Those are step 1.
+- **No example data and no theming.**
+
+Secrets (the database passwords and the Superset secret key) live in one server file outside both git repos, `/etc/campusview/campusview.env`: mode 600, owned by the account that runs CampusView, in a folder with mode 700. systemd (`EnvironmentFile=`) or `start.sh` loads it. `superset_config.py` and Django's `settings.py` read those values from the environment and contain no passwords. The one exception is Django's own generated `SECRET_KEY`, which stays in `settings.py`, so that file is mode 600. Secrets are never in either git repo.
+
+The district repo holds code mappings, branding, exported dashboards, display name, time zone, and history length. Upgrades do not replace it. Student extracts live in the SFTP drop on the server disk, which is outside both git repos.
+
+## Installer and releases
+
+`install.sh` is one script with a step-by-step wizard. It asks for every setting the base install needs, installs the pieces above, creates the three databases and their users, and sets up the first Superset admin. The CampusView Engineer built it, and it passed clean installs and re-runs on Debian 12, Ubuntu 24.04, and Ubuntu 22.04. Austin is reviewing it. Until he approves it, follow the manual steps in [guides/install-and-upgrade.md](guides/install-and-upgrade.md). Non-secret district settings live in the district repo, not in the product repo.
+
+The product repo builds a release only as a tag such as `v1.3.0`. The live server pulls a tag. CI for a release installs that tag on a clean machine and upgrades a machine that was on the previous tag. The testing install runs the same tag and may load fake data. Production refuses the fake-data command.
+
+The testing database has one extra user for the AI sandbox: it can read `raw` and `reporting`, and it can create objects only in `scratch`. Production does not have this user. A view that is ready to keep is added as SQL in the product repo, with a hand-checked test, and arrives through a release.
+
+## Dashboards, in product terms
+
+Three dashboards: Overview, Behavior, and Attendance, each built in Superset by the system admin, each with the same native filters. In Superset, a single headline number is a big-number chart and a list of rows is a table chart. Charts use Superset's own theme settings.
+
+Exported Superset dashboards are files in the district repo. Agents do not edit them. A chart change is done in Superset by the system admin and exported again.
+
+The first draft's custom Django pieces (filter bar, clickable cards, modal tables with export and print, student profiles, card admin screens, preferences, the custom view log, guest-token embeds, and the Django-to-Superset sync) are parked. See [FEATURES.md](../FEATURES.md#parking-lot).
