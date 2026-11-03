@@ -3,3 +3,10 @@ __pycache__/
 .pytest_cache/
 *.pyc
 *.egg-info/
+.uv/
+superset/
+django/
+start.sh
+stop.sh
+*.log
+*.pid
