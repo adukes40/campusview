@@ -12,7 +12,7 @@ The file names in `loader/contract.py`, the rule that this is a full snapshot of
 
 ## Code-mapping files
 
-The ten code-mapping files live in the district directory, not in the SFTP drop. All ten are required on every load. A missing file, a bad header, or a bad code fails the load before anything is written. The report names the file, the line, and the rule. It does not repeat the cell value. An extract code with no map row warns, and the load still passes. The warning names the extract file and the column. A header-only map loads as an empty table and does not add an empty-file warning. The all-false referral warning is not built yet.
+The ten code-mapping files live in the district directory, not in the SFTP drop. The rules are in [Code-mapping files](../DATA_CONTRACT.md#code-mapping-files). A bad map file says the problem is in the district config folder's map files. A missing district folder says the problem is the district config folder. The all-false referral warning is not built yet.
 
 Someone with write access to the district repo edits a file when the district adds an attendance code. Commit it there, then run the loader with that directory.
 
@@ -22,7 +22,7 @@ How to schedule the extracts this district confirmed in the TO CONFIRM list, tha
 
 ## Run the loader
 
-The loader reads one folder of Infinite Campus CSV files and the district directory of code-mapping files. It loads the extracts into the `raw` schema, rebuilds the typed copy in schema `ic`, and replaces the ten `ref` tables in the same step. A bad value becomes NULL in `ic` and the report warns. A row that fails a cross-row check is kept and still counts. An empty `school.csv` or `calendar.csv` fails the load. A missing map, a bad map header, or a bad map code fails the load before anything is written. See [DATA_CONTRACT.md](../DATA_CONTRACT.md).
+The loader reads one folder of Infinite Campus CSV files and the district directory of code-mapping files. It loads the extracts into the `raw` schema, rebuilds the typed copy in schema `ic`, and replaces the ten `ref` tables in the same step. A bad value becomes NULL in `ic` and the report warns. A row that fails a cross-row check is kept and still counts. An empty `school.csv` or `calendar.csv` fails the load. Map-file rules are in [Code-mapping files](../DATA_CONTRACT.md#code-mapping-files).
 
 The installer does not install or run the loader. From a checkout of this repository, load the password file into the environment. Do not put the password on the command line. The command below uses the Python 3.12 the installer already placed. It does not download Python, and it does not install the test tools. The first run installs the loader's database library into that checkout, so it needs internet access. If you chose another install folder, use it in place of `/opt/campusview`.
 
@@ -62,7 +62,7 @@ Until the list includes the new header, the loader fails that file and the repor
 
 ## When a load fails
 
-Read the loader output, or `ops.load_batch`. A failed load names only the files that failed, with the reason. When PostgreSQL rejects a row, it gives the line number. A bad code-mapping file names that file, the line, and the rule. You do not see the cell value. Use `fault` to decide where to look. `extract` means fix the files in the drop or the district directory. `server` means check this machine, the database, the district path, or whether a load is already running. The previous rows stay in place.
+Read the loader output, or `ops.load_batch`. A failed load names only the files that failed, with the reason. When PostgreSQL rejects a row, it gives the line number. You do not see the cell value. The first line of a map-file failure says the district config folder's map files. A missing district folder says the district config folder. `fault` is still `extract` for a bad map file and `server` when the district folder itself is missing. `server` also means this machine, the database, or a load that is already running. The previous rows stay in place.
 
 ## Writing a mapping for another student information system
 

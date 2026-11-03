@@ -9,7 +9,7 @@ import psycopg
 from psycopg import sql
 
 from loader.contract import FILES
-from loader.maps import MapFault, read_maps
+from loader.maps import read_maps, replace_maps
 from loader.typed import replace_ic
 
 LOCK = 814202611
@@ -25,26 +25,42 @@ def main(argv: list[str]) -> int:
     return 0 if ok and saved else 1
 
 
+def _phrase(fault, map_lines, district: Path) -> str:
+    if not map_lines:
+        return "the extract" if fault == "extract" else "the server"
+    district_phrase = (
+        "the district config folder"
+        if not district.is_dir()
+        else "the district config folder's map files"
+    )
+    if fault == "server":
+        return "the server"
+    if fault == "extract":
+        return f"the extract and {district_phrase}"
+    return district_phrase
+
+
 def load_drop(folder: Path, district: Path) -> tuple[bool, bool, str]:
     started = datetime.now(UTC)
     fault, lines, ready = check_folder(folder)
-    found = read_maps(district, check_header)
-    if isinstance(found, MapFault):
-        lines = [*lines, *found.lines]
-        if fault == "server" or found.fault == "server":
-            fault = "server"
-        elif not fault:
-            fault = found.fault
+    map_lines, maps = read_maps(district, check_header)
+    phrase = _phrase(fault, map_lines, district)
+    if map_lines:
+        lines = [*lines, *map_lines]
+        if not district.is_dir():
+            fault = fault or "server"
+        else:
+            fault = "server" if fault == "server" else "extract"
     if not os.environ.get("CV_OWNER_DB_PASSWORD"):
         if not fault:
             fault, lines = "server", ["CV_OWNER_DB_PASSWORD is not set."]
-        return False, False, render(False, fault, lines, [])
+        return False, False, render(False, phrase, lines, [])
     try:
         conn = connect()
     except psycopg.Error:
         if not fault:
             fault, lines = "server", ["The database could not be reached."]
-        return False, False, render(False, fault, lines, [])
+        return False, False, render(False, phrase, lines, [])
     copy_name = None
     warnings = []
     try:
@@ -53,6 +69,7 @@ def load_drop(folder: Path, district: Path) -> tuple[bool, bool, str]:
                 locked = conn.execute("SELECT pg_try_advisory_xact_lock(%s)", (LOCK,)).fetchone()[0]
                 if not locked:
                     fault, lines = "server", ["Another load is already running."]
+                    phrase = "the server"
                 else:
                     conn.execute("CREATE SCHEMA IF NOT EXISTS raw")
                     lines = []
@@ -70,12 +87,12 @@ def load_drop(folder: Path, district: Path) -> tuple[bool, bool, str]:
                         f"Warning: calendar {calendar_id} has enrollments and no Day rows."
                         for calendar_id in day_warnings(conn)
                     )
-                    passed, notes = found.replace(conn)
+                    passed, notes = replace_maps(conn, maps)
                     lines.extend(passed)
                     warnings.extend(notes)
                     fault = None
         ok = fault is None
-        report = render(ok, fault, lines, warnings)
+        report = render(ok, phrase, lines, warnings)
         return ok, save_report(conn, report, ok, fault, started), report
     except psycopg.Error as exc:
         report = render(False, "extract", [copy_failure(exc, copy_name)], [])
@@ -241,14 +258,13 @@ def day_warnings(conn) -> list[str]:
     return [row[0] for row in rows]
 
 
-def render(ok: bool, fault, lines, warnings) -> str:
+def render(ok: bool, phrase, lines, warnings) -> str:
     if ok:
         head = ["Load passed."]
         lines = [*lines, *warnings]
     else:
-        where = "the extract" if fault == "extract" else "the server"
         head = [
-            f"Load failed. This looks like a problem with {where}.",
+            f"Load failed. This looks like a problem with {phrase}.",
             "Nothing was loaded. The previous data is still in place.",
         ]
     return "\n".join([*head, *lines]) + "\n"
