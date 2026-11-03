@@ -20,7 +20,7 @@ How to schedule the extracts this district confirmed in the TO CONFIRM list, tha
 
 ## Run the loader
 
-The loader reads one folder of Infinite Campus CSV files and loads them into the `raw` schema. SFTP pickup and the typed copy in schema `ic` come later. The typed copy will report bad values (stored as NULL in `ic`), bad keys, unknown codes, and cross-row problems as warnings, and keep loading. A row that fails a cross-row check is kept as it is and still counts in the metrics. Planned failures, on top of today's: a required file with zero data rows, and a bad district code-mapping file (a header problem or a bad code). See [DATA_CONTRACT.md](../DATA_CONTRACT.md).
+The loader reads one folder of Infinite Campus CSV files and loads them into the `raw` schema. SFTP pickup and the typed copy in schema `ic` come later. The typed copy will report bad values (stored as NULL in `ic`), bad keys, unknown codes, and cross-row problems as warnings, and keep loading. A row that fails a cross-row check is kept as it is and still counts in the metrics. Planned failures, on top of today's: an empty `school.csv` or `calendar.csv` (zero data rows), and a bad district code-mapping file (a header problem or a bad code). See [DATA_CONTRACT.md](../DATA_CONTRACT.md).
 
 The installer does not install or run the loader. From a checkout of this repository, load the password file into the environment. Do not put the password on the command line. The command below uses the Python 3.12 the installer already placed. It does not download Python, and it does not install the test tools. The first run installs the loader's database library into that checkout, so it needs internet access. If you chose another install folder, use it in place of `/opt/campusview`.
 
@@ -40,7 +40,7 @@ You should see `Load passed.` and one line per file with its row count. The same
 
 The exit code is 0 when the load passed and the report was saved, 1 otherwise, and 2 when the folder is missing from the command. When `CV_OWNER_DB_PASSWORD` is not set, or the database cannot be reached, the loader prints the report and saves nothing to `ops.load_batch`.
 
-A failed load writes nothing to `raw`. The previous rows stay. On a failure the report lists only the files that failed. A file that has only a header row is a pass, and it clears that table. That changes with the typed copy: the required files in [DATA_CONTRACT.md](../DATA_CONTRACT.md) will fail the load when they have zero data rows. Running the same folder again leaves the same rows.
+A failed load writes nothing to `raw`. The previous rows stay. On a failure the report lists only the files that failed. A file that has only a header row is a pass, and it clears that table. That changes with the typed copy: an empty `school.csv` or `calendar.csv` will fail the load, and any other empty file will be a warning on the load report. See [DATA_CONTRACT.md](../DATA_CONTRACT.md). Running the same folder again leaves the same rows.
 
 Every value is stored as text, so a leading zero stays. A blank cell is stored as NULL, including a quoted empty cell. Postgres reads the CSV, so a quoted comma or a quote inside a value is kept, and the line endings can be LF or CRLF.
 
