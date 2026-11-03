@@ -19,6 +19,6 @@ This is step 0: documentation and the base install. The base install is PostgreS
 | [docs/INVARIANTS.md](docs/INVARIANTS.md) | Rules later changes must not break. |
 | [FEATURES.md](FEATURES.md) | The build, step by step, plus the parking lot. |
 
-Operator guides (outlines until the matching step is built) are in [docs/guides/](docs/guides/): server requirements, install and upgrade, Google sign-in, accounts and roles, SFTP and extracts, Superset dashboards, and backups.
+Operator guides (outlines until the matching step is built) are in [docs/guides/](docs/guides/): server requirements, install and upgrade, setting up the product and district repos and servers ([repos-and-servers.md](docs/guides/repos-and-servers.md)), Google sign-in, accounts and roles, SFTP and extracts, Superset dashboards, and backups.
 
 Agents working in this repo follow [.cursor/skills/campusview-house-rules/SKILL.md](.cursor/skills/campusview-house-rules/SKILL.md).
