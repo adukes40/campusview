@@ -7,7 +7,7 @@ import pytest
 from psycopg import sql
 
 from loader.contract import FILES
-from loader.load import check_folder, load_drop
+from loader.load import EXTRACT_CUTOFF_DATE, check_folder, load_drop
 
 PASSWORD = "throwaway"
 
@@ -69,31 +69,34 @@ def stored(query: str):
         return conn.execute(query).fetchall()
 
 
-def test_text_blanks_quotes_and_kept_years(db, tmp_path):
+def test_text_blanks_quotes_and_cutoff(db, tmp_path):
     person_header = list(reversed(FILES["person.csv"]))
-    person = list(reversed(cells("person.csv", personID="1", stateID="001", studentNumber="STU-001")))
     fill(
         tmp_path,
         **{
             "enrollment.csv": [
-                cells("enrollment.csv", enrollmentID="1", personID="1", calendarID="104", endYear="2017"),
-                cells("enrollment.csv", enrollmentID="2", personID="1", calendarID="20", endYear="2027"),
-                cells("enrollment.csv", enrollmentID="3", personID="1", calendarID="3", endYear="2026"),
-                cells("enrollment.csv", enrollmentID="4", personID="1", calendarID="1", endYear="2027"),
+                cells("enrollment.csv", enrollmentID="1", personID="1", calendarID="104", endDate="2017-06-01"),
+                cells("enrollment.csv", enrollmentID="2", personID="1", calendarID="20", endDate="2029-06-01"),
+                cells("enrollment.csv", enrollmentID="3", personID="1", calendarID="3", endDate="2025-06-30"),
+                cells("enrollment.csv", enrollmentID="4", personID="1", calendarID="245", startDate="2025-08-01"),
+                cells("enrollment.csv", enrollmentID="5", personID="1", calendarID="1", endDate=EXTRACT_CUTOFF_DATE),
             ],
-            "day.csv": [cells("day.csv", calendarID="1", date="2026-01-05", duration="1", instruction="1", schoolDay="1")],
-            "school.csv": [cells("school.csv", schoolID="1", name='School A, North', address='say "hi"')],
+            "day.csv": [cells("day.csv", calendarID="1", date="2026-01-05")],
+            "school.csv": [cells("school.csv", schoolID="1", name="School A, North", address='say "hi"')],
         },
     )
-    write_csv(tmp_path / "person.csv", person_header, [person])
+    quoted = {"currentIdentityID": '""', "personID": "1", "stateID": "001", "studentNumber": "STU-001"}
+    person_line = ",".join(quoted.get(column, "") for column in person_header)
+    (tmp_path / "person.csv").write_text(",".join(person_header) + "\n" + person_line + "\n")
     ok, saved, report = load_drop(tmp_path)
     assert ok and saved
     assert stored('SELECT "stateID", "currentIdentityID" FROM raw.person') == [("001", None)]
-    assert stored('SELECT name, address FROM raw.school') == [("School A, North", 'say "hi"')]
-    assert "Warning: calendar 3 has enrollments and no Day rows." in report
+    assert stored("SELECT name, address FROM raw.school") == [("School A, North", 'say "hi"')]
     assert "Warning: calendar 20 has enrollments and no Day rows." in report
-    assert report.index("calendar 3") < report.index("calendar 20")
+    assert "Warning: calendar 245 has enrollments and no Day rows." in report
+    assert report.index("calendar 20") < report.index("calendar 245")
     assert "calendar 104" not in report
+    assert "calendar 3 " not in report
     assert "calendar 1 " not in report
 
 
@@ -134,4 +137,11 @@ def test_bad_file_keeps_previous_rows(db, tmp_path):
     assert not ok and saved
     assert "person.csv: fail. Unknown column personId." in report
     assert "att_day_aggregation.csv" not in report
+    assert stored('SELECT "stateID" FROM raw.person') == [("001",)]
+    header = ",".join(FILES["person.csv"])
+    (tmp_path / "person.csv").write_text(header + "\n1,,001,,,,NOT-A-CELL\n")
+    ok, saved, report = load_drop(tmp_path)
+    assert not ok and saved
+    assert "person.csv: fail. Line 2:" in report
+    assert "NOT-A-CELL" not in report
     assert stored('SELECT "stateID" FROM raw.person') == [("001",)]

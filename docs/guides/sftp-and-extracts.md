@@ -40,9 +40,9 @@ You should see `Load passed.` and one line per file with its row count. The same
 
 A failed load writes nothing to `raw`. The previous rows stay. The report lists only the files that failed. A file that has only a header row is a pass, and it clears that table. Running the same folder again leaves the same rows.
 
-Every value is stored as text, so a leading zero stays. A blank cell is stored as NULL. Postgres reads the CSV, so a quoted comma or a quote inside a value is kept, and the line endings can be LF or CRLF.
+Every value is stored as text, so a leading zero stays. A blank cell is stored as NULL, including a quoted empty cell. Postgres reads the CSV, so a quoted comma or a quote inside a value is kept, and the line endings can be LF or CRLF.
 
-A calendar that has enrollment rows and no Day rows is a warning when that enrollment's school year is one of the two newest end years in the file. Older years are left out. The load still passes. The warning lists those calendar ids in numeric order. Day rows may repeat a date for one calendar. Older calendars do that when one date sits on more than one schedule structure. The loader allows the repeat.
+A calendar with an enrollment that overlaps the extract cutoff date, 2025-07-01, and no Day rows is a warning. The enrollment overlaps when its end date is empty or on or after that date. The load still passes. The warning lists those calendar ids in numeric order. Day rows may repeat a date for one calendar. Older calendars do that when one date sits on more than one schedule structure. The loader allows the repeat.
 
 If a load is already running, the new one stops and names the server as the fault.
 

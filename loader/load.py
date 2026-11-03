@@ -1,5 +1,6 @@
 import csv
 import os
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,6 +11,7 @@ from psycopg import sql
 from loader.contract import FILES
 
 LOCK = 814202611
+EXTRACT_CUTOFF_DATE = "2025-07-01"
 
 
 def main(argv: list[str]) -> int:
@@ -24,44 +26,56 @@ def main(argv: list[str]) -> int:
 def load_drop(folder: Path) -> tuple[bool, bool, str]:
     started = datetime.now(UTC)
     fault, lines, ready = check_folder(folder)
-    if fault:
-        report = render(False, fault, lines, [])
-        return False, record(report, False, fault, started), report
     if not os.environ.get("CV_OWNER_DB_PASSWORD"):
-        report = render(False, "server", ["CV_OWNER_DB_PASSWORD is not set."], [])
-        return False, False, report
-    copy_name = None
+        if not fault:
+            fault, lines = "server", ["CV_OWNER_DB_PASSWORD is not set."]
+        return False, False, render(False, fault, lines, [])
     try:
         conn = connect()
     except psycopg.Error:
-        report = render(False, "server", ["The database could not be reached."], [])
-        return False, False, report
+        if not fault:
+            fault, lines = "server", ["The database could not be reached."]
+        return False, False, render(False, fault, lines, [])
+    copy_name = None
     try:
-        with conn.transaction():
-            locked = conn.execute("SELECT pg_try_advisory_xact_lock(%s)", (LOCK,)).fetchone()[0]
-            if not locked:
-                fault = "server"
-                lines = ["Another load is already running."]
-                warnings = []
-            else:
-                lines = []
-                for name, path, columns in ready:
-                    copy_name = name
-                    lines.append(copy_file(conn, name, path, columns))
-                warnings = day_warnings(conn)
-                fault = None
+        if not fault:
+            with conn.transaction():
+                locked = conn.execute("SELECT pg_try_advisory_xact_lock(%s)", (LOCK,)).fetchone()[0]
+                if not locked:
+                    fault, lines, warnings = "server", ["Another load is already running."], []
+                else:
+                    conn.execute("CREATE SCHEMA IF NOT EXISTS raw")
+                    lines = []
+                    for name, path, columns, header in ready:
+                        copy_name = name
+                        lines.append(copy_file(conn, name, path, columns, header))
+                    warnings = day_warnings(conn)
+                    fault = None
+        else:
+            warnings = []
         ok = fault is None
         report = render(ok, fault, lines, warnings)
         return ok, save_report(conn, report, ok, fault, started), report
     except psycopg.Error as exc:
-        message = "The database rejected the file."
-        if exc.diag is not None and exc.diag.message_primary:
-            message = exc.diag.message_primary
-        line = f"{copy_name}: fail. {message}" if copy_name else message
-        report = render(False, "extract", [line], [])
+        report = render(False, "extract", [copy_failure(exc, copy_name)], [])
         return False, save_report(conn, report, False, "extract", started), report
     finally:
         conn.close()
+
+
+def copy_failure(exc, name) -> str:
+    message = "The database rejected the file."
+    line_no = None
+    if exc.diag is not None:
+        if exc.diag.message_primary:
+            message = exc.diag.message_primary
+        if exc.diag.context:
+            found = re.search(r"\bline (\d+)\b", exc.diag.context)
+            if found:
+                line_no = found.group(1)
+    if line_no:
+        message = f"Line {line_no}: {message}"
+    return f"{name}: fail. {message}" if name else message
 
 
 def check_folder(folder: Path):
@@ -75,39 +89,43 @@ def check_folder(folder: Path):
         return "server", ["The server could not read the folder."], []
     problems = []
     ready = []
+
+    def problem(name, reason):
+        problems.append(f"{name}: fail. {reason}")
+
     for name, columns in FILES.items():
         path = folder / name
         if name not in names and not path.is_file():
-            problems.append(f"{name}: fail. The file is missing from the folder.")
+            problem(name, "The file is missing from the folder.")
             continue
-        reason = check_header(path, columns)
+        reason, header = check_header(path, columns)
         if reason:
-            problems.append(f"{name}: fail. {reason}")
+            problem(name, reason)
         else:
-            ready.append((name, path, columns))
+            ready.append((name, path, columns, header))
     for name in sorted(names):
         if name not in FILES:
-            problems.append(f"{name}: fail. This file is not in the extract contract.")
+            problem(name, "This file is not in the extract contract.")
     if problems:
         return "extract", problems, []
     return None, [], ready
 
 
-def check_header(path: Path, columns: tuple[str, ...]) -> str:
+def check_header(path: Path, columns: tuple[str, ...]):
     try:
         with path.open(newline="", encoding="utf-8") as handle:
             header = next(csv.reader(handle), None)
     except UnicodeDecodeError:
-        return "The file is not UTF-8."
+        return "The file is not UTF-8.", None
     except OSError:
-        return "The server could not read this file."
+        return "The server could not read this file.", None
     if not header:
-        return "The file has no header row."
+        return "The file has no header row.", None
     if any(name == "" for name in header):
-        return "A column has no name."
+        return "A column has no name.", None
     repeated = sorted({name for name in header if header.count(name) > 1})
     if repeated:
-        return "Repeated column " + ", ".join(repeated) + "."
+        return "Repeated column " + ", ".join(repeated) + ".", None
     unknown = [name for name in header if name not in columns]
     missing = [name for name in columns if name not in header]
     parts = []
@@ -115,7 +133,9 @@ def check_header(path: Path, columns: tuple[str, ...]) -> str:
         parts.append("Unknown column " + ", ".join(unknown) + ".")
     if missing:
         parts.append("Missing column " + ", ".join(missing) + ".")
-    return " ".join(parts)
+    if parts:
+        return " ".join(parts), None
+    return "", header
 
 
 def connect():
@@ -128,17 +148,14 @@ def connect():
     )
 
 
-def copy_file(conn, name: str, path: Path, columns: tuple[str, ...]) -> str:
+def copy_file(conn, name: str, path: Path, columns: tuple[str, ...], header) -> str:
     table = name.removesuffix(".csv")
     ensure_table(conn, table, columns)
-    with path.open(newline="", encoding="utf-8") as handle:
-        header = next(csv.reader(handle))
     conn.execute(sql.SQL("TRUNCATE {}.{}").format(sql.Identifier("raw"), sql.Identifier(table)))
-    statement = sql.SQL("COPY {}.{} ({}) FROM STDIN WITH (FORMAT csv, HEADER true)").format(
-        sql.Identifier("raw"),
-        sql.Identifier(table),
-        sql.SQL(", ").join(sql.Identifier(column) for column in header),
-    )
+    listed = sql.SQL(", ").join(sql.Identifier(column) for column in header)
+    statement = sql.SQL(
+        "COPY {}.{} ({}) FROM STDIN WITH (FORMAT csv, HEADER true, FORCE_NULL ({}))"
+    ).format(sql.Identifier("raw"), sql.Identifier(table), listed, listed)
     with conn.cursor() as cur, path.open("rb") as handle:
         with cur.copy(statement) as copy:
             copy.write(handle.read())
@@ -148,7 +165,6 @@ def copy_file(conn, name: str, path: Path, columns: tuple[str, ...]) -> str:
 
 
 def ensure_table(conn, table: str, columns: tuple[str, ...]) -> None:
-    conn.execute("CREATE SCHEMA IF NOT EXISTS raw")
     conn.execute(
         sql.SQL("CREATE TABLE IF NOT EXISTS {}.{} ({})").format(
             sql.Identifier("raw"),
@@ -156,25 +172,14 @@ def ensure_table(conn, table: str, columns: tuple[str, ...]) -> None:
             sql.SQL(", ").join(sql.SQL("{} text").format(sql.Identifier(column)) for column in columns),
         )
     )
-    present = {
-        row[0]
-        for row in conn.execute(
-            """
-            SELECT column_name FROM information_schema.columns
-            WHERE table_schema = 'raw' AND table_name = %s
-            """,
-            (table,),
-        )
-    }
     for column in columns:
-        if column not in present:
-            conn.execute(
-                sql.SQL("ALTER TABLE {}.{} ADD COLUMN {} text").format(
-                    sql.Identifier("raw"),
-                    sql.Identifier(table),
-                    sql.Identifier(column),
-                )
+        conn.execute(
+            sql.SQL("ALTER TABLE {}.{} ADD COLUMN IF NOT EXISTS {} text").format(
+                sql.Identifier("raw"),
+                sql.Identifier(table),
+                sql.Identifier(column),
             )
+        )
 
 
 def day_warnings(conn) -> list[str]:
@@ -183,18 +188,14 @@ def day_warnings(conn) -> list[str]:
         SELECT e."calendarID"
         FROM raw.enrollment e
         WHERE e."calendarID" ~ '^[0-9]+$'
-          AND e."endYear" ~ '^[0-9]+$'
-          AND e."endYear"::int >= (
-              SELECT MAX(y."endYear"::int) - 1
-              FROM raw.enrollment y
-              WHERE y."endYear" ~ '^[0-9]+$'
-          )
+          AND (e."endDate" IS NULL OR e."endDate" >= %s)
           AND NOT EXISTS (
               SELECT 1 FROM raw.day d WHERE d."calendarID" = e."calendarID"
           )
         GROUP BY e."calendarID"
         ORDER BY e."calendarID"::bigint
-        """
+        """,
+        (EXTRACT_CUTOFF_DATE,),
     ).fetchall()
     return [row[0] for row in rows]
 
@@ -213,19 +214,6 @@ def render(ok: bool, fault, lines, warnings) -> str:
             "Nothing was loaded. The previous data is still in place.",
         ]
     return "\n".join([*head, *lines]) + "\n"
-
-
-def record(report: str, ok: bool, fault, started: datetime) -> bool:
-    if not os.environ.get("CV_OWNER_DB_PASSWORD"):
-        return False
-    try:
-        conn = connect()
-    except psycopg.Error:
-        return False
-    try:
-        return save_report(conn, report, ok, fault, started)
-    finally:
-        conn.close()
 
 
 def save_report(conn, report: str, ok: bool, fault, started: datetime) -> bool:
