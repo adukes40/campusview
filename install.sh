@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # CampusView bare-bones installer: PostgreSQL + Superset 6.1.0 + Django 6.1.2 (both on Python 3.12).
 # Debian 12 / Ubuntu 22.04 / Ubuntu 24.04. PostgreSQL 17 comes from postgresql.org's apt repo. Default folder /opt/campusview. Run as root: `sudo ./install.sh` (Debian as root: `./install.sh`).
+# Network access (CV_ACCESS): tunnel = nothing on the network; http / https = nginx on port 80 / 443 sends / to Superset
+# and /app/ to Django. The apps and PostgreSQL always listen on 127.0.0.1 only.
 #
 # Interactive:      sudo ./install.sh                       (a short wizard asks the questions)
 # Non-interactive:  sudo CV_NONINTERACTIVE=1 CV_ANSWERS=/path/answers.env ./install.sh
@@ -18,7 +20,13 @@ SUPERSET_VER=6.1.0; DJANGO_VER=6.1.2; PY=3.12   # one Python for both apps
 # ---------- answers: answers file, then saved values from a previous run (saved values win) ----------
 : "${CV_ANSWERS:=}"; : "${CV_NONINTERACTIVE:=0}"
 if [ -n "$CV_ANSWERS" ]; then [ -f "$CV_ANSWERS" ] || { echo "answers file $CV_ANSWERS not found" >&2; exit 1; }; . "$CV_ANSWERS"; fi
-RERUN=no; if [ -f "$ENVF" ]; then . "$ENVF"; RERUN=yes; fi
+# The network answers are the exception: one given in the answers file (or the environment) wins over the saved one,
+# so a re-run can switch between tunnel, http and https.
+NETV="CV_ACCESS CV_SERVER_NAME CV_TLS_CERT_SOURCE CV_TLS_CERT_FILE CV_TLS_KEY_FILE"; declare -A GIVEN=()
+for v in $NETV; do [ -n "${!v:-}" ] && GIVEN[$v]=${!v}; done
+RERUN=no; NET_SAVED=no
+if [ -f "$ENVF" ]; then . "$ENVF"; RERUN=yes; grep -q "^CV_ACCESS='[a-z]" "$ENVF" && NET_SAVED=yes; fi
+for v in "${!GIVEN[@]}"; do printf -v "$v" '%s' "${GIVEN[$v]}"; done
 : "${CV_RUN_USER:=${SUDO_USER:-root}}"
 : "${CV_INSTALL_DIR:=/opt/campusview}"; : "${CV_PG_PORT:=5432}"; : "${CV_SUPERSET_PORT:=8088}"; : "${CV_DJANGO_PORT:=8000}"
 : "${CV_SUPERSET_WORKERS:=4}"; : "${CV_SUPERSET_DB_USER:=superset_user}"; : "${CV_DJANGO_DB_USER:=django_user}"
@@ -27,11 +35,15 @@ RERUN=no; if [ -f "$ENVF" ]; then . "$ENVF"; RERUN=yes; fi
 : "${CV_ADMIN_USER:=admin}"; : "${CV_ADMIN_EMAIL:=}"; : "${CV_ADMIN_PASSWORD:=}"
 HAS_SYSTEMD=no; [ -d /run/systemd/system ] && HAS_SYSTEMD=yes
 : "${CV_SYSTEMD:=$HAS_SYSTEMD}"
+: "${CV_ACCESS:=}"; : "${CV_SERVER_NAME:=}"; : "${CV_TLS_CERT_SOURCE:=selfsigned}"; : "${CV_TLS_CERT_FILE:=}"; : "${CV_TLS_KEY_FILE:=}"
+TLS=/etc/campusview/tls   # the certificate nginx uses (key: mode 0600, root only)
 
 # value rules (shared by the wizard and the answers file)
 RE_PORT='^[0-9]{2,5}$'; RE_YN='^(yes|no)$'; RE_NAME='^[A-Za-z0-9_.@+-]+$'
 RE_SECRET='^[^'"'"'"\[:space:]]{8,}$'   # 8+ chars, no spaces, no ' " or \
 RE_PATH='^/[A-Za-z0-9._/-]*$'; RE_EMAIL='^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$'   # nothing that could break the saved file
+RE_ACCESS='^(tunnel|http|https)$'; RE_CERTSRC='^(selfsigned|own)$'; RE_HOST='^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$'
+RE_IP='^[0-9]{1,3}(\.[0-9]{1,3}){3}$'
 
 say(){ printf '\n==> %s\n' "$*"; }
 section(){ printf '\n--- %s ---\n' "$1"; }   # wizard section heading
@@ -57,6 +69,42 @@ ask(){ # ask VAR REGEX "Prompt" ["help line"] [secret]
   done
 }
 
+primary_ip(){ local ip; ip=$({ ip -4 route get 1.1.1.1 2>/dev/null || true; } | sed -n 's/.* src \([0-9.]*\).*/\1/p')
+  [ -n "$ip" ] || ip=$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -m1 -E "$RE_IP" || true); echo "${ip:-127.0.0.1}"; }
+check_own_cert(){ # prints why and fails if CV_TLS_CERT_FILE / CV_TLS_KEY_FILE can't be used together
+  local c=$CV_TLS_CERT_FILE k=$CV_TLS_KEY_FILE a b
+  [ -f "$c" ] || { echo "certificate file $c not found"; return 1; }
+  [ -f "$k" ] || { echo "key file $k not found"; return 1; }
+  a=$(openssl x509 -in "$c" -noout -pubkey 2>/dev/null) || { echo "$c is not a PEM certificate"; return 1; }
+  b=$(openssl pkey -in "$k" -pubout -passin pass: 2>/dev/null) || { echo "$k is not a PEM private key without a passphrase"; return 1; }
+  [ "$a" = "$b" ] || { echo "the key in $k does not match the certificate in $c"; return 1; }
+  openssl x509 -in "$c" -noout -checkend 0 >/dev/null || { echo "the certificate in $c has expired"; return 1; }
+}
+access_desc(){ case $CV_ACCESS in
+  tunnel) echo "only from this server (SSH tunnel)";;
+  http)   echo "HTTP on port 80, at http://$CV_SERVER_NAME/";;
+  https)  echo "HTTPS on port 443, at https://$CV_SERVER_NAME/ ($([ "$CV_TLS_CERT_SOURCE" = own ] && echo "your certificate" || echo "self-signed certificate"))";; esac; }
+ask_network(){ # the "How should people reach CampusView?" questions
+  case $CV_ACCESS in tunnel) CV_ACCESS_N=1;; http) CV_ACCESS_N=2;; *) CV_ACCESS_N=3;; esac
+  printf '\n  How should people reach CampusView?\n    1) Only from this server (SSH tunnel)\n    2) HTTP on port 80\n    3) HTTPS on port 443 (recommended)\n'
+  ask CV_ACCESS_N '^[123]$' "Choose 1, 2 or 3"
+  case $CV_ACCESS_N in 1) CV_ACCESS=tunnel;; 2) CV_ACCESS=http;; 3) CV_ACCESS=https;; esac
+  [ $CV_ACCESS = tunnel ] && return 0
+  [ -n "$CV_SERVER_NAME" ] || CV_SERVER_NAME=$(primary_ip)
+  ask CV_SERVER_NAME "$RE_HOST" "Server name or IP address" "The address people type in their browser, without http:// (for example 10.0.0.25 or campusview.yourdistrict.org)."
+  [ $CV_ACCESS = https ] || return 0
+  printf '\n  Which certificate should HTTPS use?\n    1) Make a self-signed one for me (browsers show a warning; fine for testing)\n    2) Use my own certificate and key files\n'
+  CV_TLS_N=1; [ "$CV_TLS_CERT_SOURCE" = own ] && CV_TLS_N=2
+  ask CV_TLS_N '^[12]$' "Choose 1 or 2"
+  [ $CV_TLS_N = 1 ] && { CV_TLS_CERT_SOURCE=selfsigned; return 0; }
+  CV_TLS_CERT_SOURCE=own; local why
+  while :; do
+    ask CV_TLS_CERT_FILE "$RE_PATH" "Certificate file (full path, PEM, with any intermediate certificates)"
+    ask CV_TLS_KEY_FILE "$RE_PATH" "Private key file (full path, PEM, no passphrase)"
+    why=$(check_own_cert) && return 0; echo "  That pair can't be used: $why."
+  done
+}
+
 . /etc/os-release
 case "$ID:$VERSION_ID" in debian:12|ubuntu:22.04|ubuntu:24.04) ;; *) echo "WARNING: untested OS $PRETTY_NAME";; esac
 if [ "$CV_NONINTERACTIVE" != 1 ]; then
@@ -78,6 +126,12 @@ B
   ask CV_PG_PORT "$RE_PORT" "Database (PostgreSQL) port" "Keep these unless something else on this server already uses them."
   ask CV_SUPERSET_PORT "$RE_PORT" "Superset web page port"
   ask CV_DJANGO_PORT "$RE_PORT" "Django admin page port"
+  section "How people reach CampusView"
+  if [ $NET_SAVED = yes ]; then
+    printf '\n  Saved: %s\n' "$(access_desc)"; CV_NET_CHANGE=no
+    ask CV_NET_CHANGE "$RE_YN" "Change how people reach CampusView? (yes/no)"
+    [ $CV_NET_CHANGE = yes ] && ask_network
+  else ask_network; fi
   section "Behind-the-scenes database passwords"
   printf '\n  Superset and Django each sign in to the database with their own account.\n  Only the apps use these. You never type them. Press Enter to have them made for you.\n'
   ask CV_SUPERSET_DB_PASSWORD "$RE_SECRET" "Password Superset uses for the database" "" secret
@@ -119,6 +173,23 @@ for v in CV_PG_PORT CV_SUPERSET_PORT CV_DJANGO_PORT; do chk $v "$RE_PORT"; done
 for v in CV_RUN_USER CV_ADMIN_USER CV_SUPERSET_DB_USER CV_DJANGO_DB_USER; do chk $v "$RE_NAME"; done
 for v in CV_SUPERSET_DB_PASSWORD CV_DJANGO_DB_PASSWORD CV_OWNER_DB_PASSWORD CV_READER_DB_PASSWORD CV_SECRET_KEY CV_ADMIN_PASSWORD; do chk $v "$RE_SECRET" "8+ characters, no spaces, quotes or backslashes"; done
 getent passwd "$CV_RUN_USER" >/dev/null || die "Linux user $CV_RUN_USER does not exist"
+# network: a fresh install defaults to HTTPS; an older install re-run from an answers file stays tunnel-only until asked
+[ -n "$CV_ACCESS" ] || { [ $RERUN = yes ] && CV_ACCESS=tunnel || CV_ACCESS=https; }
+chk CV_ACCESS "$RE_ACCESS" "tunnel, http or https"
+if [ "$CV_ACCESS" != tunnel ]; then
+  [ -n "$CV_SERVER_NAME" ] || CV_SERVER_NAME=$(primary_ip)
+  chk CV_SERVER_NAME "$RE_HOST" "a host name or IPv4 address, without http://"
+fi
+if [ "$CV_ACCESS" = https ]; then chk CV_TLS_CERT_SOURCE "$RE_CERTSRC" "selfsigned or own"
+  if [ "$CV_TLS_CERT_SOURCE" = own ]; then
+    chk CV_TLS_CERT_FILE "$RE_PATH" "a full path to the certificate file"; chk CV_TLS_KEY_FILE "$RE_PATH" "a full path to the key file"
+    if [ -f "$CV_TLS_CERT_FILE" ] || [ "$(cat $TLS/source 2>/dev/null)" != own ]; then
+      why=$(check_own_cert) || die "can't use your certificate: $why. Nothing was changed."
+    else echo "NOTE: $CV_TLS_CERT_FILE is gone; keeping the copy already in $TLS."; fi
+  fi
+fi
+case $CV_ACCESS in tunnel) URL_SS="http://127.0.0.1:$CV_SUPERSET_PORT"; URL_DJ="http://127.0.0.1:$CV_DJANGO_PORT/admin/";;
+  *) URL_SS="$CV_ACCESS://$CV_SERVER_NAME/"; URL_DJ="$CV_ACCESS://$CV_SERVER_NAME/app/";; esac
 [ "$CV_SYSTEMD" = yes ] && [ "$HAS_SYSTEMD" = no ] && { echo "systemd is not running here; using start.sh instead."; CV_SYSTEMD=no; }
 
 if [ "$CV_NONINTERACTIVE" != 1 ]; then
@@ -127,8 +198,9 @@ if [ "$CV_NONINTERACTIVE" != 1 ]; then
   Ready to install:
     Folder:        $CV_INSTALL_DIR   (apps run as $CV_RUN_USER)
     PostgreSQL:    17, port $CV_PG_PORT
-    Superset:      http://127.0.0.1:$CV_SUPERSET_PORT
-    Django admin:  http://127.0.0.1:$CV_DJANGO_PORT/admin/
+    Reached:       $(access_desc)
+    Superset:      $URL_SS
+    Django admin:  $URL_DJ
     Admin login:   $CV_ADMIN_USER ($CV_ADMIN_EMAIL)
     Start at boot: $CV_SYSTEMD
     Passwords:     saved to $ENVF (only $CV_RUN_USER can read it)
@@ -142,7 +214,7 @@ mkdir -p -m 700 /etc/campusview; chown "$CV_RUN_USER": /etc/campusview
   for v in CV_INSTALL_DIR CV_RUN_USER CV_PG_PORT CV_SUPERSET_PORT CV_DJANGO_PORT CV_SUPERSET_WORKERS \
            CV_SUPERSET_DB_USER CV_DJANGO_DB_USER CV_ADMIN_USER CV_ADMIN_EMAIL CV_SYSTEMD \
            CV_SUPERSET_DB_PASSWORD CV_DJANGO_DB_PASSWORD CV_OWNER_DB_PASSWORD CV_READER_DB_PASSWORD \
-           CV_SECRET_KEY CV_ADMIN_PASSWORD; do
+           CV_SECRET_KEY CV_ADMIN_PASSWORD $NETV; do
     printf "%s='%s'\n" "$v" "${!v}"; done > "$tmp"
   chown "$CV_RUN_USER": "$tmp"; mv "$tmp" "$ENVF" )
 set -a; . "$ENVF"; set +a      # the apps read their secrets from these environment variables
@@ -158,6 +230,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update </dev/null
 apt-get install -y build-essential libssl-dev libffi-dev libsasl2-dev libldap2-dev \
   default-libmysqlclient-dev pkg-config libpq-dev curl ca-certificates gnupg openssl git </dev/null
+[ "$CV_ACCESS" = tunnel ] || apt-get install -y nginx </dev/null   # from the distro's own repo
 
 # ---------- 2. PostgreSQL ----------
 say "2. PostgreSQL 17"
@@ -243,6 +316,14 @@ from urllib.parse import quote_plus
 SECRET_KEY = os.environ["CV_SECRET_KEY"]
 SQLALCHEMY_DATABASE_URI = "postgresql+psycopg2://%s:%s@127.0.0.1:%s/superset_meta" % (
     os.environ["CV_SUPERSET_DB_USER"], quote_plus(os.environ["CV_SUPERSET_DB_PASSWORD"]), os.environ["CV_PG_PORT"])
+# Behind nginx (CV_ACCESS http or https): trust its X-Forwarded-* headers for redirects and links.
+_cv_access = os.environ.get("CV_ACCESS", "tunnel")
+if _cv_access in ("http", "https"):
+    ENABLE_PROXY_FIX = True
+    PROXY_FIX_CONFIG = {"x_for": 1, "x_proto": 1, "x_host": 1, "x_port": 1, "x_prefix": 1}
+if _cv_access == "https":
+    PREFERRED_URL_SCHEME = "https"
+    SESSION_COOKIE_SECURE = True
 C
 export SUPERSET_CONFIG_PATH=$S/superset_config.py FLASK_APP=superset
 as_run "$S/venv/bin/superset" db upgrade
@@ -286,11 +367,30 @@ new = """DATABASES = {
 }
 """
 s = re.sub(r"DATABASES = \{.*?\n\}\n", lambda m: new, s, count=1, flags=re.S)
+net = """# --- CampusView network settings (install.sh). CV_ACCESS and CV_SERVER_NAME come from the env file. ---
+import socket
+_cv_access = os.environ.get('CV_ACCESS', 'tunnel')
+_cv_hosts = list(dict.fromkeys(h for h in (os.environ.get('CV_SERVER_NAME', ''), socket.gethostname()) if h))
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '[::1]'] + _cv_hosts
+STATIC_ROOT = BASE_DIR / 'static'
+if _cv_access in ('http', 'https'):   # nginx serves Django under /app/
+    DEBUG = False                     # debug pages must never reach the network
+    FORCE_SCRIPT_NAME = '/app'
+    STATIC_URL = '/app/static/'
+    CSRF_TRUSTED_ORIGINS = [f'{_cv_access}://{h}' for h in _cv_hosts]
+if _cv_access == 'https':
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = True
+# --- end CampusView network settings ---
+"""
+s = re.sub(r"\n# --- CampusView network settings .*?# --- end CampusView network settings ---\n", "", s, flags=re.S)
+s = s.rstrip("\n") + "\n\n" + net
 if "\nimport os\n" not in s:
     s = s.replace("from pathlib import Path\n", "import os\nfrom pathlib import Path\n", 1)
 open(p, "w").write(s)
 PY
 as_run chmod 600 "$D/campusview_base/settings.py"
+(cd "$D" && as_run venv/bin/python manage.py collectstatic --noinput -v0)   # nginx serves these at /app/static/
 (cd "$D" && as_run venv/bin/python manage.py migrate --noinput)
 (cd "$D" && as_run venv/bin/python manage.py shell <<'PY'
 import os
@@ -376,19 +476,99 @@ C
   systemctl restart cv-superset cv-django
 else
   say "8. starting with start.sh"
+  as_run "$B/stop.sh" >/dev/null 2>&1 || true   # restart, so changed settings take effect
   as_run "$B/start.sh"
 fi
 
-# ---------- 9. verify ----------
-say "9. checking everything answers"
+# ---------- 9. network access (nginx is the only thing on the network) ----------
+put(){ # put FILE MODE < content: replace FILE only when the content differs (re-runs stay byte-identical)
+  local t; t=$(mktemp "$1.XXXXXX"); cat > "$t"
+  if cmp -s "$t" "$1"; then rm -f "$t"; return 1; fi; chmod "$2" "$t"; mv "$t" "$1"; }
+nginx_up(){ nginx -t -q || die "nginx rejected its configuration (see above)"
+  if [ "$HAS_SYSTEMD" = yes ]; then systemctl enable -q nginx; systemctl reload-or-restart nginx
+  elif [ -s /run/nginx.pid ] && kill -0 "$(cat /run/nginx.pid)" 2>/dev/null; then nginx -s reload; else nginx; fi; }
+SITE=/etc/nginx/sites-available/campusview
+if [ "$CV_ACCESS" = tunnel ]; then
+  say "9. network access: SSH tunnel only (no web server)"
+  if [ -e "$SITE" ] || [ -L /etc/nginx/sites-enabled/campusview ]; then
+    rm -f /etc/nginx/sites-enabled/campusview "$SITE"; echo "  removed the CampusView nginx site"
+    if [ -z "$(ls -A /etc/nginx/sites-enabled 2>/dev/null)" ]; then
+      if [ "$HAS_SYSTEMD" = yes ]; then systemctl disable -q --now nginx; else nginx -s stop 2>/dev/null || true; fi
+      echo "  nginx had no other sites, so it is stopped and won't start at boot"
+    else nginx_up; fi
+  fi
+else
+  say "9. network access: nginx, $(access_desc)"
+  L80=; L443=; if [ -f /proc/net/if_inet6 ]; then   # listen on IPv6 too, when the server has it
+    L80='    listen [::]:80 default_server;'$'\n'; L443='    listen [::]:443 ssl default_server;'$'\n'; fi
+  if [ "$CV_ACCESS" = https ]; then
+    install -d -m 700 -o root -g root "$TLS"
+    if [ "$CV_TLS_CERT_SOURCE" = own ]; then
+      if [ -f "$CV_TLS_CERT_FILE" ]; then
+        put "$TLS/campusview.crt" 644 < "$CV_TLS_CERT_FILE" || true; put "$TLS/campusview.key" 600 < "$CV_TLS_KEY_FILE" || true
+      fi
+      echo own | put "$TLS/source" 644 || true
+    else
+      want="selfsigned $CV_SERVER_NAME $(hostname)"
+      if [ "$(cat $TLS/source 2>/dev/null)" != "$want" ] || ! openssl x509 -in $TLS/campusview.crt -noout -checkend 2592000 >/dev/null 2>&1; then
+        san="DNS:$(hostname)"; [[ $CV_SERVER_NAME =~ $RE_IP ]] && san="IP:$CV_SERVER_NAME,$san"
+        [[ $CV_SERVER_NAME =~ $RE_IP ]] || [ "$CV_SERVER_NAME" = "$(hostname)" ] || san="DNS:$CV_SERVER_NAME,$san"
+        ( umask 077; openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 3650 -subj "/CN=$CV_SERVER_NAME" \
+            -addext "subjectAltName=$san" -keyout $TLS/campusview.key.new -out $TLS/campusview.crt.new 2>/dev/null )
+        chmod 644 $TLS/campusview.crt.new; mv $TLS/campusview.key.new $TLS/campusview.key; mv $TLS/campusview.crt.new $TLS/campusview.crt
+        echo "$want" | put "$TLS/source" 644 || true; echo "  made a self-signed certificate for $san"
+      fi
+    fi
+  fi
+  { echo "# CampusView, written by install.sh (re-running it rewrites this file)."
+    echo "# Superset at /, Django at /app/. The apps and PostgreSQL listen on 127.0.0.1 only."
+    if [ "$CV_ACCESS" = https ]; then
+      printf 'server {\n    listen 80 default_server;\n%s    server_name _;\n    return 301 https://$host$request_uri;\n}\n' "$L80"
+      printf 'server {\n    listen 443 ssl default_server;\n%s' "$L443"
+      printf '    ssl_certificate     %s/campusview.crt;\n    ssl_certificate_key %s/campusview.key;\n    ssl_protocols TLSv1.2 TLSv1.3;\n' $TLS $TLS
+    else printf 'server {\n    listen 80 default_server;\n%s' "$L80"; fi
+    sed -e "s#@D@#$D#g" -e "s#@SP@#$CV_SUPERSET_PORT#g" -e "s#@DP@#$CV_DJANGO_PORT#g" <<'NGX'
+    server_name _;
+    client_max_body_size 100m;
+    proxy_http_version 1.1;
+    proxy_read_timeout 300s;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Port $server_port;
+    location = /app { return 301 /app/; }
+    location = /app/ { return 302 /app/admin/; }
+    location /app/static/ { alias @D@/static/; }
+    location /app/ { proxy_pass http://127.0.0.1:@DP@/; }
+    location / { proxy_pass http://127.0.0.1:@SP@; }
+}
+NGX
+  } | put "$SITE" 644 || true
+  ln -sfn "$SITE" /etc/nginx/sites-enabled/campusview; rm -f /etc/nginx/sites-enabled/default
+  nginx_up
+  runuser -u www-data -- test -r "$D/static/admin/css/base.css" 2>/dev/null ||
+    echo "  NOTE: nginx (www-data) can't read $D/static, so the Django admin pages will have no styling."
+fi
+
+# ---------- 10. verify ----------
+say "10. checking everything answers"
 code(){ curl -s -o /dev/null -w '%{http_code}' "$1" || true; }
 wait200(){ for i in $(seq 60); do [ "$(code "$1")" = 200 ] && return 0; sleep 2; done; return 1; }
 ok=1
 for u in "http://127.0.0.1:$CV_SUPERSET_PORT/health" "http://127.0.0.1:$CV_SUPERSET_PORT/login/" "http://127.0.0.1:$CV_DJANGO_PORT/admin/login/"; do
   wait200 "$u" || ok=0; echo "  $(code "$u")  $u"; done
+if [ "$CV_ACCESS" != tunnel ]; then   # through nginx, the way a browser comes in (curl -k: the certificate may be self-signed)
+  pcode(){ curl -sk --noproxy '*' --resolve "$CV_SERVER_NAME:80:127.0.0.1" --resolve "$CV_SERVER_NAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "$1" || true; }
+  for u in "${URL_SS}health" "${URL_SS}login/" "${URL_SS}app/admin/login/"; do
+    for i in $(seq 30); do [ "$(pcode "$u")" = 200 ] && break; sleep 2; done; echo "  $(pcode "$u")  $u"; [ "$(pcode "$u")" = 200 ] || ok=0; done
+  if [ "$CV_ACCESS" = https ]; then u="http://$CV_SERVER_NAME/login/"; echo "  $(pcode "$u")  $u (should send you to https)"; [ "$(pcode "$u")" = 301 ] || ok=0; fi
+fi
 dbs=$(psqlq -c "SELECT string_agg(datname, ' ' ORDER BY datname) FROM pg_database WHERE datname IN ('superset_meta','django_app','campusview_data')")
 echo "  databases: $dbs"; [ "$(wc -w <<<"$dbs")" = 3 ] || ok=0
-if [ $ok = 1 ]; then cat <<E
+if [ $ok = 1 ]; then
+  if [ "$CV_ACCESS" = tunnel ]; then cat <<E
 
 INSTALL OK
   Superset:      http://127.0.0.1:$CV_SUPERSET_PORT   (log in as $CV_ADMIN_USER)
@@ -396,6 +576,29 @@ INSTALL OK
   Passwords:     sudo cat $ENVF
   Everything listens on 127.0.0.1 only.
   From your laptop: ssh -L $CV_SUPERSET_PORT:127.0.0.1:$CV_SUPERSET_PORT -L $CV_DJANGO_PORT:127.0.0.1:$CV_DJANGO_PORT you@this-server
+E
+  else cat <<E
+
+INSTALL OK
+  Open these in your browser:
+    Superset:      $URL_SS   (log in as $CV_ADMIN_USER)
+    Django admin:  $URL_DJ   (takes you to the admin sign-in page)
+  Passwords:     sudo cat $ENVF
+  Only nginx (port $([ "$CV_ACCESS" = https ] && echo "443, and 80 to send you to https" || echo 80)) is reachable from the network.
+  Superset, Django and PostgreSQL listen on 127.0.0.1 only.
+E
+    if [ "$CV_ACCESS" = http ]; then cat <<E
+  Plain HTTP: passwords cross the network unencrypted. Use it only for testing with fake data.
+E
+    elif [ "$CV_TLS_CERT_SOURCE" = selfsigned ]; then cat <<E
+  The certificate is self-signed, so your browser will warn that the connection isn't private
+  or the certificate isn't trusted. That's expected the first time: choose Advanced, then
+  Continue (or Proceed / Accept the risk). To be sure it's this server, compare the fingerprint:
+    $(openssl x509 -in $TLS/campusview.crt -noout -fingerprint -sha256 | cut -d= -f2)
+E
+    fi
+  fi
+  cat <<E
 
 Connect with DBeaver (or another database tool)
   Host 127.0.0.1   Port $CV_PG_PORT   Database campusview_data

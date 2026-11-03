@@ -10,3 +10,12 @@ CV_SUPERSET_DB_PASSWORD=
 CV_DJANGO_DB_PASSWORD=
 CV_SECRET_KEY=
 CV_ADMIN_PASSWORD=
+# How people reach CampusView (the "How should people reach CampusView?" question):
+#   tunnel = only from this server (SSH tunnel), http = nginx on port 80, https = nginx on port 443 (default)
+CV_ACCESS=https
+# The address people type in the browser, without http://. Blank = this server's primary IP.
+CV_SERVER_NAME=
+# HTTPS only: selfsigned = the installer makes one; own = use the two PEM files below (the key without a passphrase).
+CV_TLS_CERT_SOURCE=selfsigned
+CV_TLS_CERT_FILE=
+CV_TLS_KEY_FILE=
