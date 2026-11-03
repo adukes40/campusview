@@ -4,6 +4,16 @@ Dated log of decisions already made. The plan of record is [PLAN.md](PLAN.md). N
 
 Open metric questions are not listed here. They are the Decisions for Austin list in [METRICS.md](METRICS.md). Open extract questions are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md). Both lists are deferred for now and do not block step 0.
 
+## 2026-11-03 — Days to action start when the referral is entered
+
+**What:** discipline days to action count from the date the referral or incident was entered into Infinite Campus, not from the incident date. The action-date check compares against the entered date. A negative span is flagged on the load report, and the row is kept and counted (see the next entry).
+
+**Blocked:** the extract has no confirmed entered date yet. No file in `loader/contract.py` has a column named as an entered or created date. Until one is confirmed, the check compares against the incident date. The candidate columns are listed in the open follow-ups in [DATA_CONTRACT.md](DATA_CONTRACT.md).
+
+**Who:** Austin, 2026-11-03, 12:55 PM ET, in his words: "discipline actions count from the time that they are entered into the system, not when the incident occurred. It's whenever the person or the referee put it in the system, not when the incidents took place."
+
+**Status:** Decided by Austin; confirmed by merging PR #11.
+
 ## 2026-11-03 — The typed layer keeps the Infinite Campus names
 
 **What:**
@@ -14,13 +24,14 @@ Open metric questions are not listed here. They are the Decisions for Austin lis
 - It lives in schema `ic`, with the same owner and permissions as `raw`. For example, `raw.enrollment` becomes `ic.enrollment` (Austin, relayed by CampusView Engineer, 2026-11-03, 12:43 PM ET: "Call the schema ic.").
 - Bad keys and unknown codes only warn on the load report, and loading continues. Header and column problems, missing files, and unexpected files still fail the whole batch (Austin, relayed by CampusView Engineer, 2026-11-03, 12:43 PM ET: "Bad keys or unknown codes only warn on the load report and keep loading.").
 - Bad values warn. A cell with a wrong id character, a bad date, time, boolean, or decimal, a bad school year, a blank required value, or a control character in text is stored as NULL in `ic`, and the load report lists the problem. Cross-row problems also warn: two grades for one student, school, and year; an attendance date outside an enrollment; an action date before the incident date; and an impossible referral flag combination (Austin, relayed by CampusView Engineer, 2026-11-03, 12:47 PM ET: "Go with your recommendation: bad values and cross-row problems warn; empty files and bad district mapping codes stop the load.").
+- A row that fails a cross-row check stays as it is in `ic`, still counts in the metrics, and is listed on the load report (Austin, 2026-11-03, 12:56 PM ET, picked on a card: "Keep the row and flag it on the load report.").
 - These fail the whole load: header and column problems, missing or unexpected files, a row PostgreSQL rejects when loading `raw`, any of the four required files with zero data rows, and a bad district code-mapping file (header problem or bad code) (same answer, 12:47 PM ET).
 - It is built as the next step 1 pull request after the update command.
 - Superset reads it only through the reporting views.
 
 **Who:** Austin, relayed by CampusView Engineer, 2026-11-03, 12:31 PM ET: "Yes, build the cleaned copies with the same IC names next."
 
-**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed by merging PR #11.
+**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed by merging PR #11. The 12:56 PM ET answer on cross-row rows: Decided by Austin; confirmed by merging PR #11.
 
 **Amends:** 2026-11-01 "Files are the only ingest" (below). Its mapping step to vendor-neutral standard layouts is replaced.
 

@@ -20,7 +20,7 @@ How to schedule the extracts this district confirmed in the TO CONFIRM list, tha
 
 ## Run the loader
 
-The loader reads one folder of Infinite Campus CSV files and loads them into the `raw` schema. SFTP pickup and the typed copy in schema `ic` come later. The typed copy will report bad values (stored as NULL in `ic`), bad keys, unknown codes, and cross-row problems as warnings, and keep loading. Planned failures, on top of today's: a required file with zero data rows, and a bad district code-mapping file (a header problem or a bad code). See [DATA_CONTRACT.md](../DATA_CONTRACT.md).
+The loader reads one folder of Infinite Campus CSV files and loads them into the `raw` schema. SFTP pickup and the typed copy in schema `ic` come later. The typed copy will report bad values (stored as NULL in `ic`), bad keys, unknown codes, and cross-row problems as warnings, and keep loading. A row that fails a cross-row check is kept as it is and still counts in the metrics. Planned failures, on top of today's: a required file with zero data rows, and a bad district code-mapping file (a header problem or a bad code). See [DATA_CONTRACT.md](../DATA_CONTRACT.md).
 
 The installer does not install or run the loader. From a checkout of this repository, load the password file into the environment. Do not put the password on the command line. The command below uses the Python 3.12 the installer already placed. It does not download Python, and it does not install the test tools. The first run installs the loader's database library into that checkout, so it needs internet access. If you chose another install folder, use it in place of `/opt/campusview`.
 
