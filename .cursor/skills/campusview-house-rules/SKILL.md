@@ -50,7 +50,7 @@ A new idea, including one that appears mid-build, is written into the Parking lo
 ## How work lands
 
 - One pull request per plan step. Do not mix two steps.
-- CI on GitHub must pass before the step is done. It runs only the tests that need no data files. CI is built in step 1; until then, run the same no-data tests on your own computer. Once releases exist, CI includes a fresh install and an upgrade from the previous tag.
+- CI on GitHub must pass before the step is done. It runs only the tests that need no data files. Basic CI is in `.github/workflows/ci.yml`. It has no PostgreSQL, so the loader tests that need a database skip there; run those on your own computer. Once releases exist, CI includes a fresh install and an upgrade from the previous tag.
 - Tests that need data run on the builder's computer, or a fake-data server, and must pass there too. Never on the dev server. Workflow: build and test on the builder's computer, push to `dev`, Austin checks the dev server and merges to `main`, then a tag is cut for production.
 - Every metric has a test with a hand-checked answer on the training extracts, run on the builder's computer. The test reads the reporting view. It does not reimplement the formula.
 - Definition choices still listed under Decisions for Austin in [docs/METRICS.md](../../../docs/METRICS.md) are open. Do not treat them as approved until Austin answers them. If Austin approves that document without changing an item, the item's working proposal becomes the definition.

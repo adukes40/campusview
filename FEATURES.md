@@ -16,11 +16,11 @@ Done when Austin approves the docs, and `install.sh` brings up the base install 
 ## Step 1 — Getting data in
 
 - The SFTP drop folder.
-- Standard files and mapping tables from [docs/DATA_CONTRACT.md](docs/DATA_CONTRACT.md), and the raw schema in `campusview_data`.
-- The loader: check every file, reject a bad file, load all or nothing. An unknown or misspelled header fails the file, and the failed load is recorded with the file, row, and rule.
-- The Infinite Campus mapping onto those files.
+- The code-mapping tables from [docs/DATA_CONTRACT.md](docs/DATA_CONTRACT.md), and the raw schema in `campusview_data`.
+- The loader: check every file, reject a bad file, load all or nothing. An unknown or misspelled header fails the file, and the failed load is recorded in `ops.load_batch` with the files that failed and the reason, plus the line number when PostgreSQL rejects a row.
+- The typed, checked copy of each raw table. It keeps the Infinite Campus table and column names, with real dates and numbers, in schema `ic`. Bad keys and unknown codes are warnings on the load report, and loading continues. It comes after the update command.
 - Test files from Infinite Campus training-database extracts that Austin supplies, kept on the builder's computer, never in the repo. No fake-data generator.
-- The guide on how to write a mapping for another student information system. The mapping itself is not built.
+- The guide on how to write a mapping for another student information system. The mapping itself is not built. How another system fits, now that the Infinite Campus names are kept, is not decided.
 - Release plumbing, moved into current work by Austin (Austin, relayed by CampusView Engineer, 2026-11-03):
   - The district folder on each server, and a setting for it (proposed `/opt/campusview-district`).
   - The mappings layout in the district repo.
@@ -28,7 +28,7 @@ Done when Austin approves the docs, and `install.sh` brings up the base install 
   - An update command: pull the product ref and the district repo (fast-forward only), run migrations, restart, and leave the env file and the SFTP drop alone.
   - A `dev` branch and basic CI on GitHub. CI runs only the tests that need no data.
 
-So far: the CSV loader for the Infinite Campus extracts, and GitHub CI that runs the loader tests that need no data files. Not yet: SFTP, the mapping, the district folder, the update command, and the nightly timer.
+So far: the CSV loader for the Infinite Campus extracts (PR #10, commit 2f21b49), the `dev` branch, and basic GitHub CI (`.github/workflows/ci.yml`). CI runs the loader tests; the two that need a database skip there. Not yet: SFTP, the typed copy, the mapping tables, the district folder and the mappings layout, the product checkout and its branch or tag setting, and the update command. The nightly timer is a later step.
 
 Done when a bad file leaves the previous data in place, and a good file set replaces the snapshot in one transaction.
 
@@ -72,6 +72,8 @@ Not in v1 unless Austin promotes one.
 - Pick up district settings after a pull — logged 2026-11-03, raised by CampusView Keeper from the PR #9 scoping. Reload or restart so new branding and settings take effect after the district repo is pulled. Later because: mappings are read on every load, and branding and settings do not exist yet. Earliest step: when branding or district settings are built.
 - Installer clones the district repo with a deploy key — logged 2026-11-03, raised by CampusView Keeper from the PR #9 scoping. The installer makes the read-only deploy key and clones the district repo. Later because: the manual steps in the repos guide work today. Earliest step: after step 1's district folder and update command.
 - Secret scan in CI — logged 2026-11-03, raised by CampusView Keeper from the PR #9 scoping. A CI check that fails a push carrying a password, key, or token, in the product repo and the district repo. Later because: basic CI comes first, in step 1. Earliest step: after step 1's basic CI.
+- Load-report warnings that say which cards an empty file blanks — logged 2026-11-03, raised by Austin. For example: "behavior_type is empty, so behavior labels will be blank." Later because: off-step for Step 1; useful once the typed copy and dashboards exist; Austin can promote it.
+- Hover info on each report explaining how its data is calculated — logged 2026-11-03, raised by Austin (1:17 PM ET). A small info icon on each report or card; hovering shows how the numbers are calculated, and it can draw on [docs/METRICS.md](docs/METRICS.md). In his words: "that doesn't need to be in this version. One that can be after we get our first full dashboard up and running." Later because: Austin wants it after the first full dashboard is up and running.
 - Redis and Celery, with a Superset worker and beat: async queries, scheduled alerts and reports, and caching — deferred 2026-11-02: bare-bones install first; revisit only if base install shows real need.
 
 Held from the first approved plan:

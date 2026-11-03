@@ -8,7 +8,7 @@ CampusView is a self-hosted, district-agnostic K-12 reporting platform. It loads
 
 Nothing organization-specific belongs in the code. Names, schools, code values, branding, and years are supplied at install time or kept in the district repo.
 
-- The first student information system is Infinite Campus, via CSV extracts dropped on SFTP. Another system is supported by writing a mapping to CampusView's own standard file layouts: students, enrollments, attendance, incidents and referrals, 504/IEP plans, schools, and calendar. v1 builds and tests only the Infinite Campus mapping, plus docs on how to write another mapping.
+- The first student information system is Infinite Campus, via CSV extracts dropped on SFTP. CampusView keeps the Infinite Campus table and column names; there is no vendor-neutral standard layout (2026-11-03 "The typed layer keeps the Infinite Campus names" in [DECISIONS.md](DECISIONS.md)). How another system would be supported is not decided.
 - The district may not allow a direct connection to the student information system. Files are the only way data comes in.
 - Loads run nightly. How much history to keep is a setting. The default is the current school year plus one prior year. Older data is purged on load.
 - The install is on-premises, installed directly on an Ubuntu or Debian server (no containers), with no license costs.
@@ -24,13 +24,13 @@ Why: a small team should own as little custom AI-written code as possible. Super
 
 ## Data flow
 
-SIS extracts (CSV on SFTP) go to an SIS mapping, then to a validated loader. The loader checks every file before loading. Each load is all or nothing. The loader writes a raw schema: every table and column the contract lists. Nothing is dropped, and an unknown header fails the file with a clear report.
+SIS extracts (CSV on SFTP) go to a validated loader. The loader checks every file before loading. Each load is all or nothing. The loader writes a raw schema: every table and column the contract lists, as text, with the Infinite Campus names. Nothing is dropped, and an unknown header fails the file with a clear report. A typed, checked copy of each raw table sits on top, with the same names and real dates and numbers. It lives in schema `ic`. Bad keys and unknown codes are warnings on the load report, and loading continues.
 
-Reporting views in PostgreSQL sit on top of the raw schema. All metric logic lives in those views, and the SQL for every view is kept in this repo. The views use code-mapping tables from the district repo. Every view can be filtered by school and school year. No view filters itself.
+Reporting views in PostgreSQL sit on top of the typed copy. Superset reads only the views. All metric logic lives in those views, and the SQL for every view is kept in this repo. The views use code-mapping tables from the district repo. Every view can be filtered by school and school year. No view filters itself.
 
 Superset dashboards read those views. For each reporting page: first the PostgreSQL view, then the Superset dashboard on top of it.
 
-SFTP and the loader are not built yet.
+The loader is built on the `dev` branch (PR #10, commit 2f21b49). Today it loads the Infinite Campus CSV files as they arrive, one all-text table per file in `raw`, and checks file names and headers only. SFTP and the typed copy, with its type, key, and code checks, are not built yet. See 2026-11-03 "The typed layer keeps the Infinite Campus names" in [DECISIONS.md](DECISIONS.md).
 
 ## Stack
 
@@ -77,12 +77,12 @@ The Django access list, the Django-to-Superset sync, guest tokens, and the share
 
 ## Build order
 
-One pull request per step. Merge when CI is green, the data tests pass on the builder's computer, and Austin has checked the change on the dev server. CI on GitHub runs only the tests that need no data files (Austin, relayed by CampusView Engineer, 2026-11-03). CI is built in step 1; until it exists, "CI is green" cannot be checked, and the builder runs the same no-data tests on its own computer.
+One pull request per step. Merge when CI is green, the data tests pass on the builder's computer, and Austin has checked the change on the dev server. CI on GitHub runs only the tests that need no data files (Austin, relayed by CampusView Engineer, 2026-11-03). Basic CI exists: `.github/workflows/ci.yml` runs the tests on every push and pull request. CI has no PostgreSQL, so the loader tests that need a database skip there; the builder runs those on its own computer.
 
 | Step | Work | Done when |
 | --- | --- | --- |
 | 0 | Docs, plus the bare-bones base install: PostgreSQL 17, plain Superset 6.1.0, default Django 6.1.2, and the `install.sh` wizard. **Built and merged.** | Austin approves the docs, and `install.sh` brings up the base install on a clean Ubuntu or Debian machine |
-| 1 | Getting data in: the SFTP drop, the raw schema, the validated loader, and the Infinite Campus mapping. Test files are Infinite Campus training-database extracts that Austin supplies, kept on the builder's computer. Also the release plumbing Austin moved into current work (Austin, relayed by CampusView Engineer, 2026-11-03): the district folder on each server and the mappings layout in the district repo; a product checkout on each server with a setting for the branch or tag it follows; an update command; and a `dev` branch with basic CI | Bad files are rejected with a clear report, each load is all or nothing, every column the contract lists is kept, a good drop built from the training extracts loads, the dev server follows `dev` and updates with the update command, and CI runs the no-data tests |
+| 1 | Getting data in: the SFTP drop, the raw schema, the validated loader, and the typed, checked copy of each raw table with the Infinite Campus names. Test files are Infinite Campus training-database extracts that Austin supplies, kept on the builder's computer. Also the release plumbing Austin moved into current work (Austin, relayed by CampusView Engineer, 2026-11-03): the district folder on each server and the mappings layout in the district repo; a product checkout on each server with a setting for the branch or tag it follows; an update command; and a `dev` branch with basic CI. **Built so far:** the loader (PR #10, commit 2f21b49), the `dev` branch, and basic CI. **Order:** the loader (built), then the product checkout, the branch or tag setting, and the update command, then the typed copy with the Infinite Campus names in schema `ic`. **Not built yet:** the SFTP drop, the typed copy, the mapping tables, the district folder and the mappings layout, the product checkout, the branch or tag setting, and the update command | Bad files are rejected with a clear report, each load is all or nothing, every column the contract lists is kept, a good drop built from the training extracts loads, the dev server follows `dev` and updates with the update command, and CI runs the no-data tests |
 | 2 | The first reporting views in PostgreSQL and the first Superset dashboard on them: an Overview, modeled on screenshots of Austin's current overview page (Austin, relayed by CampusView Engineer, 2026-11-03), with the three roles and school row-level security set up and checked | Each role sees exactly its schools on that dashboard, and each view's numbers match a hand-checked answer on the training extracts |
 
 Later steps, in an order Austin will set: the rest of the reporting views and the Attendance and Behavior dashboards; the nightly schedule and the history purge; and an adversarial review with fixes. Each new number gets a view and a hand-checked test before it gets a chart.

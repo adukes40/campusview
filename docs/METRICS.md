@@ -96,9 +96,9 @@ The view is an ordinary view, because the date depends on today. No attendance r
 | --- | --- |
 | Shows | A number, one decimal. The plan's name for this number is average days to resolve or action. The working definition uses the first action. |
 | View | `reporting.v_incident`, rows where `days_to_action` is not null. |
-| Formula | Average of `days_to_action`. That column is the calendar-day difference from `incident_date` to `action_date`. |
+| Formula | Average of `days_to_action`. That column is the calendar-day difference from `behavior_incident.timestamp`, the date the referral was entered into Infinite Campus, to `action_date`. It does not start at the incident date (Austin, 2026-11-03, 12:55 PM ET; the column per Austin, 2026-11-03, 1:16 PM ET). |
 | Denominator | The count of referrals in the filter that have an action date. Referrals with no action yet are excluded, not treated as still running. |
-| Edge | Same-day action is 0. A negative span fails the load, so it never enters the average. |
+| Edge | Same-day action is 0. A negative span (an action date before `behavior_incident.timestamp`) is flagged on the load report. The row is kept and counts in the average (Austin, 2026-11-03, 12:56 PM ET). |
 | Table columns | Student id, name, school, incident date, action date, days. |
 
 ### Active 504 plans
@@ -144,7 +144,7 @@ These are Superset charts on the dashboard. They read the view named here and us
 | --- | --- |
 | View | `reporting.v_open_referral` |
 | Who is on it | Incident rows with `is_open` true. That includes not-yet-processed referrals and referrals that have an action and are not closed. |
-| Days open | Calendar days from `incident_date` through today. |
+| Days open | Calendar days from `behavior_incident.timestamp`, the date the referral was entered, through today (Austin, 2026-11-03, 1:16 PM ET). |
 | Color | Under 18 days, plain. 18 through 29, warning. 30 or more, strong warning. Cutoffs are a display rule from the approved preview. |
 | Sort | Days open descending, then student id. |
 | Columns | Name, school, grade, behavior labels, days open. No race. |
@@ -275,7 +275,7 @@ Short form of the columns that carry decisions. Filter columns are omitted here.
 
 **Deferred, not blocking.** Austin will answer these later. They do not block step 0 or the base install. Each needs an answer before the view it affects is built.
 
-Working proposals are in the body above. Each item below is the choice that would change a number or a screen. Extract questions that block the mapping are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md), not here.
+Working proposals are in the body above. Each item below is the choice that would change a number or a screen. Extract questions that block the typed copy are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md), not here.
 
 1. **No attendance mark.** When a student is enrolled on a school day and the file has no attendance row, v1 counts that day as present. Confirm, or say the day should be left out of both the numerator and the denominator.
 
@@ -295,7 +295,7 @@ Working proposals are in the body above. Each item below is the choice that woul
 
 9. **Two referral lists.** "Not yet processed" means the status map says there has been no action. "Open" means the status map says the referral is not closed, including ones already acted on. The overview headline number counts the first. The list shows the second. Confirm these are two different lists in your office, or say they should be the same list.
 
-10. **Days to action.** The average is calendar days from the incident date to the first action date. Referrals with no action yet are left out. Same-day action is 0. Confirm, or say the clock should start on a different date and stop on the closed date, and whether referrals that are still waiting should count.
+10. **Days to action.** *Start date answered (Austin, 2026-11-03, 1:16 PM ET): the clock starts at `behavior_incident.timestamp`, when the referral was entered into Infinite Campus, not on the incident date. Days open counts from the same timestamp.* The average is calendar days from that timestamp to the first action date. Referrals with no action yet are left out. Same-day action is 0. A negative span is flagged on the load report and the row still counts (Austin, 2026-11-03, 12:56 PM ET). Still open: whether the clock should stop on the closed date instead, and whether referrals that are still waiting should count.
 
 11. **Days-open colors.** The open list colors days at 18 and at 30, matching the approved preview. Confirm those cutoffs, or give different ones, or say no color until you choose.
 
@@ -315,7 +315,7 @@ Working proposals are in the body above. Each item below is the choice that woul
 
 19. **Grade native filter.** The Superset native filter for grade offers All, or one grade (K, 1, 2, and so on through 12), read from the `grade` column on each view. The preview's bands (K-5, 6-8, 9-12) are not in v1. A student may have only one grade per school per year; otherwise the enrollment file is rejected. Confirm a single-grade native filter is enough, and confirm that a mid-year grade change does not need to be represented.
 
-20. **Blank gender.** A gender code that is not in the gender map fails the load. A blank gender is allowed, stays inside All, and is not counted under a named gender. Confirm blanks should be allowed.
+20. **Blank gender.** A gender code that is not in the gender map is a warning on the load report, and loading continues (Austin, relayed by CampusView Engineer, 2026-11-03). A blank gender is allowed, stays inside All, and is not counted under a named gender. Confirm blanks should be allowed.
 
 21. **Unexcused absences and tardies.** The unexcused total sums portions for codes mapped as unexcused absences only. The tardy headline counts unexcused tardies. Excused tardies are stored separately and are not in that headline. Confirm.
 

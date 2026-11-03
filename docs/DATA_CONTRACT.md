@@ -2,27 +2,46 @@
 
 These are the CSV layouts CampusView loads. The columns listed here are the whole layout. Every column the contract lists is kept, and nothing is dropped. An unknown or misspelled header fails the file with a clear report (Austin, relayed by CampusView Engineer, 2026-11-03). Nothing Austin pulls in is banned: a state student id, a date of birth, staff names, a school's address and phone, and SSN, medical, email, or notes columns if he ever sends them. Each new column or table is added through the change process below. None of this data ever goes into the public repo. See [DECISIONS.md](DECISIONS.md), 2026-11-03.
 
+**Amended 2026-11-03:** CampusView keeps the Infinite Campus table and column names. A typed, checked copy of each raw table replaces the planned mapping to vendor-neutral standard files (2026-11-03 "The typed layer keeps the Infinite Campus names" in [DECISIONS.md](DECISIONS.md)). The standard-layout sections below (`schools.csv` through the code-mapping files) are kept for their meanings, types, and rules. Their file and column names are not load targets.
+
 The Infinite Campus section says how a typical extract maps onto these files. It is general public knowledge of how that product is organized, not a description of one district's screens. Anything that depends on local setup is marked **TO CONFIRM** and collected at the end for Austin.
+
+## What the loader checks today
+
+The built loader (PR #10) reads the Infinite Campus files themselves, not the standard files below. It checks:
+
+- The folder holds all 24 files listed in `loader/contract.py`: `att_day_aggregation`, `attendance`, `attendance_excuse`, `behavior_event`, `behavior_incident`, `behavior_res_type`, `behavior_resolution`, `behavior_role`, `behavior_type`, `calendar`, `campus_attribute`, `campus_dictionary`, `day`, `enrollment`, `identity`, `identity_race_ethnicity`, `period`, `person`, `plan`, `plan_type`, `program`, `program_participation`, `race_ethnicity`, and `school`, each ending in `.csv`. A missing file fails the load. A `.csv` file that is not on the list fails the load. Other files and folders are ignored.
+- Each file is UTF-8 and has a header row. The headers match the list exactly, with the same spelling and case, in any order. An unknown, missing, repeated, or blank header fails the file.
+- PostgreSQL reads the rows as CSV. Any valid CSV quoting works, and the line endings can be LF or CRLF. A row PostgreSQL rejects fails the load, and the report gives the file and the line number.
+- Every value is stored as text. A blank cell, quoted or not, is stored as NULL. A header-only file passes.
+- A calendar with enrollments and no Day rows is a warning, not a failure. See [the extracts guide](guides/sftp-and-extracts.md).
+
+It does not check types, keys, codes, or foreign keys yet. The typed copy will do that, on the same Infinite Campus names. It will store real dates and numbers in schema `ic`. Bad keys and unknown codes will be warnings on the load report, and loading continues. It is not built yet.
 
 ## Shared file rules
 
-- UTF-8, comma-separated, a header row, quoting when a value contains a comma.
+These rules were written for vendor-neutral standard files, which will not be built. They are the reference for the typed copy's checks. Bad keys and unknown codes are warnings on the load report, and loading continues. Header and column problems, missing files, and unexpected files fail the whole batch (Austin, relayed by CampusView Engineer, 2026-11-03).
+
+- UTF-8, comma-separated, a header row, any valid CSV quoting.
 - Header names match this document exactly, lowercase, in any column order.
 - An unknown or misspelled header fails the file, and the report names that header (Austin, relayed by CampusView Engineer, 2026-11-03). A missing required header fails the file.
+- **Bad values warn** (Austin, relayed by CampusView Engineer, 2026-11-03, 12:47 PM ET). A cell that breaks one of the value rules below is stored as NULL in the `ic` copy, and the load report lists the problem with the file, row number, and rule. Loading continues. The raw table keeps the text as it arrived.
 - Character set for every id: letters, digits, hyphen, underscore, length 1 to 64.
 - Dates are `YYYY-MM-DD`. Times are `HH:MM` in 24-hour local time.
 - Booleans are `true` or `false`.
 - Decimals use a period.
 - School year is `YYYY-YYYY` with the second year equal to the first plus one.
-- A blank cell is allowed only where the column says optional.
-- Duplicate keys fail the file.
-- A code that is not in the matching mapping table fails the file. There is no silent "other" bucket. The district adds an explicit map row for every code that appears.
-- Text fields reject line breaks and other control characters.
+- A blank cell is allowed only where the column says optional. A blank required cell is a warning.
+- A duplicate or bad key is a warning on the load report. Loading continues.
+- A code that is not in the matching mapping table is a warning on the load report that names the file and the code's column. Loading continues. There is no silent "other" bucket. The district adds an explicit map row for every code that appears.
+- Text fields must not contain line breaks or other control characters. A cell that does is a warning.
 - The nightly drop is a full snapshot of the school years to keep, not a list of changes since yesterday. After a good load, the warehouse matches the drop, minus years outside the history window.
-- `schools.csv`, `students.csv`, `enrollments.csv`, and `calendar_days.csv` must each contain at least one data row. The other extract files may be header-only.
-- Mapping files live in the district repo, not in the SFTP drop. They are required on every load. A bad mapping fails the load the same way a bad extract does.
-- One failed file fails the whole load. The previous snapshot stays.
-- Error reports name the file, the row number, and the rule. They do not repeat the cell value.
+- Only `school.csv` and `calendar.csv` must contain at least one data row. If either has zero data rows, the whole load fails (Austin, 2026-11-03, 1:05 to 1:13 PM ET). Every other file, including `day.csv`, `person.csv`, and `enrollment.csv`, may arrive empty: an empty file is a warning on the load report, and loading continues. Not built yet: today's loader passes a header-only file.
+- Mapping files live in the district repo, not in the SFTP drop. They are required on every load. A bad code-mapping file fails the whole load: both a header problem and a bad code in the file (Austin, relayed by CampusView Engineer, 2026-11-03, 12:47 PM ET). This is different from an extract code with no map row, which only warns.
+- One failed file fails the whole load. The previous snapshot stays. Warnings do not fail a file.
+- **What fails the load:** an unknown, missing, repeated, or blank header; a missing or unexpected file; a row PostgreSQL rejects when loading `raw` (raw is all text, so this is a file-format problem, not a bad value); an empty `school.csv` or `calendar.csv` (zero data rows); and a bad code-mapping file.
+- **What warns and keeps loading:** any other file with zero data rows, bad values (stored as NULL in `ic`), bad or duplicate keys, extract codes with no map row, and the cross-row checks in the file sections below. A row that fails a cross-row check stays as it is in `ic` and still counts in the metrics (Austin, 2026-11-03, 12:56 PM ET).
+- Error reports name the file, the row number, and the rule. They do not repeat the cell value. Today's loader names the file and the reason, and gives a line number when PostgreSQL rejects a row.
 
 ## Changing the contract
 
@@ -30,7 +49,7 @@ File names, header names, and date formats stay fixed (Austin, relayed by Campus
 
 The loader's file list is the Infinite Campus headers in `loader/contract.py`. To add a column or a file, add it there, then add it to the extract. The steps are in [the extracts guide](guides/sftp-and-extracts.md). Until the list includes the new header, the loader fails the file and the report names the header. Do not rename a header that is already in the list.
 
-The standard layouts in this document are the files the mapping step will write. That mapping is not built yet. Do not change those layouts without Austin.
+The standard layouts in this document will not be written as files. The typed copy keeps the Infinite Campus names. Do not change those layouts' meanings or rules without Austin.
 
 Load order inside the transaction follows the foreign keys: schools and students, then enrollments and calendar days, then attendance, incidents, incident behaviors, consequences, and plans. The check looks at the whole drop before anything is written.
 
@@ -76,8 +95,8 @@ One row per enrollment span. Key: `enrollment_id`. Also unique on (`student_id`,
 Validation beyond types:
 
 - For one student, primary spans must not overlap in dates.
-- For one student, one school, and one school year, every row shares a single `grade`. Two grades in that combination fail the file. This is the working rule in Decisions for Austin, item 19, in [METRICS.md](METRICS.md): v1 does not represent a mid-year grade change unless Austin asks for it.
-- A school that has enrollments but no calendar days in that school year does not fail the file. It loads, and the load report shows a warning naming the school and year (Austin, relayed by CampusView Engineer, 2026-11-03). Its students have no membership days until calendar days arrive.
+- For one student, one school, and one school year, every row shares a single `grade`. Two grades in that combination are a warning on the load report. Loading continues. The row stays as it is in `ic`, still counts in the metrics, and is listed on the load report (Austin, 2026-11-03, 12:56 PM ET). This is the working rule in Decisions for Austin, item 19, in [METRICS.md](METRICS.md): v1 does not represent a mid-year grade change unless Austin asks for it.
+- A school that has enrollments but no calendar days in that school year does not fail the file. It loads, and the load report shows a warning naming the school and year (Austin, relayed by CampusView Engineer, 2026-11-03). Today's loader checks this on the Infinite Campus files and names the calendar id instead. Its students have no membership days until calendar days arrive.
 
 ## calendar_days.csv
 
@@ -107,7 +126,7 @@ One row per student per school per date, already rolled up to the day. Key: (`st
 
 The portion of the day, and whether the code is a tardy, live only in the attendance-code map. The extract does not carry a second copy of that decision.
 
-The date must fall inside a primary enrollment for that student and school. A row that does not is a failed file. A school day with no attendance row is not an error. How metrics treat that day is a decision in [METRICS.md](METRICS.md).
+The date must fall inside a primary enrollment for that student and school. A row that does not is a warning on the load report. Loading continues. The row stays as it is in `ic`, still counts in the metrics, and is listed on the load report (Austin, 2026-11-03, 12:56 PM ET). A school day with no attendance row is not an error. How metrics treat that day is a decision in [METRICS.md](METRICS.md).
 
 ## incidents.csv
 
@@ -123,7 +142,7 @@ One referral, one student. If the source system records several students on one 
 | `incident_time` | time | no | Blank if the time was not recorded. |
 | `location_code` | text | no | If present, must exist in `map_locations.csv`. |
 | `status_code` | text | yes | Must exist in `map_referral_statuses.csv`. |
-| `action_date` | date | no | Date of the first action or consequence. Blank if there is no action yet. Must be on or after `incident_date` when set; an earlier date fails the file. |
+| `action_date` | date | no | Date of the first action or consequence. Blank if there is no action yet. Must be on or after `behavior_incident.timestamp`, the date the referral was entered into Infinite Campus, when set (Austin, 2026-11-03, 12:55 PM ET; the column per Austin, 2026-11-03, 1:16 PM ET). An earlier date is a warning; the row is kept and still counts (Austin, 2026-11-03, 12:56 PM ET). |
 
 No narrative, participant notes, or victim names.
 
@@ -233,7 +252,7 @@ Key: `status_code`.
 | `is_open` | boolean | yes | `true` means still open. |
 | `is_cancelled` | boolean | yes | `true` means the referral is ignored by every metric. |
 
-A row with `is_cancelled` false, `is_processed` false, and `is_open` false is rejected. That combination would make a referral vanish from both lists without being cancelled. Cancelled rows must have the other two flags false.
+A row with `is_cancelled` false, `is_processed` false, and `is_open` false is a warning on the load report. Loading continues. The row stays as it is in `ic`, still counts in the metrics, and is listed on the load report (Austin, 2026-11-03, 12:56 PM ET). That combination would make a referral vanish from both lists without being cancelled. Cancelled rows must have the other two flags false.
 
 ### map_plan_types.csv
 
@@ -253,7 +272,7 @@ Key: `status_code`. Columns: `status_code` (required), `is_active` (boolean, req
 
 Infinite Campus is the first source system. Districts usually schedule an export (often an Ad Hoc filter or a CSV data extract) onto a folder. CampusView picks that folder up over SFTP. It does not log in to Infinite Campus and it does not read the Infinite Campus database.
 
-The mapping step is a file transform. It reads whatever files the district scheduled, writes the standard files above, and stops. The loader is the only step that touches PostgreSQL.
+There is no file transform. The loader loads the Infinite Campus files as they arrive, and the typed copy keeps their names. The table below says which Infinite Campus field carries each meaning the views need.
 
 What follows is the usual shape of Infinite Campus, from public product knowledge. Table names, screen names, and code lists differ by state edition and by how the district configured the system. Those differences are the TO CONFIRM list. Do not treat a field name below as a column Austin's extract is known to contain.
 
@@ -287,20 +306,20 @@ What is known so far (Austin, relayed by CampusView Engineer, 2026-11-03):
 - Extracts are capped to dates on or after 2025-07-01. Infinite Campus started in the 2025-26 school year, so the years kept are 2025-26 and 2026-27.
 - The Day table (calendar day records). Column details: set when the file arrives.
 - `program_participation`, for 504 status. Column details: set when the file arrives.
-- The first sample was 23 CSV files from the training database. Each had at most 1,000 rows because of the DB Hub plugin Austin used to pull them. The real extracts are not capped at 1,000 rows.
+- The first sample was 23 CSV files from the training database. Each had at most 1,000 rows because of the DB Hub plugin Austin used to pull them. The real extracts are not capped at 1,000 rows. The loader's list in `loader/contract.py` now has 24 files.
 
-The mapper does not invent codes and does not decide that a code is excused. It only reshapes rows. Meaning stays in the mapping tables so a code change is a district-repo edit, not a program change.
+The typed copy does not invent codes and does not decide that a code is excused. It only converts types. Meaning stays in the mapping tables so a code change is a district-repo edit, not a program change.
 
 ## TO CONFIRM
 
-**Deferred, not blocking step 0.** For Austin, before the Infinite Campus mapping is written in step 1. The working text above is general product knowledge, not a claim about this district's files.
+**Deferred, not blocking step 0.** For Austin, before the typed copy is built in step 1. The working text above is general product knowledge, not a claim about this district's files.
 
 1. *Partly answered (Austin, relayed by CampusView Engineer, 2026-11-03): delivery is SFTP for now. Which export builds the files is still open.* Which export will actually be scheduled onto SFTP: an Ad Hoc filter CSV, the data-extract utility, or another report. CampusView will not connect to the Infinite Campus database.
 2. *Partly answered (Austin, relayed by CampusView Engineer, 2026-11-03): keep 2025-26 and 2026-27; extracts start 2025-07-01. Whether each file set is a full snapshot is still open.* That each nightly file set is a full snapshot of every school year that should be kept (current year and the prior year, by default), not a file of changes since the previous night.
 3. The student number to use as `student_id`: the number staff see on the student record, not the internal person id or a state identifier.
 4. The school identifier to use as `school_id`, so the same value can be used in Superset's row-level security rules.
-5. How the calendar's school year is stored, including an end-year number if that is what Infinite Campus shows, so the mapping can write `YYYY-YYYY`.
-6. **Answered** (Austin, relayed by CampusView Engineer, 2026-11-03): the daily result is the homeroom mark. Whether secondary schools record period attendance, elementary schools record daily attendance, or both already have a daily result. The standard file is one row per student per date.
+5. How the calendar's school year is stored, including an end-year number if that is what Infinite Campus shows, so the views can show `YYYY-YYYY`.
+6. **Answered** (Austin, relayed by CampusView Engineer, 2026-11-03): the daily result is the homeroom mark. Whether secondary schools record period attendance, elementary schools record daily attendance, or both already have a daily result. The views need one row per student per date.
 7. **Answered** (Austin, relayed by CampusView Engineer, 2026-11-03): present for the day if marked present in homeroom, even if the student leaves during homeroom; tardies come from Infinite Campus's overnight calculation. The local rule that turns periods into a full-day or half-day absence, or confirmation that Infinite Campus already calculates a daily attendance value the extract should take instead.
 8. The attendance code list, and for each code whether it is present, an excused absence, an unexcused absence, an excused tardy, an unexcused tardy, or a partial day, plus the portion of the day.
 9. *Partly answered (Austin, relayed by CampusView Engineer, 2026-11-03): the Day table; attendance counts `instruction` days; for now, every instruction day counts as 1 day and a half-day absence counts as a full day absent (Austin, relayed by CampusView Engineer, 2026-11-03, 10:32 AM ET). How half days are marked, and whether they should ever count as half, is a follow-up below.* How a half instructional day shows up on the calendar, so `day_value` can be set to `0.5` instead of `1`.
@@ -321,3 +340,4 @@ Raised from the Day table rules above (2026-11-03). Ask the district's Infinite 
 1. `instruction` or `schoolDay`: which Day table flag is right for counting attendance days? CampusView uses `instruction` for now.
 2. Are there half-day, AM, or PM schedules, and how are half days marked in the Day table? Should a half day, or a half-day absence, ever count as half? For now, CampusView counts every instruction day as 1 day and every half-day absence as a full day absent.
 3. Should a calendar ever have enrollments but no Day rows? CampusView loads it with a warning for now.
+4. Confirm `behavior_incident.timestamp` is the entry date (Austin believes it is, Austin, 2026-11-03, 1:16 PM ET). Days to action and days open count from it.

@@ -4,6 +4,46 @@ Dated log of decisions already made. The plan of record is [PLAN.md](PLAN.md). N
 
 Open metric questions are not listed here. They are the Decisions for Austin list in [METRICS.md](METRICS.md). Open extract questions are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md). Both lists are deferred for now and do not block step 0.
 
+## 2026-11-03 — Days to action and days open start when the referral is entered
+
+**What:** discipline days to action and days open count from the date the referral was entered into Infinite Campus, not from the incident date. That date is `behavior_incident.timestamp`. This is Austin's understanding ("I do believe"); the SIS person is asked to confirm it, and the work does not wait on that. The action-date check compares against `behavior_incident.timestamp`. A negative span is flagged on the load report, and the row is kept and counted (see the next entry).
+
+**Who:** Austin, 2026-11-03, 12:55 PM ET, in his words: "discipline actions count from the time that they are entered into the system, not when the incident occurred. It's whenever the person or the referee put it in the system, not when the incidents took place." Then Austin, 2026-11-03, 1:16 PM ET, on the column and on days open: "I do believe that's the date it was entered. No, you would use the timestamp from the first question because that's when it was entered. Yes, I should count from the same timestamp."
+
+**Status:** Decided by Austin; confirmed by merging PR #11.
+
+## 2026-11-03 — The typed layer keeps the Infinite Campus names
+
+**What:**
+
+- The standard layer is a typed, checked copy of each `raw` table.
+- It keeps the Infinite Campus table and column names. Nothing is renamed to a vendor-neutral standard layout.
+- It stores real dates and numbers.
+- It lives in schema `ic`, with the same owner and permissions as `raw`. For example, `raw.enrollment` becomes `ic.enrollment` (Austin, relayed by CampusView Engineer, 2026-11-03, 12:43 PM ET: "Call the schema ic.").
+- Bad keys and unknown codes only warn on the load report, and loading continues. Header and column problems, missing files, and unexpected files still fail the whole batch (Austin, relayed by CampusView Engineer, 2026-11-03, 12:43 PM ET: "Bad keys or unknown codes only warn on the load report and keep loading.").
+- Bad values warn. A cell with a wrong id character, a bad date, time, boolean, or decimal, a bad school year, a blank required value, or a control character in text is stored as NULL in `ic`, and the load report lists the problem. Cross-row problems also warn: two grades for one student, school, and year; an attendance date outside an enrollment; an action date before the incident date; and an impossible referral flag combination (Austin, relayed by CampusView Engineer, 2026-11-03, 12:47 PM ET: "Go with your recommendation: bad values and cross-row problems warn; empty files and bad district mapping codes stop the load.").
+- A row that fails a cross-row check stays as it is in `ic`, still counts in the metrics, and is listed on the load report (Austin, 2026-11-03, 12:56 PM ET, picked on a card: "Keep the row and flag it on the load report.").
+- These fail the whole load: header and column problems, missing or unexpected files, a row PostgreSQL rejects when loading `raw`, an empty `school.csv` or `calendar.csv` (zero data rows), and a bad district code-mapping file (header problem or bad code) (same answer, 12:47 PM ET).
+- Only `school.csv` and `calendar.csv` stop the load when they arrive with zero data rows. Every other file, including `day.csv`, `person.csv`, and `enrollment.csv`, warns on the load report when empty, and loading continues (Austin, 2026-11-03, 1:05 to 1:13 PM ET: "day matters, but only for attendance, so it goes in the second tier, not with school and calendar. An empty school or calendar blanks every card. An empty day would blank the attendance cards and leave behavior untouched."). This replaces the earlier four-file rule. Decided by Austin; confirmed by merging PR #11.
+- It is built as the next step 1 pull request after the update command.
+- Superset reads it only through the reporting views.
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03, 12:31 PM ET: "Yes, build the cleaned copies with the same IC names next."
+
+**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed by merging PR #11. The 12:56 PM ET answer on cross-row rows: Decided by Austin; confirmed by merging PR #11.
+
+**Amends:** 2026-11-01 "Files are the only ingest" (below). Its mapping step to vendor-neutral standard layouts is replaced.
+
+## 2026-11-03 — The raw schema holds the Infinite Campus files as they arrive
+
+**What:** The step 1 loader (PR #10, commit 2f21b49) loads the Infinite Campus CSV files themselves, before any mapping. Each of the 24 files in `loader/contract.py` gets its own table in `raw`, named after the file (for example `raw.enrollment`), with every column stored as text. A column added to the list is added to the table. A column is never dropped. The loader creates the `ops` schema and `ops.load_batch` itself, owned by `campusview_owner`, with no grant to `campusview_reader`. The earlier design, in [ARCHITECTURE.md](ARCHITECTURE.md) and 2026-11-01 "Files are the only ingest" below, maps the vendor files to standard files first and loads those into `raw`.
+
+**Follow-up:** 2026-11-03 "The typed layer keeps the Infinite Campus names" (above) settles what sits on top of `raw`: a typed, checked copy with the same names, where the type, key, and code checks run. It lives in schema `ic`.
+
+**Who:** Recorded by CampusView Keeper from the code on `dev`, 2026-11-03.
+
+**Status:** Proposed, confirmed by merging.
+
 ## 2026-11-03 — Plain HTTP on the dev server during early testing
 
 **What:** The on-prem dev server may use plain HTTP during early testing, even though it holds real production data. It moves to HTTPS before production gets Google sign-on or real users. Production always uses HTTPS. Plain HTTP on test machines with fake data is unchanged.
@@ -246,6 +286,8 @@ For each reporting page, the metric logic is a PostgreSQL view whose SQL is in t
 **What it said:** Django renders the pages staff open: the filter bar, the KPI cards, the modal tables, export, print, student profiles, preferences, admin screens, and all page styling. Superset charts are embedded.
 
 ## 2026-11-01 — Files are the only ingest
+
+**Amended 2026-11-03:** files are still the only ingest. The mapping step to CampusView's standard layouts is replaced by a typed, checked copy of each raw table that keeps the Infinite Campus names. See 2026-11-03 "The typed layer keeps the Infinite Campus names" above.
 
 **What:** Data arrives as CSV extracts on SFTP. A mapping step turns the vendor files into CampusView's standard layouts. The loader validates every file and loads all or nothing.
 

@@ -10,29 +10,29 @@ A **view** is a saved query in PostgreSQL. Charts read views. They do not re-dec
 flowchart TD
   extracts[Nightly SIS CSV extracts]
   sftp[SFTP drop folder]
-  mapper[SIS mapping]
   loader[Loader checks every file then writes one transaction]
-  raw[(Raw tables)]
+  raw[(Raw tables, all text, Infinite Campus names)]
+  typed[(Typed copy in schema ic, same names)]
   maps[(Code-mapping tables from the district repo)]
   views[Reporting views hold all metric logic]
   superset[Superset dashboards and native filters]
   roles[Superset roles and row-level security on school_id]
 
-  extracts --> sftp --> mapper --> loader --> raw
+  extracts --> sftp --> loader --> raw --> typed
   maps --> views
-  raw --> views
+  typed --> views
   views --> superset
   roles --> superset
 ```
 
 1. The district drops a full CSV snapshot on SFTP. CampusView never connects to the student information system.
-2. The mapping for that system rewrites the vendor files into CampusView's standard layouts. v1 ships the Infinite Campus mapping only. See [DATA_CONTRACT.md](DATA_CONTRACT.md).
-3. The loader checks every standard file and every code-mapping file. If any check fails, it loads nothing and leaves the previous data in place. If every check passes, it replaces the raw snapshot in one database transaction.
-4. Raw tables store every column the contract lists. Nothing is dropped, and an unknown header fails the file. Code-mapping tables, from the district repo, say what each local code means.
-5. Reporting views join raw rows to those maps and expose every number the dashboards show. The SQL is in this repo. The metric list is [METRICS.md](METRICS.md).
+2. The loader checks every Infinite Campus file. Nothing is renamed. If the load fails (a header or column problem, a missing or unexpected file, a row PostgreSQL rejects, an empty `school.csv` or `calendar.csv`, or a bad district code-mapping file), it loads nothing and leaves the previous data in place. If every check passes, it replaces the raw snapshot in one database transaction. See [DATA_CONTRACT.md](DATA_CONTRACT.md).
+3. Raw tables store every column the contract lists, as text, with the Infinite Campus names. Nothing is dropped, and an unknown header fails the file.
+4. A typed, checked copy of each raw table keeps the same table and column names, with real dates and numbers. It lives in schema `ic`, so `raw.enrollment` becomes `ic.enrollment`. Bad values (stored as NULL), bad keys, unknown codes, and cross-row problems are warnings on the load report, and loading continues. A row that fails a cross-row check is kept as it is and still counts. Code-mapping tables, from the district repo, say what each local code means. See 2026-11-03 "The typed layer keeps the Infinite Campus names" in [DECISIONS.md](DECISIONS.md).
+5. Reporting views join the typed copy to those maps and expose every number the dashboards show. The SQL is in this repo. The metric list is [METRICS.md](METRICS.md).
 6. Superset dashboards read the views. Superset's roles and row-level security limit each person to their schools. See [ACCESS.md](ACCESS.md).
 
-SFTP, the mapping, and the loader are not built yet. They are step 1.
+**Built so far (step 1, on `dev`):** a loader that reads one folder of Infinite Campus CSV files and loads each file, as it arrives, into its own all-text table in `raw`. It checks file names and headers. It does not yet check types, keys, codes, or foreign keys, and it reads no code-mapping files. SFTP and the typed copy (step 4) are not built yet. The typed copy is the next step 1 pull request after the update command.
 
 No view restricts itself to a school, a year, a grade, or a gender. Superset applies those: school through row-level security, and year, grade, and gender through native filters. Views may omit rows that never count, such as a cancelled referral or a day that is not a school day.
 
@@ -65,32 +65,35 @@ Filters only narrow what row-level security already allows. A filter is never a 
 
 ## Module map
 
-Later code is expected to split along these lines. None of it exists yet.
+Later code is expected to split along these lines. Only the `loader` package exists today. It reads the Infinite Campus CSV files and writes `raw` and `ops.load_batch`.
 
 | Module | Responsibility | Reads | Writes |
 | --- | --- | --- | --- |
 | `ingest.drop` | Watch the SFTP folder | Files on disk | Nothing |
-| `ingest.map.infinite_campus` | Vendor files to standard files | Vendor CSV | Standard CSV in a temp folder |
-| `ingest.loader` | Validate, then load all or nothing | Standard CSV, district maps | `raw`, `ref`, `ops.load_batch` |
-| `warehouse.raw` | Snapshot tables | | |
+| `loader` (built) | Validate, then load all or nothing | Infinite Campus CSV | `raw`, `ops.load_batch` |
+| Typed copy (module name to be decided) | Typed, checked copy of each raw table, same names; bad values (stored as NULL), bad keys, unknown codes, and cross-row problems are warnings on the load report | `raw`, district maps | `ic` |
+| `warehouse.ic` | Typed copy tables. Not built | | |
+| `warehouse.raw` | Snapshot tables, all text | | |
 | `warehouse.ref` | Code-mapping tables | | |
-| `warehouse.reporting` | Views only, as SQL files in this repo | `raw`, `ref` | |
+| `warehouse.reporting` | Views only, as SQL files in this repo | The typed copy, `ref` | |
 
 Dashboards, charts, filters, roles, and row-level security are Superset settings, not code in this repo. Dashboards are exported to the district repo.
 
 ## Loader interface
 
-`load(drop_dir, district_config_dir) -> LoadResult`
+**Built today:** `python -m loader FOLDER`, which calls `load_drop(folder)` in `loader/load.py` and returns whether the load passed, whether the report was saved, and the report text. Exit code 0 means it passed and the report was saved, 1 means anything else, and 2 means the command was used wrong. It checks the 24 file names and the headers in `loader/contract.py`, loads all or nothing in one transaction, and stores the report text in `ops.load_batch`. It takes a lock, and a second load fails at once instead of waiting. It reads no district folder, does no history purge, and runs by hand, not on a timer. The guide is [guides/sftp-and-extracts.md](guides/sftp-and-extracts.md).
 
-- Look in `drop_dir` for the standard extract files and in `district_config_dir` for the code-mapping files. Both sets are required.
-- Validate every file first: headers (an unknown or misspelled header fails the file), types, keys, allowed codes, and foreign keys. Details are in [DATA_CONTRACT.md](DATA_CONTRACT.md).
-- On any error, leave the previous snapshot in place. Record the failed attempt on `ops.load_batch` with the file name, the row number, and the rule that failed. Do not record the cell value.
+Planned: `load(drop_dir, district_config_dir) -> LoadResult`
+
+- Look in `drop_dir` for the Infinite Campus extract files and in `district_config_dir` for the code-mapping files. Both sets are required.
+- Validate every file first: headers (an unknown or misspelled header fails the file). The typed copy then checks values, keys, codes, and cross-row rules. Those are warnings on the load report, a bad value is stored as NULL in `ic`, a row that fails a cross-row check is kept as it is, and loading continues. Details are in [DATA_CONTRACT.md](DATA_CONTRACT.md).
+- On any failure (a header or column problem, a missing or unexpected file, a row PostgreSQL rejects, an empty `school.csv` or `calendar.csv`, or a bad district code-mapping file), leave the previous snapshot in place. Warnings do not stop the load. Record the failed attempt on `ops.load_batch` with the file name, the row number, and the rule that failed. Do not record the cell value.
 - On success, replace the raw snapshot inside one transaction, purge school years outside the history window, and commit.
 - The drop is a full snapshot of the years to keep, not a file of changes. Running the same files twice leaves the same warehouse.
 - History length is a district setting, default 2: the newest school year in the drop and the one before it.
 - After a successful commit, a school that is new to the drop has no school admin yet. Until someone adds it to a Superset role's row-level security, only the all-schools roles see it. See the open question on school assignments in [ACCESS.md](ACCESS.md).
 
-The load runs as a timed job on the server. Its exact form is chosen when the loader is built in step 1. It takes a lock so two runs cannot overlap. It does not use Celery; there is no Celery or Redis in v1.
+The load will run as a timed job on the server; the timer is a later step. It takes a lock so two runs cannot overlap (built). It does not use Celery; there is no Celery or Redis in v1.
 
 Logs and `ops.load_batch` may include file names, row counts, row numbers, and rule names. They may not include cell values, student names, or ids from the row that failed.
 
@@ -104,13 +107,14 @@ Schemas in `campusview_data`:
 
 | Schema | Holds | Who may read it |
 | --- | --- | --- |
-| `raw` | One table per standard file, plus load metadata columns (`load_id`, `loaded_at`) | Loader (`campusview_owner`). Not Superset. |
+| `raw` | One table per Infinite Campus file, every column text, no load metadata columns | Loader (`campusview_owner`). Not Superset. |
+| `ic` | The typed copy: one table per raw table, same names, real dates and numbers, for example `ic.enrollment`. Not created yet; it comes with the typed-copy pull request | Loader (`campusview_owner`), and the reporting views. Not Superset. Same owner and grants as `raw` |
 | `ref` | Code-mapping tables | Loader (`campusview_owner`), and the reporting views |
 | `reporting` | Views | `campusview_reader` (Superset's data connection), `SELECT` only |
-| `ops` | `load_batch` | Loader writes; system admin reads |
+| `ops` | `load_batch`: `batch_id`, `started_at`, `finished_at`, `outcome`, `fault`, `report`. The loader creates the schema and the table on its first run | `campusview_owner` only. No grant is made to `campusview_reader` |
 | `scratch` | Empty on a normal install | Testing install only, and only the sandbox database user |
 
-Table names match the files in [DATA_CONTRACT.md](DATA_CONTRACT.md): `raw.schools`, `raw.students`, `raw.enrollments`, `raw.calendar_days`, `raw.attendance`, `raw.incidents`, `raw.incident_behaviors`, `raw.consequences`, `raw.plans`.
+The table names are the Infinite Campus file names without `.csv`, for example `raw.enrollment` and `raw.day`. The full list is in `loader/contract.py`. The typed copy in `ic` uses the same table and column names. The vendor-neutral names in the standard-layout sections of [DATA_CONTRACT.md](DATA_CONTRACT.md) (`schools`, `students`, `calendar_days`, and so on) are not table names.
 
 Relationships, all by the text ids in the files:
 
@@ -168,7 +172,7 @@ flowchart LR
   meta[(superset_meta)]
   djdb[(django_app)]
   data[(campusview_data)]
-  loader[Loader on a timer, step 1]
+  loader[Loader, run by hand, step 1]
   drop[SFTP drop on disk, step 1]
 
   ss --> meta
@@ -189,7 +193,7 @@ Optional nginx (decided 2026-11-02, in the installer on `main`; HTTPS with a sel
 Not in the base install:
 
 - **No Redis, no Celery, no Superset worker or beat.** The `celery` and `redis` Python libraries are installed only because Superset's package list pulls them in. Nothing runs them. Async queries, alerts and reports, and caching are parked.
-- **No SFTP or loader yet.** Those are step 1.
+- **No SFTP and no loader.** The loader is step 1 work in this repo (on `dev`). The installer does not install or run it. SFTP is not built yet.
 - **No example data and no theming.**
 
 Secrets (the database passwords and the Superset secret key) live in one server file outside both git repos, `/etc/campusview/campusview.env`: mode 600, owned by the account that runs CampusView, in a folder with mode 700. systemd (`EnvironmentFile=`) or `start.sh` loads it. `superset_config.py` and Django's `settings.py` read those values from the environment and contain no passwords. The one exception is Django's own generated `SECRET_KEY`, which stays in `settings.py`, so that file is mode 600. Secrets are never in either git repo.
@@ -200,9 +204,9 @@ The district repo holds code mappings, branding, exported dashboards, display na
 
 `install.sh` is one script with a step-by-step wizard. It asks for every setting the base install needs, installs the pieces above, creates the three databases and their users, and sets up the first Superset admin. The CampusView Engineer built it, and it passed clean installs and re-runs on Debian 12, Ubuntu 24.04, and Ubuntu 22.04. It is merged to `main`. How to run it is in [guides/install-and-upgrade.md](guides/install-and-upgrade.md). Non-secret district settings live in the district repo, not in the product repo.
 
-The product repo builds a release only as a tag such as `v1.3.0`, cut from `main`. Production pins a tag. The dev server follows the `dev` branch, holds real data, and follows production rules for data and access. Before a tag is cut, the release is installed on a clean machine and upgrades a machine that was on the previous tag. The testing install is the builder's computer, or a fake-data server later; it loads Infinite Campus training-database extracts that Austin supplies. Production and the dev server do not load them. **Not built yet:** the per-server product checkout, the branch or tag setting, the update command, the `dev` branch, and CI (all step 1).
+The product repo builds a release only as a tag such as `v1.3.0`, cut from `main`. Production pins a tag. The dev server follows the `dev` branch, holds real data, and follows production rules for data and access. Before a tag is cut, the release is installed on a clean machine and upgrades a machine that was on the previous tag. The testing install is the builder's computer, or a fake-data server later; it loads Infinite Campus training-database extracts that Austin supplies. Production and the dev server do not load them. The `dev` branch exists, and basic CI (`.github/workflows/ci.yml`) runs the tests on every push and pull request. **Not built yet:** the per-server product checkout, the branch or tag setting, the update command (all step 1), and the clean-install and upgrade checks in CI.
 
-The testing database has one extra user for the AI sandbox: it can read `raw` and `reporting`, and it can create objects only in `scratch`. Production and the dev server do not have this user. A view that is ready to keep is added as SQL in the product repo, with a hand-checked test, and arrives through a release.
+The testing database has one extra user for the AI sandbox: it can read `raw` and `reporting` (and `ic` once it exists), and it can create objects only in `scratch`. Production and the dev server do not have this user. A view that is ready to keep is added as SQL in the product repo, with a hand-checked test, and arrives through a release.
 
 ## Dashboards, in product terms
 

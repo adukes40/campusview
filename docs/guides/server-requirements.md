@@ -38,7 +38,7 @@ The installer has an optional nginx step. Pressing Enter picks HTTPS with a self
 
 ## Disk layout
 
-The installer puts the programs in `/opt/campusview` unless you choose another folder. That folder holds the two Python environments. Passwords and the other saved answers go in `/etc/campusview/campusview.env`. The file mode is 600, and the folder `/etc/campusview` is mode 700. PostgreSQL keeps its data under `/var/lib/postgresql`. The SFTP drop, the loaded-file archive, and the district repo checkout are not created by this installer. None of these belong in the product git repo.
+The installer puts the programs in `/opt/campusview` unless you choose another folder. That folder holds the two Python environments, and `uv` with Python 3.12 in `.uv`. The loader runs from a checkout of the product repo with that `uv` and Python; the installer does not create the checkout. Passwords and the other saved answers go in `/etc/campusview/campusview.env`. The file mode is 600, and the folder `/etc/campusview` is mode 700. PostgreSQL keeps its data under `/var/lib/postgresql`. The SFTP drop, the loaded-file archive, and the district repo checkout are not created by this installer. None of these belong in the product git repo.
 
 ## Accounts on the machine
 
