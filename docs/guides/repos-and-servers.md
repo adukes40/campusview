@@ -80,7 +80,7 @@ Before every commit to the district repo, run `git status` and `git diff --cache
 
 A server reads the private district repo with a **deploy key**: an SSH key that belongs to that one repo and can only read it. Make one key per server. If a server is lost, delete only its key.
 
-The commands run as the Linux account that runs CampusView (question 1 in the installer). The examples call it `cvadmin`. If you chose `root`, run the Debian commands as written and leave out `runuser -u cvadmin --`.
+The commands run as the Linux account that runs CampusView (question 1 in the installer). The examples call it `cvadmin`. If the account is `root` (the default on Debian), leave out `runuser -u cvadmin --` and use `/root/.ssh` in place of `/home/cvadmin/.ssh`.
 
 ### 1. Make the key on the server
 
