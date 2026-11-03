@@ -112,7 +112,7 @@ In order, the script does this work for you.
 13. A check that the pages answer, described below.
 14. If you answered `yes`, the services `cv-superset` and `cv-django` start at boot.
 
-The installer does not add a Redis server, Celery, a Superset worker, Docker, a firewall, Let's Encrypt (certbot), example data, or theming. nginx is the optional web server from the decision in [../DECISIONS.md](../DECISIONS.md). It is installed only when you choose HTTP or HTTPS. No second proxy is added. The `redis` and `celery` Python libraries are installed only because Superset depends on them, and nothing runs them. SFTP and the loader come in Step 1.
+The installer does not add a Redis server, Celery, a Superset worker, Docker, a firewall, Let's Encrypt (certbot), example data, or theming. nginx is the optional web server from the decision in [../DECISIONS.md](../DECISIONS.md). It is installed only when you choose HTTP or HTTPS. No second proxy is added. The `redis` and `celery` Python libraries are installed only because Superset depends on them, and nothing runs them. SFTP comes in Step 1. The loader is in this repo. The installer does not run it.
 
 ## Where the passwords live
 

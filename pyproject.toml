@@ -1,0 +1,23 @@
+[project]
+name = "campusview-loader"
+version = "0.0.0"
+description = "Load Infinite Campus CSV extracts into CampusView."
+requires-python = ">=3.12"
+dependencies = ["psycopg[binary]>=3.2"]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["loader*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

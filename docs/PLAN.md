@@ -30,7 +30,7 @@ Reporting views in PostgreSQL sit on top of the raw schema. All metric logic liv
 
 Superset dashboards read those views. For each reporting page: first the PostgreSQL view, then the Superset dashboard on top of it.
 
-SFTP and the loader are not built yet.
+SFTP is not built yet. The loader reads a folder of Infinite Campus CSV files into `raw`.
 
 ## Stack
 

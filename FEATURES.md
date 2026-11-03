@@ -28,6 +28,8 @@ Done when Austin approves the docs, and `install.sh` brings up the base install 
   - An update command: pull the product ref and the district repo (fast-forward only), run migrations, restart, and leave the env file and the SFTP drop alone.
   - A `dev` branch and basic CI on GitHub. CI runs only the tests that need no data.
 
+So far: the CSV loader for the Infinite Campus extracts, and GitHub CI that runs the loader tests that need no data files. Not yet: SFTP, the mapping, the district folder, the update command, and the nightly timer.
+
 Done when a bad file leaves the previous data in place, and a good file set replaces the snapshot in one transaction.
 
 ## Step 2 — First view and first dashboard

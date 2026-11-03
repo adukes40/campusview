@@ -32,7 +32,7 @@ flowchart TD
 5. Reporting views join raw rows to those maps and expose every number the dashboards show. The SQL is in this repo. The metric list is [METRICS.md](METRICS.md).
 6. Superset dashboards read the views. Superset's roles and row-level security limit each person to their schools. See [ACCESS.md](ACCESS.md).
 
-SFTP, the mapping, and the loader are not built yet. They are step 1.
+The loader is built. It reads a folder of Infinite Campus CSV extracts into `raw`. SFTP and the mapping onto the standard layouts are not built yet. They are still step 1.
 
 No view restricts itself to a school, a year, a grade, or a gender. Superset applies those: school through row-level security, and year, grade, and gender through native filters. Views may omit rows that never count, such as a cancelled referral or a day that is not a school day.
 
@@ -71,7 +71,7 @@ Later code is expected to split along these lines. None of it exists yet.
 | --- | --- | --- | --- |
 | `ingest.drop` | Watch the SFTP folder | Files on disk | Nothing |
 | `ingest.map.infinite_campus` | Vendor files to standard files | Vendor CSV | Standard CSV in a temp folder |
-| `ingest.loader` | Validate, then load all or nothing | Standard CSV, district maps | `raw`, `ref`, `ops.load_batch` |
+| `ingest.loader` | Validate, then load all or nothing | Infinite Campus CSV in one folder | `raw`, `ops.load_batch` |
 | `warehouse.raw` | Snapshot tables | | |
 | `warehouse.ref` | Code-mapping tables | | |
 | `warehouse.reporting` | Views only, as SQL files in this repo | `raw`, `ref` | |
@@ -82,7 +82,9 @@ Dashboards, charts, filters, roles, and row-level security are Superset settings
 
 `load(drop_dir, district_config_dir) -> LoadResult`
 
-- Look in `drop_dir` for the standard extract files and in `district_config_dir` for the code-mapping files. Both sets are required.
+Built now: `python -m loader FOLDER` checks the Infinite Campus files listed in `loader/contract.py`, stores every column as text in `raw`, and records the run in `ops.load_batch`. One bad file loads nothing. The code-mapping files, the history purge, and the standard layouts are not part of this command.
+
+- Look in `drop_dir` for the standard extract files and in `district_config_dir` for the code-mapping files. Both sets are required. The bullets below describe that later command. They are not what `python -m loader` does today.
 - Validate every file first: headers (an unknown or misspelled header fails the file), types, keys, allowed codes, and foreign keys. Details are in [DATA_CONTRACT.md](DATA_CONTRACT.md).
 - On any error, leave the previous snapshot in place. Record the failed attempt on `ops.load_batch` with the file name, the row number, and the rule that failed. Do not record the cell value.
 - On success, replace the raw snapshot inside one transaction, purge school years outside the history window, and commit.
@@ -90,7 +92,7 @@ Dashboards, charts, filters, roles, and row-level security are Superset settings
 - History length is a district setting, default 2: the newest school year in the drop and the one before it.
 - After a successful commit, a school that is new to the drop has no school admin yet. Until someone adds it to a Superset role's row-level security, only the all-schools roles see it. See the open question on school assignments in [ACCESS.md](ACCESS.md).
 
-The load runs as a timed job on the server. Its exact form is chosen when the loader is built in step 1. It takes a lock so two runs cannot overlap. It does not use Celery; there is no Celery or Redis in v1.
+The load command is `python -m loader`. It takes a lock so two runs cannot overlap. A nightly timer is a later step. The command does not use Celery. There is no Celery or Redis in v1.
 
 Logs and `ops.load_batch` may include file names, row counts, row numbers, and rule names. They may not include cell values, student names, or ids from the row that failed.
 
@@ -104,11 +106,13 @@ Schemas in `campusview_data`:
 
 | Schema | Holds | Who may read it |
 | --- | --- | --- |
-| `raw` | One table per standard file, plus load metadata columns (`load_id`, `loaded_at`) | Loader (`campusview_owner`). Not Superset. |
+| `raw` | One text table per Infinite Campus file. The batch is recorded in `ops.load_batch`, not on each row. | Loader (`campusview_owner`). Not Superset. |
 | `ref` | Code-mapping tables | Loader (`campusview_owner`), and the reporting views |
 | `reporting` | Views | `campusview_reader` (Superset's data connection), `SELECT` only |
 | `ops` | `load_batch` | Loader writes; system admin reads |
 | `scratch` | Empty on a normal install | Testing install only, and only the sandbox database user |
+
+Built now: one `raw` table per Infinite Campus file in `loader/contract.py`. Every column is text. The standard table names below are what the mapping step will load. That step is not built yet.
 
 Table names match the files in [DATA_CONTRACT.md](DATA_CONTRACT.md): `raw.schools`, `raw.students`, `raw.enrollments`, `raw.calendar_days`, `raw.attendance`, `raw.incidents`, `raw.incident_behaviors`, `raw.consequences`, `raw.plans`.
 
@@ -189,7 +193,7 @@ Optional nginx (decided 2026-11-02, in the installer on `main`; HTTPS with a sel
 Not in the base install:
 
 - **No Redis, no Celery, no Superset worker or beat.** The `celery` and `redis` Python libraries are installed only because Superset's package list pulls them in. Nothing runs them. Async queries, alerts and reports, and caching are parked.
-- **No SFTP or loader yet.** Those are step 1.
+- **No SFTP yet.** The loader is in the repo, and the installer does not start it. Both belong to step 1.
 - **No example data and no theming.**
 
 Secrets (the database passwords and the Superset secret key) live in one server file outside both git repos, `/etc/campusview/campusview.env`: mode 600, owned by the account that runs CampusView, in a folder with mode 700. systemd (`EnvironmentFile=`) or `start.sh` loads it. `superset_config.py` and Django's `settings.py` read those values from the environment and contain no passwords. The one exception is Django's own generated `SECRET_KEY`, which stays in `settings.py`, so that file is mode 600. Secrets are never in either git repo.
