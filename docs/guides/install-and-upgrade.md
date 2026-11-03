@@ -20,11 +20,13 @@ On Ubuntu, if curl is missing, install it with sudo.
 sudo apt-get install -y curl
 ```
 
-Fetch the installer from main. **Not built yet:** once release tags exist, production fetches it from its tag, for example `.../campusview/v1.3.0/install.sh`, and the dev server from `dev`.
+Fetch `install.sh` from the same ref this server follows. The dev server follows `dev`.
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/adukes40/campusview/main/install.sh
+curl -fsSLO https://raw.githubusercontent.com/adukes40/campusview/dev/install.sh
 ```
+
+Production follows a release tag. For `v1.3.0`, fetch `https://raw.githubusercontent.com/adukes40/campusview/v1.3.0/install.sh`.
 
 Debian often has no sudo. As root, run `bash install.sh`. Otherwise run `sudo bash install.sh`.
 
@@ -92,6 +94,7 @@ Each group is shown under its heading, such as `--- Where CampusView goes ---`.
 | 12 | | Admin email | `admin@example.invalid` when the username is `admin` | No | Not shown on screen. Type a real address. It must be a plain address, like `name@school.org`. |
 | 13 | | Admin password | Enter = make one for me | Yes | |
 | 14 | Starting up | Start CampusView automatically when the server boots (yes/no) | `yes` | No | Not shown on screen. `yes` sets up the services `cv-superset` and `cv-django`. With `no`, use `start.sh` and `stop.sh` in the install folder. Run them as root or as the CampusView account. As root they switch accounts with `runuser`. Otherwise they use `sudo`. If neither works, they say to run them as root or as that account. If systemd is not running, the installer says so and uses `start.sh` instead. |
+| 15 | | Branch or tag this server follows | `dev` | No | `dev` on the dev server. A release tag such as `v1.3.0` on production. No server uses `main`. |
 
 After the questions, the installer shows a summary, then `Go ahead? [Y/n]`. Press Enter to accept `Y`. Answer `n` to quit, and the installer changes nothing.
 
@@ -103,7 +106,7 @@ In order, the script does this work for you.
 2. Python 3.12, installed with `uv`, kept inside the install folder. Superset and Django both use it.
 3. PostgreSQL 17 from the official PostgreSQL apt repo. The repo is added over https, with PostgreSQL's signing key. PostgreSQL is set to listen only on `127.0.0.1`.
 4. The database accounts and the three databases `superset_meta`, `django_app`, and `campusview_data`. `campusview_owner` owns `campusview_data`.
-5. The install folder, owned by the Linux account you named.
+5. The install folder, owned by the Linux account you named. The folder is a checkout of the branch or tag in `CV_REF`.
 6. Apache Superset 6.1.0 in its own Python environment.
 7. The password file `/etc/campusview/campusview.env`, then Superset's config, which reads secrets from the environment.
 8. Superset's own database, the first admin user, and Superset's default setup.
@@ -118,7 +121,7 @@ The installer does not add a Redis server, Celery, a Superset worker, Docker, a 
 
 ## Where the passwords live
 
-- Every secret goes in `/etc/campusview/campusview.env`. The file holds the two app database passwords, the `campusview_reader` password, the `campusview_owner` password, the Superset secret key, and the admin password. It also stores the non-secret answers, such as the ports and the install folder.
+- Every secret goes in `/etc/campusview/campusview.env`. The file holds the two app database passwords, the `campusview_reader` password, the `campusview_owner` password, the Superset secret key, and the admin password. It also stores the non-secret answers, such as the ports, the install folder, and the branch or tag in `CV_REF`.
 - The file mode is 600, so only the Linux account that runs CampusView can read it. The folder `/etc/campusview` is mode 700 and owned by that same account.
 - systemd loads the file when the services start. `start.sh` loads it when you start the apps without systemd. The Superset config and Django's `settings.py` read the values from the environment. The installer writes no password into either file.
 - Django's own `SECRET_KEY` is the exception. Django generates it and it stays in `settings.py`, so that file is mode 600. Do not copy it into git.
@@ -170,7 +173,7 @@ No student data is needed for this check.
 ## Run the installer again
 
 
-Run the same command. The saved answers show up as the defaults, including the install folder. The two behind-the-scenes database password prompts say `Enter = keep the saved one`.
+Run the same command. The saved answers show up as the defaults, including the install folder and the branch or tag. The two behind-the-scenes database password prompts say `Enter = keep the saved one`.
 
 Questions 8 to 13 are not asked again. That is the two report data passwords, the secret key, and the admin login. Under the heading `Report data accounts, Superset secret key and your admin login` you see `Kept from the first install`, with the admin username, and `They are not asked again.`
 
@@ -188,7 +191,35 @@ If you had already added a Superset data connection to `campusview_data` as `sup
 
 This older-layout upgrade was tested once, on Debian 12.
 
-Moving from one release tag to the next is not in this script yet. **Not built yet (step 1):** an update command. Production moves to a new tag; the dev server pulls `dev`. Both pull the district repo fast-forward only. Migrations run. The district repo, the password file, and the server's own config stay as they are. If a migration fails, leave the previous tag running. Do not repair it by editing the district repo.
+## Update the server
+
+A server installed before this checkout exists has no `install.sh` in the install folder, so `--update` cannot run there yet. Run the new installer once. On the dev server:
+
+```bash
+sudo CV_REF=dev bash ./install.sh
+```
+
+That keeps the database data and the saved passwords, and it checks the product repo out into the install folder. Press Enter on the branch question to keep `dev`.
+
+After that, leave `CV_REF` as `dev` and run the update command.
+
+```bash
+sudo bash /opt/campusview/install.sh --update
+```
+
+On production, change the `CV_REF` line in `/etc/campusview/campusview.env` to the release tag. Keep the quotes. Leave every other line alone.
+
+```bash
+CV_REF='v1.3.0'
+```
+
+After you save that line, run the same update command. To go back to an older tag, run this.
+
+```bash
+sudo bash /opt/campusview/install.sh --update --allow-downgrade
+```
+
+The update installs the Superset and Django versions pinned by the release it just checked out. If that install fails, the previous checkout is put back and the services are not restarted. A failed database update puts the previous checkout back and restarts it. If only the district repo changed, the command pulls that and does not restart. The command does not change the password file, the SFTP drop, or the database data. It does not rewrite `superset_config.py`, the Django settings, the units, or nginx. A release that changes any of those needs a full `install.sh` run.
 
 ## Run it from an answers file
 
@@ -204,6 +235,7 @@ The file uses the same names as the saved password file.
 
 - `CV_RUN_USER`
 - `CV_INSTALL_DIR`, default `/opt/campusview`
+- `CV_REF`, default `dev`. The dev server keeps `dev`. Production puts a release tag here, such as `v1.3.0`.
 - `CV_PG_PORT`, `CV_SUPERSET_PORT`, `CV_DJANGO_PORT`
 - `CV_SUPERSET_DB_PASSWORD`, `CV_DJANGO_DB_PASSWORD`, `CV_READER_DB_PASSWORD`, `CV_OWNER_DB_PASSWORD`, `CV_SECRET_KEY`
 - `CV_ADMIN_USER`, `CV_ADMIN_EMAIL`, `CV_ADMIN_PASSWORD`

@@ -179,19 +179,28 @@ Do this once for the dev server and once for production. Each district sets up i
 2. Run the installer as in [Install and upgrade](install-and-upgrade.md). Each server makes its own passwords and secret key. Do not copy the password file from one server to another.
 3. Choose how people reach it. Production always uses HTTPS. Plain HTTP is for an on-prem test machine with fake data that is not on the internet. The dev server holds real data, but Austin accepted one exception (Austin, relayed by CampusView Engineer, 2026-11-03): the on-prem dev server may use plain HTTP during early testing. It must move to HTTPS before production gets Google sign-on or real users. Plain HTTP sends logins and data unencrypted across the network.
 4. Give the server read access to the district repo and clone it, as above.
-5. On the dev server, set it to follow `dev`. On production, set it to a release tag. **Not built yet:** the setting for the branch or tag (step 1).
+5. On the dev server, leave `CV_REF` as `dev`. On production, set `CV_REF` in `/etc/campusview/campusview.env` to the release tag.
 6. Do not add the sandbox database user or training files to production or the dev server. They belong only on the testing install.
 
-Today the installer is fetched from `main` as a single file. It does not clone the product repo, does not read a branch or a tag, and does not know about the district repo.
+The installer checks out the product repo into the install folder at the ref in `CV_REF`. It does not clone the district repo.
 
 ## Update a server
 
-**Not built yet.** There is no update command. Today, running `install.sh` again only re-checks the base install; it does not pull new product code. When the update command exists, it will:
+Run the update command.
 
-- pull the branch or tag the server follows, from the product repo
-- pull the district repo with `--ff-only`
-- run migrations, then restart the services
-- leave the password file, the district repo's history, and the SFTP drop alone
+```bash
+sudo bash /opt/campusview/install.sh --update
+```
+
+On the dev server, leave `CV_REF` as `dev`. On production, set `CV_REF` in `/etc/campusview/campusview.env` to the release tag. Then run the same command.
+
+To go back to an older tag, run this.
+
+```bash
+sudo bash /opt/campusview/install.sh --update --allow-downgrade
+```
+
+The command pulls `/opt/campusview-district` when that folder is already a checkout. The pull is `git pull --ff-only`. When the folder is not a checkout, you see one skip line, `No district checkout at /opt/campusview-district. Skipped.` The command does not clone the district repo.
 
 ## Tag a release
 
@@ -216,7 +225,7 @@ git tag --list 'v*' --sort=-v:refname
 
 Do not move or delete a tag after it is pushed. If a release has a problem, fix it on `dev`, merge, and cut the next tag.
 
-Then move production to the new tag with the update command. **Not built yet** (step 1).
+Change `CV_REF` in `/etc/campusview/campusview.env` to the new tag. Then run the update command.
 
 ## Keep secrets out of both repos
 

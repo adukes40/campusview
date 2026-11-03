@@ -16,6 +16,173 @@ trap 'echo "ERROR: line $LINENO: $BASH_COMMAND" >&2' ERR
 
 ENVF=/etc/campusview/campusview.env
 SUPERSET_VER=6.1.0; DJANGO_VER=6.1.2; PY=3.12   # one Python for both apps
+DISTRICT=/opt/campusview-district
+RE_REF='^[A-Za-z0-9][A-Za-z0-9._/-]{0,80}$'
+export GIT_TERMINAL_PROMPT=0
+
+say(){ printf '\n==> %s\n' "$*"; }
+section(){ printf '\n--- %s ---\n' "$1"; }
+die(){ echo "FATAL: $*" >&2; exit 1; }
+as_run(){ if [ "$CV_RUN_USER" = root ]; then "$@"; else runuser -u "$CV_RUN_USER" -- "$@"; fi; }
+g(){ as_run git -C "$B" "$@"; }
+usage(){ echo "Usage: sudo bash $0 --update [--allow-downgrade]" >&2; exit 1; }
+valid_ref(){
+  local r=${1:-${CV_REF:-}}
+  [[ $r =~ $RE_REF ]] || return 1
+  [[ $r == *..* ]] && return 1
+  [ "$r" != main ] || return 1
+  return 0
+}
+read_env(){
+  [ -f "$ENVF" ] || die "No saved settings in $ENVF. Run install.sh."
+  set -a; . "$ENVF"; set +a
+  : "${CV_INSTALL_DIR:=/opt/campusview}"
+  : "${CV_RUN_USER:=${SUDO_USER:-root}}"
+  : "${CV_SYSTEMD:=no}"
+  B=$CV_INSTALL_DIR; S=$B/superset; D=$B/django
+}
+stopped(){ echo "${1:+$1 }The checkout was left as it is." >&2; exit 1; }
+classify_fetched_ref(){ # a tag wins when the same name is also a branch
+  local tag="refs/tags/$CV_REF" branch="refs/remotes/origin/$CV_REF"
+  if g show-ref --verify --quiet "$tag"; then ref_kind=tag; target=$(g rev-parse --verify "${tag}^{}")
+  elif g show-ref --verify --quiet "$branch"; then ref_kind=branch; target=$(g rev-parse --verify "$branch")
+  else stopped "$CV_REF is not a branch or a tag on the remote."; fi
+}
+have_python(){
+  [ -x "$B/.uv/bin/uv" ] || return 1
+  local f
+  f=$(find "$B/.uv/python" -name 'python3.12' -print -quit 2>/dev/null || true)
+  [ -n "$f" ] && [ -x "$f" ]
+}
+pkg_ver(){ as_run "$1" show "$2" 2>/dev/null | sed -n 's/^Version: //p'; }
+sync_superset(){
+  export UV_PYTHON_INSTALL_DIR=$B/.uv/python UV_CACHE_DIR=$B/.uv/cache
+  [ -x "$S/venv/bin/python" ] || as_run "$B/.uv/bin/uv" venv --seed --python "$PY" "$S/venv" || return 1
+  [ -s "$S/constraints-$SUPERSET_VER.txt" ] || as_run sh -c "curl -fsSL https://raw.githubusercontent.com/apache/superset/$SUPERSET_VER/requirements/base.txt | grep -v '^-e' > '$S/constraints-$SUPERSET_VER.txt'" || return 1
+  # sed reads the whole pip listing. grep -q would close the pipe early and, with pipefail, look like a missing package.
+  if [ "$(pkg_ver "$S/venv/bin/pip" apache_superset)" != "$SUPERSET_VER" ]; then
+    as_run "$S/venv/bin/pip" install -q --upgrade pip || return 1
+    as_run "$S/venv/bin/pip" install -c "$S/constraints-$SUPERSET_VER.txt" "apache-superset==$SUPERSET_VER" psycopg2-binary || return 1
+  fi
+}
+sync_django(){
+  export UV_PYTHON_INSTALL_DIR=$B/.uv/python UV_CACHE_DIR=$B/.uv/cache
+  [ -x "$D/venv/bin/python" ] || as_run "$B/.uv/bin/uv" venv --seed --python "$PY" "$D/venv" || return 1
+  [ "$(pkg_ver "$D/venv/bin/pip" django)" = "$DJANGO_VER" ] || \
+    as_run "$D/venv/bin/pip" install "Django==$DJANGO_VER" psycopg2-binary gunicorn || return 1
+}
+quiet(){ local out; out=$("$@" 2>&1) || { printf '%s\n' "$out" >&2; return 1; }; }
+upgrade_superset_db(){
+  export SUPERSET_CONFIG_PATH=$S/superset_config.py FLASK_APP=superset
+  as_run "$S/venv/bin/superset" db upgrade
+}
+migrate_django(){ (cd "$D" && as_run venv/bin/python manage.py migrate --noinput); }
+restart_apps(){
+  if [ "$CV_SYSTEMD" = yes ]; then systemctl restart cv-superset cv-django
+  else as_run "$B/stop.sh" >/dev/null 2>&1 || true; as_run "$B/start.sh"; fi
+}
+# campusview.running is the commit that finished a restart. A failed restart leaves it unset, so the next run retries.
+mark_running(){ g config --local campusview.running "$(g rev-parse HEAD)"; }
+pull_district(){
+  if [ ! -e "$DISTRICT/.git" ]; then echo "No district checkout at $DISTRICT. Skipped."; return 0; fi
+  local err
+  err=$(as_run git -C "$DISTRICT" pull --ff-only 2>&1) || {
+    case $err in
+      *dubious\ ownership*) echo "Git refused the district checkout because of dubious ownership." >&2; printf '%s\n' "$err" >&2 ;;
+      *) echo "The district repo did not fast-forward." >&2 ;;
+    esac
+    stopped; }
+}
+create_checkout(){
+  mkdir -p -- "$B"; chown "$CV_RUN_USER": "$B"
+  if [ -e "$B/.git" ] && g rev-parse --verify -q HEAD >/dev/null 2>&1; then return 0; fi
+  local script root
+  script=$(readlink -f -- "$0"); root=$(readlink -f -- "$B")
+  case $script in "$root"|"$root"/*) die "Copy install.sh out of $B and run that copy." ;; esac
+  say "checkout $CV_REF"
+  [ -e "$B/.git" ] || g init -q
+  g remote get-url origin >/dev/null 2>&1 || g remote add origin "${CV_REPO:-https://github.com/adukes40/campusview.git}"
+  g fetch origin --tags
+  classify_fetched_ref
+  g checkout --detach "$target" || die "Could not check out $CV_REF."
+}
+update_main(){
+  local allow_down=no tmp head running previous
+  case ${2:-} in
+    "") ;;
+    --allow-downgrade) allow_down=yes ;;
+    *) usage ;;
+  esac
+  [ "$#" -le 2 ] || usage
+  case $0 in
+    /tmp/campusview-update.*) rm -f -- "$0" ;;
+    *)
+      # Bash reads this file as it runs, so checkout must not replace the copy that is executing.
+      tmp=$(mktemp /tmp/campusview-update.XXXXXX)
+      cp -- "$0" "$tmp"; chmod 700 "$tmp"
+      exec bash "$tmp" "$@" ;;
+  esac
+  read_env
+  if [ -z "${CV_REF:-}" ]; then
+    die "CV_REF is not set. Run install.sh once, for example: sudo CV_REF=dev bash ./install.sh"
+  fi
+  valid_ref || die "CV_REF has an invalid value ($CV_REF). Use dev, or a release tag. No server uses main."
+  if [ ! -e "$B/.git" ] || ! g rev-parse --verify -q HEAD >/dev/null 2>&1; then
+    die "This folder has no CampusView checkout yet. Run install.sh once, for example: sudo CV_REF=dev bash ./install.sh"
+  fi
+  if ! g diff --quiet HEAD || ! g diff --cached --quiet; then stopped "The checkout has local edits."; fi
+  g fetch origin --tags
+  classify_fetched_ref
+  head=$(g rev-parse HEAD)
+  running=$(g config --local --get campusview.running 2>/dev/null || true)
+  previous=$head
+  if [ "$head" != "$target" ]; then
+    if [ "$ref_kind" = branch ]; then
+      g merge-base --is-ancestor "$head" "$target" || stopped "Branch $CV_REF is not a straight step forward."
+    elif g merge-base --is-ancestor "$target" "$head"; then
+      [ "$allow_down" = yes ] || stopped "Tag $CV_REF is behind the version already installed. To go back, run the same command with --allow-downgrade."
+    fi
+  fi
+  pull_district
+  if [ "$head" = "$target" ] && [ "$running" = "$head" ]; then
+    echo "Already on $CV_REF at ${head:0:12}. Nothing to do."; exit 0
+  fi
+  if [ "$head" != "$target" ]; then
+    g checkout --detach "$target" || die "Could not check out $CV_REF."
+  fi
+  # The checked-out install.sh carries this release's package versions. The copy above is the previous one.
+  CV_APPLY=1 exec bash -- "$B/install.sh" --apply "$previous"
+}
+apply_main(){
+  local previous now
+  [ "${CV_APPLY:-}" = 1 ] || usage
+  [ "$#" -eq 2 ] || usage
+  previous=$2
+  [[ $previous =~ ^[0-9a-f]{40}$ ]] || usage
+  read_env
+  if ! have_python; then echo "Python 3.12 is not in the install folder. Run install.sh." >&2; exit 1; fi
+  if ! sync_superset || ! sync_django; then
+    g checkout --detach "$previous" || die "Could not put the checkout back."
+    echo "Installing packages failed. The checkout was put back. Services were not restarted." >&2; exit 1
+  fi
+  if ! quiet upgrade_superset_db || ! quiet migrate_django; then
+    g checkout --detach "$previous" || die "Could not put the checkout back."
+    restart_apps || true
+    echo "The database update failed. CampusView is running the previous checkout. Python packages may already be the newer ones." >&2; exit 1
+  fi
+  restart_apps || { echo "The new checkout is in place, and the services did not restart. Run the update command again." >&2; exit 1; }
+  mark_running
+  now=$(g rev-parse HEAD)
+  echo "Updated $CV_REF from ${previous:0:12} to ${now:0:12}. Services restarted."
+  exit 0
+}
+
+case ${1:-} in
+  "") ;;
+  --update) update_main "$@"; exit 1 ;;
+  --apply) apply_main "$@"; exit 1 ;;
+  *) usage ;;
+esac
 
 # ---------- answers: answers file, then saved values from a previous run (saved values win) ----------
 : "${CV_ANSWERS:=}"; : "${CV_NONINTERACTIVE:=0}"
@@ -29,6 +196,7 @@ if [ -f "$ENVF" ]; then . "$ENVF"; RERUN=yes; grep -q "^CV_ACCESS='[a-z]" "$ENVF
 for v in "${!GIVEN[@]}"; do printf -v "$v" '%s' "${GIVEN[$v]}"; done
 : "${CV_RUN_USER:=${SUDO_USER:-root}}"
 : "${CV_INSTALL_DIR:=/opt/campusview}"; : "${CV_PG_PORT:=5432}"; : "${CV_SUPERSET_PORT:=8088}"; : "${CV_DJANGO_PORT:=8000}"
+if [ -z "${CV_REF+x}" ]; then CV_REF=dev; fi
 : "${CV_SUPERSET_WORKERS:=4}"; : "${CV_SUPERSET_DB_USER:=superset_user}"; : "${CV_DJANGO_DB_USER:=django_user}"
 : "${CV_SUPERSET_DB_PASSWORD:=}"; : "${CV_DJANGO_DB_PASSWORD:=}"; : "${CV_SECRET_KEY:=}"
 : "${CV_OWNER_DB_PASSWORD:=}"; : "${CV_READER_DB_PASSWORD:=}"   # campusview_owner / campusview_reader (campusview_data)
@@ -44,10 +212,6 @@ RE_SECRET='^[^'"'"'"\[:space:]]{8,}$'   # 8+ chars, no spaces, no ' " or \
 RE_PATH='^/[A-Za-z0-9._/-]*$'; RE_EMAIL='^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$'   # nothing that could break the saved file
 RE_ACCESS='^(tunnel|http|https)$'; RE_CERTSRC='^(selfsigned|own)$'; RE_HOST='^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$'
 RE_IP='^[0-9]{1,3}(\.[0-9]{1,3}){3}$'
-
-say(){ printf '\n==> %s\n' "$*"; }
-section(){ printf '\n--- %s ---\n' "$1"; }   # wizard section heading
-die(){ echo "FATAL: $*" >&2; exit 1; }
 
 ask(){ # ask VAR REGEX "Prompt" ["help line"] [secret]
   local var=$1 re=$2 prompt=$3 help=${4:-} secret=${5:-} ans again
@@ -156,6 +320,7 @@ B
   fi
   section "Starting up"
   ask CV_SYSTEMD "$RE_YN" "Start CampusView automatically when the server boots (yes/no)"
+  ask CV_REF "$RE_REF" "Branch or tag this server follows" "dev on the dev server. A release tag such as v1.3.0 on production. No server uses main."
 fi
 
 # ---------- validate, fill in generated secrets ----------
@@ -172,6 +337,7 @@ chk CV_ADMIN_EMAIL "$RE_EMAIL" "use a plain address like name@school.org"
 for v in CV_PG_PORT CV_SUPERSET_PORT CV_DJANGO_PORT; do chk $v "$RE_PORT"; done
 for v in CV_RUN_USER CV_ADMIN_USER CV_SUPERSET_DB_USER CV_DJANGO_DB_USER; do chk $v "$RE_NAME"; done
 for v in CV_SUPERSET_DB_PASSWORD CV_DJANGO_DB_PASSWORD CV_OWNER_DB_PASSWORD CV_READER_DB_PASSWORD CV_SECRET_KEY CV_ADMIN_PASSWORD; do chk $v "$RE_SECRET" "8+ characters, no spaces, quotes or backslashes"; done
+valid_ref || die "CV_REF has an invalid value${CV_REF:+ ($CV_REF)}. Use dev, or a release tag. No server uses main."
 getent passwd "$CV_RUN_USER" >/dev/null || die "Linux user $CV_RUN_USER does not exist"
 # network: a fresh install defaults to HTTPS; an older install re-run from an answers file stays tunnel-only until asked
 [ -n "$CV_ACCESS" ] || { [ $RERUN = yes ] && CV_ACCESS=tunnel || CV_ACCESS=https; }
@@ -197,6 +363,7 @@ if [ "$CV_NONINTERACTIVE" != 1 ]; then
 
   Ready to install:
     Folder:        $CV_INSTALL_DIR   (apps run as $CV_RUN_USER)
+    Following:     $CV_REF
     PostgreSQL:    17, port $CV_PG_PORT
     Reached:       $(access_desc)
     Superset:      $URL_SS
@@ -211,7 +378,7 @@ fi
 # ---------- save answers + secrets (0600, owned by the account that runs CampusView) ----------
 mkdir -p -m 700 /etc/campusview; chown "$CV_RUN_USER": /etc/campusview
 ( umask 077; tmp=$(mktemp /etc/campusview/.env.XXXXXX)
-  for v in CV_INSTALL_DIR CV_RUN_USER CV_PG_PORT CV_SUPERSET_PORT CV_DJANGO_PORT CV_SUPERSET_WORKERS \
+  for v in CV_INSTALL_DIR CV_REF CV_RUN_USER CV_PG_PORT CV_SUPERSET_PORT CV_DJANGO_PORT CV_SUPERSET_WORKERS \
            CV_SUPERSET_DB_USER CV_DJANGO_DB_USER CV_ADMIN_USER CV_ADMIN_EMAIL CV_SYSTEMD \
            CV_SUPERSET_DB_PASSWORD CV_DJANGO_DB_PASSWORD CV_OWNER_DB_PASSWORD CV_READER_DB_PASSWORD \
            CV_SECRET_KEY CV_ADMIN_PASSWORD $NETV; do
@@ -219,7 +386,6 @@ mkdir -p -m 700 /etc/campusview; chown "$CV_RUN_USER": /etc/campusview
   chown "$CV_RUN_USER": "$tmp"; mv "$tmp" "$ENVF" )
 set -a; . "$ENVF"; set +a      # the apps read their secrets from these environment variables
 B=$CV_INSTALL_DIR; S=$B/superset; D=$B/django
-as_run(){ if [ "$CV_RUN_USER" = root ]; then "$@"; else runuser -u "$CV_RUN_USER" -- "$@"; fi; }
 as_pg(){ (cd /tmp && runuser -u postgres -- "$@"); }
 
 cd /   # the run user may not be able to read the folder the installer was started from (uv reads ./uv.toml)
@@ -230,6 +396,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update </dev/null
 apt-get install -y build-essential libssl-dev libffi-dev libsasl2-dev libldap2-dev \
   default-libmysqlclient-dev pkg-config libpq-dev curl ca-certificates gnupg openssl git </dev/null
+create_checkout
 [ "$CV_ACCESS" = tunnel ] || apt-get install -y nginx </dev/null   # from the distro's own repo
 
 # ---------- 2. PostgreSQL ----------
@@ -303,12 +470,7 @@ as_run "$B/.uv/bin/uv" python install "$PY"
 
 # ---------- 5. Superset ----------
 say "5. Superset $SUPERSET_VER"
-[ -x "$S/venv/bin/python" ] || as_run "$B/.uv/bin/uv" venv --seed --python "$PY" "$S/venv"
-[ -s "$S/constraints-$SUPERSET_VER.txt" ] || as_run sh -c "curl -fsSL https://raw.githubusercontent.com/apache/superset/$SUPERSET_VER/requirements/base.txt | grep -v '^-e' > '$S/constraints-$SUPERSET_VER.txt'"
-if ! as_run "$S/venv/bin/pip" show apache_superset 2>/dev/null | grep -q "^Version: $SUPERSET_VER$"; then
-  as_run "$S/venv/bin/pip" install -q --upgrade pip
-  as_run "$S/venv/bin/pip" install -c "$S/constraints-$SUPERSET_VER.txt" "apache-superset==$SUPERSET_VER" psycopg2-binary
-fi
+sync_superset
 as_run tee "$S/superset_config.py" >/dev/null <<'C'
 # Secrets come from /etc/campusview/campusview.env (loaded by systemd or start.sh).
 import os
@@ -325,8 +487,7 @@ if _cv_access == "https":
     PREFERRED_URL_SCHEME = "https"
     SESSION_COOKIE_SECURE = True
 C
-export SUPERSET_CONFIG_PATH=$S/superset_config.py FLASK_APP=superset
-as_run "$S/venv/bin/superset" db upgrade
+upgrade_superset_db
 as_run "$S/venv/bin/superset" init
 # admin user: created from Python so the password is never on a command line
 as_run "$S/venv/bin/python" - <<'PY'
@@ -347,9 +508,7 @@ PY
 
 # ---------- 6. Django ----------
 say "6. Django $DJANGO_VER"
-[ -x "$D/venv/bin/python" ] || as_run "$B/.uv/bin/uv" venv --seed --python "$PY" "$D/venv"
-as_run "$D/venv/bin/pip" show django 2>/dev/null | grep -q "^Version: $DJANGO_VER$" || \
-  as_run "$D/venv/bin/pip" install "Django==$DJANGO_VER" psycopg2-binary gunicorn
+sync_django
 [ -f "$D/manage.py" ] || (cd "$D" && as_run venv/bin/django-admin startproject campusview_base .)
 # only change to the default project: DATABASES points at PostgreSQL, password read from the environment
 as_run "$D/venv/bin/python" - "$D/campusview_base/settings.py" <<'PY'
@@ -391,7 +550,7 @@ open(p, "w").write(s)
 PY
 as_run chmod 600 "$D/campusview_base/settings.py"
 (cd "$D" && as_run venv/bin/python manage.py collectstatic --noinput -v0)   # nginx serves these at /app/static/
-(cd "$D" && as_run venv/bin/python manage.py migrate --noinput)
+migrate_django
 (cd "$D" && as_run venv/bin/python manage.py shell <<'PY'
 import os
 from django.contrib.auth import get_user_model
@@ -473,11 +632,10 @@ WantedBy=multi-user.target
 C
   systemctl daemon-reload
   systemctl enable cv-superset cv-django
-  systemctl restart cv-superset cv-django
+  restart_apps
 else
   say "8. starting with start.sh"
-  as_run "$B/stop.sh" >/dev/null 2>&1 || true   # restart, so changed settings take effect
-  as_run "$B/start.sh"
+  restart_apps
 fi
 
 # ---------- 9. network access (nginx is the only thing on the network) ----------
@@ -568,6 +726,7 @@ fi
 dbs=$(psqlq -c "SELECT string_agg(datname, ' ' ORDER BY datname) FROM pg_database WHERE datname IN ('superset_meta','django_app','campusview_data')")
 echo "  databases: $dbs"; [ "$(wc -w <<<"$dbs")" = 3 ] || ok=0
 if [ $ok = 1 ]; then
+  mark_running
   if [ "$CV_ACCESS" = tunnel ]; then cat <<E
 
 INSTALL OK
