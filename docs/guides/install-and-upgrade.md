@@ -1,67 +1,169 @@
 # Install and upgrade
 
-Outline. CampusView is installed directly on one Ubuntu or Debian server, with no containers. The CampusView Engineer built `install.sh`, one script with a step-by-step wizard that asks for every setting and does every step below. It passed clean installs and re-runs on Debian 12, Ubuntu 24.04, and Ubuntu 22.04, and Austin is reviewing it now. Until he approves it, the steps below are done by hand, following the base-install guide the Engineer tested. They do the same thing the script does. This guide stays generic. Exact prompts land here once `install.sh` is approved.
+CampusView goes on one Ubuntu or Debian server. You run one script, `install.sh`. It asks a short list of questions, then installs PostgreSQL, the Superset web page, and the Django admin page. All of them listen only on the server itself. From your own computer, you open them through an SSH tunnel.
+
+This guide is for the person who runs the server. It stays generic. District settings that are not secrets live in the district repo, not in this one.
 
 ## Before you start
 
-A server that meets [server-requirements.md](server-requirements.md), a release tag, a checkout of the district repo, and SSH access to the server. Secrets go in one file on the server, `/etc/campusview/campusview.env`, and nowhere else (see Where secrets live, below). Non-secret district settings live in the district repo.
+Use a server that meets [Server requirements](server-requirements.md). You need a login that can reach the server over SSH.
 
-## First install
+`install.sh` is at the root of this repo. Copy it onto the server. On Ubuntu, start it with `sudo ./install.sh`. On Debian, where you are already root, start it with `./install.sh`.
 
-What the base install sets up, in order:
+The installer always uses PostgreSQL 17 from postgresql.org. It does not ask which PostgreSQL to use.
+
+## How to answer
+
+Press Enter to accept the value shown in brackets. When you type a password, nothing appears on the screen. That is on purpose. If you type a password, you type it twice. If you press Enter on a password prompt on the first run, the installer makes a strong password for you. On a later run, Enter on a password that was already saved keeps the saved one.
+
+A password needs at least 8 characters. It cannot contain a space, an apostrophe (`'`), or a backslash (`\`). If a password breaks a rule, the installer says so and asks again.
+
+## Which account does what
+
+| Account | Who uses it | Where you use it |
+| --- | --- | --- |
+| Linux account, question 1, for example `cvadmin` | The server. The apps run as this account, and it owns the program folder and the password file. | Signing in to the server over SSH. |
+| `superset_user`, database | Superset, behind the scenes, for its own database `superset_meta` only. It cannot connect to `campusview_data`. | Nowhere. Only Superset uses it. |
+| `django_user`, database | Django, behind the scenes, for its database `django_app`. | Nowhere. Only Django uses it. |
+| `campusview_reader`, database, question 8 | Superset, to read report data. It can read the `reporting` schema of `campusview_data` and nothing else. It cannot change anything. | DBeaver, for safe browsing. Also the account to use when you add the report data connection in Superset. The installer does not create that connection. |
+| `campusview_owner`, database, question 9 | The data loader in Step 1. It owns `campusview_data` and its schemas `raw`, `mapping`, and `reporting`. | DBeaver, only when you need full access. Use it with care. It can change and delete data. |
+| Superset secret key | Superset. It locks the connection details Superset saves. | Nowhere. It must never change after the first install, or Superset can no longer read what it saved. |
+| Admin login, questions 11 to 13 | You. | Signing in to the Superset web page and the Django admin page. The username and password are the same for both. |
+
+The three staff roles in Superset, system admin, district admin, and school admin, are not created by this installer. Those come in a later step. The admin login above is a Superset admin and a Django admin so you can sign in and check that the pages work.
+
+All passwords and the key are saved in `/etc/campusview/campusview.env`. Read them with `sudo cat /etc/campusview/campusview.env`.
+
+### The report database, campusview_data
+
+| Schema | Owner | Who can read it |
+| --- | --- | --- |
+| `raw`, loaded data | `campusview_owner` | `campusview_owner` only |
+| `mapping` | `campusview_owner` | `campusview_owner` only |
+| `reporting`, views for reports | `campusview_owner` | `campusview_owner`, and `campusview_reader` with read only access. Anything the owner adds here later is readable by `campusview_reader` automatically. |
+
+The schemas start empty. They fill up in Step 1. No other account can connect to `campusview_data`.
+
+### Connect with DBeaver
+
+- Host `127.0.0.1`. Port `5432`, or the port you chose. Database `campusview_data`.
+- User `campusview_reader` for safe browsing. It sees the reporting views only, and they are empty until Step 1. Use `campusview_owner` only when you need full access.
+- The password is the `CV_READER_DB_PASSWORD` line, or the `CV_OWNER_DB_PASSWORD` line, in `/etc/campusview/campusview.env`.
+- The database only listens on the server itself. For either account, turn on DBeaver's SSH tunnel to the server. On the SSH tab, use the server address and your Linux login. Or run `ssh -L 5432:127.0.0.1:5432 you@server` first, then connect to `127.0.0.1` port `5432` on your computer.
+- `django_app` and `superset_meta` belong to the apps. Do not edit them by hand.
+
+## The questions, in order
+
+Each group is shown under its heading, such as `--- Where CampusView goes ---`.
+
+| # | Heading | Prompt on screen | Default in brackets | Secret? | Help text shown above it |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Where CampusView goes | Linux account that runs CampusView | The account you ran sudo from. On Debian, that is `root`. | No | An existing login on this server. The apps run as this account, and it owns their files and the password file. |
+| 2 | | Install folder | `/opt/campusview` | No | Where the programs go. It is created for you, owned by that account. |
+| 3 | Network ports | Database (PostgreSQL) port | `5432` | No | Keep these unless something else on this server already uses them. |
+| 4 | | Superset web page port | `8088` | No | |
+| 5 | | Django admin page port | `8000` | No | |
+| 6 | Behind-the-scenes database passwords | Password Superset uses for the database | Enter = make one for me | Yes | Superset and Django each sign in to the database with their own account. Only the apps use these. You never type them. Press Enter to have them made for you. |
+| 7 | | Password Django uses for the database | Enter = make one for me | Yes | |
+| 8 | Report data accounts (database campusview_data) | Password for campusview_reader | Enter = make one for me | Yes | Two database logins for the report data. Press Enter to have them made for you. This question also shows `campusview_reader: what Superset uses to read report data; also safe for DBeaver.` |
+| 9 | | Password for campusview_owner | Enter = make one for me | Yes | `campusview_owner: full access to the data, used by the loader; use with care.` |
+| 10 | Superset secret key | Superset secret key | Enter = make one for me | Yes | Locks (encrypts) the connection details Superset saves. Never change it after the first install, or Superset can no longer read them. Press Enter to have one made. |
+| 11 | Your admin login | Admin username | `admin` | No | The username and password YOU sign in with, on both the Superset web page and the Django admin page. |
+| 12 | | Admin email | `admin@example.invalid` when the username is `admin` | No | Type a real address. That advice is not shown on screen. |
+| 13 | | Admin password | Enter = make one for me | Yes | |
+| 14 | Starting up | Start CampusView automatically when the server boots (yes/no) | `yes` | No | Not shown on screen. `yes` sets up the services `cv-superset` and `cv-django`. If systemd is not running, the installer says so and uses `start.sh` instead. |
+
+After the questions, the installer shows a summary, then `Go ahead? [Y/n]`. Press Enter to accept `Y`. Answer `n` to quit, and the installer changes nothing.
+
+## What the installer sets up
+
+In order, the script does this work for you.
 
 1. System packages.
-2. Python 3.12, installed with `uv`. Superset and Django both use it. Clean installs were verified on Python 3.12.16.
-3. PostgreSQL 17 from the official PostgreSQL apt repo (PGDG). The repo is added directly over https, with PostgreSQL's signing key saved in a keyring and named in the repo's sources entry. The `apt.postgresql.org.sh` helper isn't used, because it failed in testing on Ubuntu 22.04 (it adds the repo over plain http). PostgreSQL is then set to listen only on 127.0.0.1 (`listen_addresses = '127.0.0.1'` in `/etc/postgresql/17/main/postgresql.conf`, then a restart). The default, `localhost`, also opens it on the IPv6 address `[::1]`.
-4. The database users and the three databases: `superset_meta`, `django_app`, and `campusview_data`.
-5. The folder layout for CampusView.
-6. Apache Superset 6.1.0 in its own Python environment, installed with Superset's 6.1.0 `requirements/base.txt` as pip constraints. `venv/bin/pip show apache_superset` should report `Version: 6.1.0`.
-7. The secrets file, `/etc/campusview/campusview.env`, which holds the database passwords and Superset's secret key. Then Superset's config file, `superset_config.py`, which reads those values from the environment and holds no secrets itself.
-8. Superset's own database, the first admin user, and the default roles. The secrets file is loaded into the shell first.
-9. Django 6.1.2 in its own Python environment, as a default `startproject campusview_base`.
-10. Django pointed at the `django_app` database. `settings.py` reads the database user and password from the environment, and the file is locked with `chmod 600`.
-11. Start and stop scripts that run Superset and Django under gunicorn. `start.sh` loads the secrets file before starting either app.
-12. A check that everything is running (below).
-13. Opening it from a laptop through an SSH tunnel.
-14. Optional: starting at boot with systemd. Each service loads the secrets file with `EnvironmentFile=/etc/campusview/campusview.env`.
+2. Python 3.12, installed with `uv`, kept inside the install folder. Superset and Django both use it.
+3. PostgreSQL 17 from the official PostgreSQL apt repo. The repo is added over https, with PostgreSQL's signing key. PostgreSQL is set to listen only on `127.0.0.1`.
+4. The database accounts and the three databases `superset_meta`, `django_app`, and `campusview_data`. `campusview_owner` owns `campusview_data`.
+5. The install folder, owned by the Linux account you named.
+6. Apache Superset 6.1.0 in its own Python environment.
+7. The password file `/etc/campusview/campusview.env`, then Superset's config, which reads secrets from the environment.
+8. Superset's own database, the first admin user, and Superset's default setup.
+9. Django 6.1.2 in its own Python environment, as a default project named `campusview_base`.
+10. Django pointed at `django_app`. Django reads the database password from the environment.
+11. `start.sh` and `stop.sh` in the install folder.
+12. A check that the pages answer, described below.
+13. If you answered `yes`, the services `cv-superset` and `cv-django` start at boot.
 
-Not installed: a Redis server, Celery, a Superset worker or beat, a reverse proxy, example data, or theming. The `redis` and `celery` Python libraries are installed only because Superset depends on them, and nothing runs them. SFTP and the loader come in step 1.
+The installer does not add a Redis server, Celery, a Superset worker, a reverse proxy, Docker, example data, or theming. The `redis` and `celery` Python libraries are installed only because Superset depends on them, and nothing runs them. SFTP and the loader come in Step 1.
 
-`install.sh` asks for each setting these steps need, such as the database passwords and the first admin account, and does the steps for you. It suggests random passwords you can accept. Settings it doesn't cover yet, such as the district time zone, come with later steps.
+## Where the passwords live
 
-## Where secrets live
+- Every secret goes in `/etc/campusview/campusview.env`. The file holds the two app database passwords, the `campusview_reader` password, the `campusview_owner` password, the Superset secret key, and the admin password. It also stores the non-secret answers, such as the ports and the install folder.
+- The file mode is 600, so only the Linux account that runs CampusView can read it. The folder `/etc/campusview` is mode 700 and owned by that same account.
+- systemd loads the file when the services start. `start.sh` loads it when you start the apps without systemd. The Superset config and Django's `settings.py` read the values from the environment. The installer writes no password into either file.
+- Django's own `SECRET_KEY` is the exception. Django generates it and it stays in `settings.py`, so that file is mode 600. Do not copy it into git.
+- To see a saved password later, read the file on the server as root or as the account that runs CampusView. Never copy a password into either git repo.
 
-- All secrets go in one file, `/etc/campusview/campusview.env`: the two database passwords and Superset's secret key. `install.sh` also stores the first admin's password there, along with its non-secret answers such as the ports and the install folder.
-- The file is mode 600 and owned by the account that runs CampusView. Its folder, `/etc/campusview`, is mode 700.
-- The file is loaded by systemd (`EnvironmentFile=`) or by `start.sh`. `superset_config.py` and Django's `settings.py` read the values from the environment. No password is written into either file.
-- The one exception is Django's own `SECRET_KEY`. `startproject` generates it and it stays in `settings.py`, so `settings.py` is locked to mode 600.
-- To see the saved passwords later, the operator reads the file on the server, as root or as the account that runs CampusView. Never copy them into either git repo.
+## When it finishes
 
-## Open items
+The installer checks three pages and the three databases. Superset's health page, the Superset sign-in page, and the Django admin sign-in page must each answer. The databases `superset_meta`, `django_app`, and `campusview_data` must exist. Then it prints `INSTALL OK`, the addresses, and a short DBeaver block with the same facts as above.
 
-- `campusview_data` is owned by the Superset database user for now. Step 1 plans a separate owner user for the loader and a read-only user that Superset uses to read the reporting views (see [../ARCHITECTURE.md](../ARCHITECTURE.md)).
+Everything listens on `127.0.0.1` only. To open the pages from your computer, run this, then open `http://127.0.0.1:8088` and `http://127.0.0.1:8000/admin/`.
 
-## Check that it came up
+```bash
+ssh -L 8088:127.0.0.1:8088 -L 8000:127.0.0.1:8000 you@server
+```
 
-- PostgreSQL answers on 127.0.0.1:5432, and nothing listens on `[::1]` or on the network.
-- Superset answers on 127.0.0.1:8088, and its health page says OK.
-- Django answers on 127.0.0.1:8000, and its `/admin/login/` page loads.
-- From a laptop, open an SSH tunnel to port 8088 and sign in to Superset as the first admin.
+Use the ports you chose if they are not `8088` and `8000`. Sign in with the admin username and password.
 
 No student data is needed for this check.
 
-## Upgrade
+## Run the installer again
 
-How production moves from one tag to the next. The server pulls a tag, never a branch. Database migrations run. The district repo, the secrets file, and the server's config files are left as they are. What a successful upgrade looks like. Filled in when releases exist.
+Run the same command. The saved answers show up as the defaults, including the install folder. The two behind-the-scenes database password prompts say `Enter = keep the saved one`.
 
-## Upgrade test
+Questions 8 to 13 are not asked again. That is the two report data passwords, the secret key, and the admin login. Under the heading `Report data accounts, Superset secret key and your admin login` you see `Kept from the first install`, with the admin username, and `They are not asked again.`
 
-What CI already proved: a clean install of this tag, and an upgrade from the previous tag. What the operator still does on the real server, and what to do if migrations fail (leave the previous tag running; do not repair by editing the district repo).
+Nothing is reset or duplicated. Existing admins are left unchanged. The databases and their data stay as they are. The database accounts, schemas, and permissions are checked and kept.
+
+A second run has not been tested after a change to the install folder, the Linux account, or a port. Leave those as they were.
+
+## Upgrade an older install
+
+An earlier installer made `superset_user` the owner of `campusview_data`. Run the current `install.sh` on that server. It creates `campusview_owner` and `campusview_reader` with new passwords, saves those passwords in the password file, and hands `campusview_data` and everything in it to `campusview_owner`. Superset keeps working. The install folder you already chose is kept.
+
+If you had already added a Superset data connection to `campusview_data` as `superset_user`, that connection stops working. Switch it to `campusview_reader`.
+
+This older-layout upgrade was tested once, on Debian 12.
+
+Moving from one release tag to the next is not in this script yet. When releases exist, the server pulls a tag, never a branch. Migrations run. The district repo, the password file, and the server's own config stay as they are. If a migration fails, leave the previous tag running. Do not repair it by editing the district repo.
+
+## Run it from an answers file
+
+You can skip the questions.
+
+```bash
+sudo CV_NONINTERACTIVE=1 CV_ANSWERS=/path/answers.env ./install.sh
+```
+
+On Debian as root, leave off `sudo`. The answers-file run does not ask `Go ahead?`.
+
+The file uses the same names as the saved password file.
+
+- `CV_RUN_USER`
+- `CV_INSTALL_DIR`, default `/opt/campusview`
+- `CV_PG_PORT`, `CV_SUPERSET_PORT`, `CV_DJANGO_PORT`
+- `CV_SUPERSET_DB_PASSWORD`, `CV_DJANGO_DB_PASSWORD`, `CV_READER_DB_PASSWORD`, `CV_OWNER_DB_PASSWORD`, `CV_SECRET_KEY`
+- `CV_ADMIN_USER`, `CV_ADMIN_EMAIL`, `CV_ADMIN_PASSWORD`
+- `CV_SYSTEMD`, and `CV_SUPERSET_WORKERS`. The worker count is answers-file only. The default is 4.
+
+`install.answers.example` in the repo root is a sample. Its secrets are blank. Leave any password out and the installer generates one. Do not use that sample on a real server until you set the Linux account and the admin email for that server. If the saved file `/etc/campusview/campusview.env` already exists, its values win over the answers file.
 
 ## The testing install
 
-How to bring up the same tag with fake data, including the sandbox database user. A clear statement that the fake-data command must be refused on production.
+The same release, loaded with fake data, is not part of this installer. Production must refuse the fake-data command. That command is not built yet.
 
 ## Uninstall
 
-How to stop Superset and Django with the stop script, and remove the systemd services if they were added. A warning that dropping the `campusview_data` database deletes the warehouse, and that the district repo is a separate checkout and is not removed.
+This installer does not remove CampusView. To stop the apps, run `stop.sh` in the install folder. If you answered `yes` to start at boot, stop the services `cv-superset` and `cv-django` instead.
+
+Dropping the `campusview_data` database deletes the warehouse. The district repo is a separate checkout and is not removed.
