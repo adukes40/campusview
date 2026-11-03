@@ -184,10 +184,11 @@ flowchart LR
 | Superset web | Apache Superset 6.1.0, Python 3.12 (verified on 3.12.16), gunicorn. Installed with Superset's tested package list (`requirements/base.txt` from the 6.1.0 release) as pip constraints | 127.0.0.1:8088 |
 | Django | A default `startproject campusview_base` on Django 6.1.2, Python 3.12, in its own Python environment, gunicorn. No role in v1 features | 127.0.0.1:8000 |
 
+Optional nginx (decided 2026-11-02, installer step in progress): the installer can add nginx from the distro's apt repo as the only thing listening on the network. Choices are local only (the default, reached through an SSH tunnel), HTTP on port 80, or HTTPS on port 443 with 80 redirecting to 443. nginx sends `/` to Superset and `/app/` to Django. PostgreSQL is never exposed. Plain HTTP is for test machines with fake data only. See [DECISIONS.md](DECISIONS.md).
+
 Not in the base install:
 
 - **No Redis, no Celery, no Superset worker or beat.** The `celery` and `redis` Python libraries are installed only because Superset's package list pulls them in. Nothing runs them. Async queries, alerts and reports, and caching are parked.
-- **No reverse proxy or TLS yet.** Everything listens only on the server itself. From a laptop, use an SSH tunnel. When a proxy is added is an open question in [PLAN.md](PLAN.md).
 - **No SFTP or loader yet.** Those are step 1.
 - **No example data and no theming.**
 

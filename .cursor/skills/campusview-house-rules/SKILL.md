@@ -32,7 +32,7 @@ Step 0 is documentation and the base install. Do not add application code in a d
 - Secrets live only in `/etc/campusview/campusview.env` on the server (mode 600, owned by the account that runs CampusView, folder mode 700), loaded by systemd `EnvironmentFile=` or `start.sh`. `superset_config.py` and `settings.py` read them from the environment. Only Django's own generated `SECRET_KEY` stays in `settings.py`, which is mode 600. Never in source, argv, a fixture, or either git repo.
 - Default deny. No role, or no school, means no rows. Superset self-signup stays off.
 - Access lives in Superset roles and row-level security on `school_id`. Do not publish a dataset that has no `school_id`. A native filter is never a permission.
-- Services listen on 127.0.0.1 only. PostgreSQL uses `listen_addresses = '127.0.0.1'`, not `localhost` (that also opens `[::1]`). There is no reverse proxy or TLS yet; reach the server through an SSH tunnel. Do not open a port to the network without Austin's decision.
+- PostgreSQL and gunicorn (Superset and Django) listen on 127.0.0.1 only. PostgreSQL uses `listen_addresses = '127.0.0.1'`, not `localhost` (that also opens `[::1]`). nginx, when chosen in the installer, is the only listener on the network: HTTP on 80, or HTTPS on 443 with 80 redirecting to 443. Never expose PostgreSQL; DBeaver uses an SSH tunnel. Plain HTTP only on test machines with fake data; real student data needs HTTPS. Do not open any other port without Austin's decision.
 - Do not log cell values, secrets, or full row dumps. A loader error names the file, the row number, and the rule.
 - Named working lists have no race column. Equity output has group totals only.
 

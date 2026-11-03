@@ -4,6 +4,28 @@ Dated log of decisions already made. The plan of record is [PLAN.md](PLAN.md). N
 
 Open metric questions are not listed here. They are the Decisions for Austin list in [METRICS.md](METRICS.md). Open extract questions are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md). Both lists are deferred for now and do not block step 0.
 
+## 2026-11-02 — Offer nginx with HTTP or HTTPS
+
+**What:** `install.sh` gets an optional nginx step. nginx is a web server that sits in front of the apps and is the one thing staff connect to. The wizard offers three choices:
+
+- **Local only.** Today's behavior. Nothing listens on the network. You reach the pages through an SSH tunnel.
+- **HTTP on port 80.** Plain, unencrypted web traffic.
+- **HTTPS on port 443.** Encrypted, with a self-signed certificate or one you supply. Port 80 only redirects to 443.
+
+nginx comes from the distro's own apt repo. Superset is at `/` and Django is at `/app/`. gunicorn (Superset on 127.0.0.1:8088, Django on 127.0.0.1:8000) and PostgreSQL stay on 127.0.0.1. PostgreSQL is never exposed, and DBeaver keeps using an SSH tunnel. nginx is the only thing listening on the network. Nothing else is added: no Redis, no Docker.
+
+**Why:** Austin wants to open CampusView by the server's address from his own computer, without an SSH tunnel. His words: "build the install to allow http or https, I will reset the ct, and rerun the new installer once you have it complete."
+
+**Who:** Austin's decision, relayed by the CampusView Engineer.
+
+**Tradeoff:** Plain HTTP sends logins and passwords unencrypted across the network. Austin accepted that for test machines because all data there is fake ("all data would be fake"). HTTP is for test machines with fake data only. Real student data needs HTTPS.
+
+**Status:** Decided. The docs describe this target. The installer step is in progress, in a separate pull request from the CampusView Engineer after PR #3.
+
+**Alternatives:** Local only with an SSH tunnel. Still available, as the default wizard choice. Deferring the proxy until later. Set aside because Austin wants network access on his test machine now.
+
+**Resolves:** Open question 4, "Reaching it from the network", in [PLAN.md](PLAN.md).
+
 ## 2026-11-02 — Standardize on Python 3.12 for Superset and Django
 
 **What:** Superset 6.1.0 and Django 6.1.2 both run on Python 3.12, installed and managed with `uv`. One Python version for the whole stack. Each still has its own Python environment.
