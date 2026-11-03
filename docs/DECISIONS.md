@@ -35,7 +35,7 @@ The middle schema is named `ref`. Upgrades rename an existing `mapping` schema t
 
 nginx comes from the distro's own apt repo. Superset is at `/` and Django is at `/app/`. gunicorn (Superset on 127.0.0.1:8088, Django on 127.0.0.1:8000) and PostgreSQL stay on 127.0.0.1. PostgreSQL is never exposed, and DBeaver keeps using an SSH tunnel. nginx is the only thing listening on the network. Nothing else is added: no Redis, no Docker.
 
-A re-run shows the saved choice and asks whether to change it. Which choice is the default is not recorded here yet; Austin settles it when he merges the installer pull request.
+A re-run shows the saved choice and asks whether to change it. The default is HTTPS on port 443 with a self-signed certificate, so pressing Enter gives a server reachable by its address. Austin accepted that default when he merged PR #5 on 2026-11-02.
 
 **Why:** Austin wants to open CampusView by the server's address from his own computer, without an SSH tunnel. His words: "build the install to allow http or https, I will reset the ct, and rerun the new installer once you have it complete."
 
@@ -43,7 +43,7 @@ A re-run shows the saved choice and asks whether to change it. Which choice is t
 
 **Tradeoff:** Plain HTTP sends logins and passwords unencrypted across the network. Austin accepted that for test machines because all data there is fake ("all data would be fake"). HTTP is for test machines with fake data only. Real student data needs HTTPS.
 
-**Status:** Decided. The docs describe this target. The installer step is in progress, in a separate pull request from the CampusView Engineer after PR #3.
+**Status:** Built. The installer step merged to `main` in PR #5.
 
 **Alternatives:** Local only with an SSH tunnel for everyone. Still available as one of the three choices. Deferring the proxy until later. Set aside because Austin wants network access on his test machine now.
 

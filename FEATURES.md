@@ -8,7 +8,7 @@ Ideas that show up while a step is open go in [Parking lot](#parking-lot). They 
 
 - The plan, architecture, data contract, metric definitions, access model, decisions, invariants, this list, guide outlines, and the house-rules skill.
 - The bare-bones base install, all at defaults: PostgreSQL 17 with the `superset_meta`, `django_app`, and `campusview_data` databases; plain Apache Superset 6.1.0 on Python 3.12 under gunicorn on 127.0.0.1:8088; a default Django 6.1.2 project on Python 3.12 under gunicorn on 127.0.0.1:8000. No Redis, no Celery, no example data, no theming.
-- Optional nginx in `install.sh`: local only through an SSH tunnel, HTTP on port 80, or HTTPS on port 443 with a self-signed or supplied certificate. A re-run shows the saved choice and asks whether to change it. Superset at `/`, Django at `/app/`. Decided 2026-11-02 (see [docs/DECISIONS.md](docs/DECISIONS.md)); the installer step is in progress.
+- Optional nginx in `install.sh`: local only through an SSH tunnel, HTTP on port 80, or HTTPS on port 443 with a self-signed or supplied certificate (the default). A re-run shows the saved choice and asks whether to change it. Superset at `/`, Django at `/app/`. Decided 2026-11-02 (see [docs/DECISIONS.md](docs/DECISIONS.md)); the installer step is in progress.
 - `install.sh`: one script with a step-by-step wizard that asks for every setting, tested on clean Ubuntu and Debian machines.
 
 Done when Austin approves the docs, and `install.sh` brings up the base install on a clean machine.
