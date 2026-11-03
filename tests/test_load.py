@@ -8,9 +8,11 @@ import pytest
 from psycopg import sql
 
 from loader.contract import FILES
-from loader.load import EXTRACT_CUTOFF_DATE, check_folder, load_drop
+from loader.load import EXTRACT_CUTOFF_DATE, check_folder, check_header, load_drop
+from loader.maps import MapBatch, MapFault, read_maps
 
 PASSWORD = "throwaway"
+EXAMPLES = Path(__file__).resolve().parents[1] / "examples" / "district"
 
 
 def write_csv(path: Path, header, rows, newline="\n") -> None:
@@ -316,3 +318,294 @@ def test_bad_cells_warn_without_values(db, tmp_path):
     assert "bad school year" in report
     for hidden in ("bad id", "North", "nope", "2025-2026"):
         assert hidden not in report
+
+
+def copy_district(tmp_path: Path) -> Path:
+    district = tmp_path / "district"
+    district.mkdir()
+    for path in EXAMPLES.glob("*.csv"):
+        (district / path.name).write_bytes(path.read_bytes())
+    return district
+
+
+def read_planted(tmp_path: Path, filename: str, text: str):
+    district = copy_district(tmp_path)
+    (district / filename).write_text(text)
+    return read_maps(district, check_header)
+
+
+_LONG_LABEL = "A" * 81
+_BOTH_LABEL = "A" * 80 + "\n"
+_SORT_RULE = ("map_grades.csv: fail. Line 2: sort_order: not an integer.",)
+_PORTION_RULE = (
+    "map_attendance_codes.csv: fail. Line 2: absence_portion: not a decimal from 0 through 1.",
+)
+
+
+def _grades(cell: str) -> tuple[str, str, tuple[str, ...], tuple[str, ...]]:
+    return (
+        "map_grades.csv",
+        f"grade_code,label,sort_order\nFAKE-K,School A kindergarten,{cell}\n",
+        _SORT_RULE,
+        (cell,),
+    )
+
+
+def _portion(cell: str) -> tuple[str, str, tuple[str, ...], tuple[str, ...]]:
+    return (
+        "map_attendance_codes.csv",
+        f"attendance_code,label,counts_as,absence_portion\nFAKE-P,School A present,PRESENT,{cell}\n",
+        _PORTION_RULE,
+        (cell,),
+    )
+
+
+@pytest.mark.parametrize(
+    ("filename", "body", "lines", "hidden"),
+    [
+        (
+            "map_attendance_codes.csv",
+            "attendance_code,label,counts_as,absence_portion\nFAKE-P,School A present,,0\n",
+            ("map_attendance_codes.csv: fail. Line 2: counts_as: blank required cell.",),
+            (),
+        ),
+        (
+            "map_attendance_codes.csv",
+            "attendance_code,label,counts_as,absence_portion\nFAKE-P,School A present,LATE,0\n",
+            (
+                "map_attendance_codes.csv: fail. Line 2: counts_as: "
+                "not one of PRESENT, ABSENT_EXCUSED, ABSENT_UNEXCUSED, TARDY_EXCUSED, TARDY_UNEXCUSED, PARTIAL.",
+            ),
+            ("LATE",),
+        ),
+        (
+            "map_attendance_codes.csv",
+            "attendance_code,label,counts_as,absence_portion\nFAKE-P,School A present, PRESENT,0\n",
+            (
+                "map_attendance_codes.csv: fail. Line 2: counts_as: "
+                "not one of PRESENT, ABSENT_EXCUSED, ABSENT_UNEXCUSED, TARDY_EXCUSED, TARDY_UNEXCUSED, PARTIAL.",
+            ),
+            (),
+        ),
+        _portion(".5"),
+        _portion("00.5"),
+        _portion("1.2"),
+        _portion("+1"),
+        _portion("1e-1"),
+        (
+            "map_consequences.csv",
+            "consequence_code,label,is_exclusionary\nFAKE-C,School A detention,TRUE\n",
+            ("map_consequences.csv: fail. Line 2: is_exclusionary: not true or false.",),
+            ("TRUE",),
+        ),
+        (
+            "map_plan_types.csv",
+            "plan_type_code,plan_type,label\nFAKE-504,iep,School A 504\n",
+            ("map_plan_types.csv: fail. Line 2: plan_type: not 504 or IEP.",),
+            ("iep",),
+        ),
+        _grades("01"),
+        _grades("+1"),
+        _grades("1.0"),
+        _grades("-0"),
+        _grades("2147483648"),
+        _grades("-2147483649"),
+        (
+            "map_grades.csv",
+            f"grade_code,label,sort_order\nFAKE-K,{_LONG_LABEL},0\n",
+            ("map_grades.csv: fail. Line 2: label: not 1 to 80 characters.",),
+            (_LONG_LABEL,),
+        ),
+        (
+            "map_grades.csv",
+            "grade_code,label,sort_order\nFAKE-K,School\tA,0\n",
+            ("map_grades.csv: fail. Line 2: label: contains a control character.",),
+            ("School\tA",),
+        ),
+        (
+            "map_grades.csv",
+            'grade_code,label,sort_order\nFAKE-K,"' + _BOTH_LABEL + '",0\n',
+            (
+                "map_grades.csv: fail. Line 2: label: not 1 to 80 characters.",
+                "map_grades.csv: fail. Line 2: label: contains a control character.",
+            ),
+            ("A" * 80,),
+        ),
+        (
+            "map_grades.csv",
+            "grade_code,label,sort_order\n"
+            "FAKE-K,School A kindergarten,0\n"
+            "FAKE-K,School A grade,1\n",
+            ("map_grades.csv: fail. Line 3: grade_code: duplicate key.",),
+            ("FAKE-K",),
+        ),
+        (
+            "map_grades.csv",
+            "grade_code,label,sort_order\n"
+            "FAKE-K,School A kindergarten,0\n"
+            "FAKE-1,School A grade,0\n",
+            ("map_grades.csv: fail. Line 3: sort_order: duplicate sort_order.",),
+            ("FAKE-1",),
+        ),
+        (
+            "map_grades.csv",
+            "grade_code,label,sort_order\nFAKE-K,School A kindergarten,0,\n",
+            ("map_grades.csv: fail. Line 2: row length does not match the header.",),
+            ("FAKE-K",),
+        ),
+    ],
+)
+def test_bad_map_cell_names_the_rule(tmp_path, filename, body, lines, hidden):
+    found = read_planted(tmp_path, filename, body)
+    assert isinstance(found, MapFault)
+    assert found.fault == "extract"
+    assert found.lines == lines
+    report = "\n".join(found.lines)
+    for value in hidden:
+        assert value not in report
+
+
+def test_bad_map_header_uses_check_header(tmp_path):
+    district = copy_district(tmp_path)
+    path = district / "map_grades.csv"
+    path.write_text("grade_code,label,sort_order,extraCol\nFAKE-K,School A kindergarten,0,PLANTED\n")
+    reason, _header = check_header(path, ("grade_code", "label", "sort_order"))
+    found = read_maps(district, check_header)
+    assert isinstance(found, MapFault)
+    assert found.fault == "extract"
+    assert found.lines == (f"map_grades.csv: fail. {reason}",)
+    assert "PLANTED" not in found.lines[0]
+
+
+def test_missing_map_file(tmp_path):
+    district = copy_district(tmp_path)
+    (district / "map_genders.csv").unlink()
+    found = read_maps(district, check_header)
+    assert isinstance(found, MapFault)
+    assert found.lines == ("map_genders.csv: fail. The file is missing from the folder.",)
+
+
+def test_every_map_is_checked(tmp_path):
+    district = copy_district(tmp_path)
+    (district / "map_genders.csv").unlink()
+    (district / "map_grades.csv").write_text("grade_code,label,sort_order\nFAKE-K,School A kindergarten,01\n")
+    found = read_maps(district, check_header)
+    assert isinstance(found, MapFault)
+    assert found.lines == (
+        "map_genders.csv: fail. The file is missing from the folder.",
+        "map_grades.csv: fail. Line 2: sort_order: not an integer.",
+    )
+    assert "01" not in "\n".join(found.lines)
+
+
+def test_district_path_uses_the_extract_folder_sentences(tmp_path):
+    missing = tmp_path / "missing"
+    not_dir = tmp_path / "notes.txt"
+    not_dir.write_text("x\n")
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    locked.chmod(0)
+    try:
+        for path in (missing, not_dir, locked):
+            found = read_maps(path, check_header)
+            assert isinstance(found, MapFault)
+            assert found.fault == "server"
+            assert found.lines == tuple(check_folder(path)[1])
+    finally:
+        locked.chmod(0o755)
+
+
+def test_bad_utf8_map_uses_check_header_sentence(tmp_path):
+    district = copy_district(tmp_path)
+    (district / "map_grades.csv").write_bytes(b"grade_code,label,sort_order\n\xff,School A,0\n")
+    probe = tmp_path / "probe.csv"
+    probe.write_bytes(b"\xff\n")
+    reason, _header = check_header(probe, ("grade_code",))
+    found = read_maps(district, check_header)
+    assert isinstance(found, MapFault)
+    assert found.lines == (f"map_grades.csv: fail. {reason}",)
+
+
+def test_invalid_csv_names_the_file_not_the_cell(tmp_path):
+    district = copy_district(tmp_path)
+    token = "Q" * 40
+    (district / "map_grades.csv").write_text(
+        "grade_code,label,sort_order\n" + token + ",School A kindergarten,0\n"
+    )
+    limit = csv.field_size_limit(30)
+    try:
+        found = read_maps(district, check_header)
+    finally:
+        csv.field_size_limit(limit)
+    assert isinstance(found, MapFault)
+    assert found.lines == ("map_grades.csv: fail. The file is not valid CSV.",)
+    assert token not in found.lines[0]
+
+
+def test_shuffled_map_header_is_accepted(tmp_path):
+    district = copy_district(tmp_path)
+    (district / "map_grades.csv").write_text(
+        "sort_order,label,grade_code\n0,School A kindergarten,FAKE-K\n1,School A grade,FAKE-1\n"
+    )
+    found = read_maps(district, check_header)
+    assert isinstance(found, MapBatch)
+    assert "map_grades.csv" in found.files
+
+
+def test_header_only_map_is_accepted(tmp_path):
+    district = copy_district(tmp_path)
+    header = (district / "map_plan_statuses.csv").read_text().splitlines()[0]
+    (district / "map_plan_statuses.csv").write_text(header + "\n")
+    found = read_maps(district, check_header)
+    assert isinstance(found, MapBatch)
+    assert "map_plan_statuses.csv" in found.files
+
+
+def test_edge_map_values_are_accepted(tmp_path):
+    district = copy_district(tmp_path)
+    (district / "map_attendance_codes.csv").write_text(
+        "attendance_code,label,counts_as,absence_portion\n"
+        "FAKE-P,School A present,PRESENT,0.5\n"
+        "FAKE-A,School A absent,ABSENT_UNEXCUSED,1.00\n"
+        "FAKE-T,School A tardy,TARDY_EXCUSED,0\n"
+        "FAKE-U,School A unexcused,TARDY_UNEXCUSED,1.0\n"
+        "FAKE-E,School A excused,ABSENT_EXCUSED,1\n"
+        "FAKE-H,School A half,PARTIAL,0.25\n"
+    )
+    (district / "map_grades.csv").write_text(
+        "grade_code,label,sort_order\n"
+        f"FAKE-K,{'A' * 80},-2147483648\n"
+        "FAKE-1,School A grade,2147483647\n"
+        "FAKE-N,School A negative,-3\n"
+    )
+    found = read_maps(district, check_header)
+    assert isinstance(found, MapBatch)
+
+
+def test_example_filenames_match_the_batch():
+    found = read_maps(EXAMPLES, check_header)
+    assert isinstance(found, MapBatch)
+    names = {path.name for path in EXAMPLES.glob("*.csv")}
+    assert names == set(found.files)
+    assert len(found.files) == len(names)
+
+
+def test_extra_district_csv_is_ignored(tmp_path):
+    district = copy_district(tmp_path)
+    (district / "notes.csv").write_text("hello,there\nX,Y\n")
+    found = read_maps(district, check_header)
+    assert isinstance(found, MapBatch)
+    assert "notes.csv" not in found.files
+
+
+def test_map_csv_in_the_drop_is_rejected(tmp_path):
+    loadable(tmp_path)
+    write_csv(
+        tmp_path / "map_grades.csv",
+        ["grade_code", "label", "sort_order"],
+        [["FAKE-K", "School A kindergarten", "0"]],
+    )
+    fault, lines, _ready = check_folder(tmp_path)
+    assert fault == "extract"
+    assert lines == ["map_grades.csv: fail. This file is not in the extract contract."]
+

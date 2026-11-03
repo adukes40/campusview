@@ -1,0 +1,2 @@
+status_code,label,is_processed,is_open,is_cancelled
+FAKE-S,School A status,true,false,false
