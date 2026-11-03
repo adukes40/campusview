@@ -4,6 +4,23 @@ Dated log of decisions already made. The plan of record is [PLAN.md](PLAN.md). N
 
 Open metric questions are not listed here. They are the Decisions for Austin list in [METRICS.md](METRICS.md). Open extract questions are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md). Both lists are deferred for now and do not block step 0.
 
+## 2026-11-03 — Test with IC training data and keep every column
+
+**What:** Two changes.
+
+- **No fake-data generator.** Tests, fixtures, and the testing install use Infinite Campus (IC) training-database extracts that Austin supplies. The first sample is 23 CSV files. They are kept outside the repo until Austin answers whether the IC vendor agreement allows them in a public repo.
+- **Keep every column.** The loader keeps every column Austin's extract sends, including a state student id (`stateID`), birthdate, staff names (`referralName`), and a school's address, phone, and principal. The data contract no longer bans or drops those columns.
+
+**Why:** Austin's words: "You don't need to build a fake data generator, because I can just get you whatever you need from the training database... I'd rather use actual data from the training database... do not drop any columns that I'm bringing in, please... in my production build, I will have that information in there because there will be tables and stuff that are built off of it."
+
+**Who:** Austin's decision, relayed by the CampusView Engineer. Austin says the training database holds fake people.
+
+**Status:** Proposed (relayed by CampusView Engineer; Austin confirms by merging this PR).
+
+**Open:** Whether the IC vendor agreement allows training-database files in the public repo. Until then they stay outside it.
+
+**Replaces:** "Fake data only, from one deterministic generator" in the 2026-11-01 list below, and the data contract's ban on highly sensitive identifiers.
+
 ## 2026-11-02 — Two warehouse accounts, and the schema name `ref`
 
 **What:** The installer creates two accounts for the report database, `campusview_data`:
@@ -159,7 +176,7 @@ These were approved in the same plan. Each is the rule the build follows. Rows c
 | Default deny. SQL Lab and chart building only for system admin. *Changed 2026-11-01: roles and school limits now live in Superset (roles plus row-level security). The Django access list and its sync are deferred.* | Staff see only their schools. | Editing access in two places. |
 | *Deferred 2026-11-01:* profile views and named exports go to an append-only log. | Named student data needs a record of who looked. | — |
 | A permissions test covers every role on every place data can be reached. *Now that means Superset.* | A school boundary that is only checked by hand will be skipped. | Manual checking before each release. |
-| Fake data only, from one deterministic generator. The testing install uses the same release as production. | Tests need stable answers, and real student rows must never enter the product repo. | Hand-written spreadsheets of realistic students. |
+| *Proposed to change 2026-11-03: no generator; tests use Infinite Campus training extracts. See the entry at the top.* Fake data only, from one deterministic generator. The testing install uses the same release as production. | Tests need stable answers, and real student rows must never enter the product repo. | Hand-written spreadsheets of realistic students. |
 | The testing install is also the AI sandbox: read raw, write views only in a scratch schema, ship finished views as tested SQL in the repo. | Try queries without touching production. | Letting an assistant write views on the production database. |
 | Named working lists have no race column. Equity is a rate per 100 students, totals only. | Staff need equity rates without a named list sorted by race. | A race column on the open-referrals list. Small-group hiding, which is parked. |
 | *Deferred 2026-11-01:* card layout as an admin setting, and per-user preferences. | — | Drag-and-drop layout, which is parked. |

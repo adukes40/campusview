@@ -19,14 +19,14 @@ Done when Austin approves the docs, and `install.sh` brings up the base install 
 - Standard files and mapping tables from [docs/DATA_CONTRACT.md](docs/DATA_CONTRACT.md), and the raw schema in `campusview_data`.
 - The loader: check every file, reject a bad file, load all or nothing.
 - The Infinite Campus mapping onto those files.
-- The deterministic fake-data generator: 1 high school, 1 middle school, 2 elementary schools, about 25 to 40 students each, one school year of days, a scatter of referrals, a few 504s and IEPs with some expiring soon. Scaling the school count is a one-line change. Production refuses to run the generator.
+- Test files from Infinite Campus training-database extracts that Austin supplies, kept outside the repo. No fake-data generator. The loader keeps every column in them.
 - The guide on how to write a mapping for another student information system. The mapping itself is not built.
 
 Done when a bad file leaves the previous data in place, and a good file set replaces the snapshot in one transaction.
 
 ## Step 2 — First view and first dashboard
 
-- The first reporting view from [docs/METRICS.md](docs/METRICS.md), as SQL in this repo, with a hand-checked test on fake data.
+- The first reporting view from [docs/METRICS.md](docs/METRICS.md), as SQL in this repo, with a hand-checked test on the training extracts.
 - The three starter roles in Superset, with row-level security on `school_id`.
 - The first Superset dashboard on that view, with native filters.
 - Checked in a browser as a school admin, a district admin, and a system admin.

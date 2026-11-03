@@ -1,6 +1,6 @@
 # Data contract
 
-These are the CSV layouts CampusView loads. Columns listed here are the whole layout. A file with an extra column is rejected, so a narrative, a comment, or an SSN cannot ride along quietly. Do not add free-text narrative columns or highly sensitive identifiers (SSN, state student id, medical id, address, phone, email, date of birth).
+These are the CSV layouts CampusView loads. The columns listed here are the ones CampusView checks and uses. The loader also keeps every other column the extract sends, such as a state student id, a date of birth, staff names, or a school's address and phone. It does not drop or reject them. How the raw schema stores those extra columns is set in step 1. See [DECISIONS.md](DECISIONS.md), 2026-11-03.
 
 The Infinite Campus section says how a typical extract maps onto these files. It is general public knowledge of how that product is organized, not a description of one district's screens. Anything that depends on local setup is marked **TO CONFIRM** and collected at the end for Austin.
 
@@ -8,7 +8,7 @@ The Infinite Campus section says how a typical extract maps onto these files. It
 
 - UTF-8, comma-separated, a header row, quoting when a value contains a comma.
 - Header names match this document exactly, lowercase, in any column order.
-- An unknown header fails the file. A missing required header fails the file.
+- A header not listed here is kept as an extra column. A missing required header fails the file.
 - Character set for every id: letters, digits, hyphen, underscore, length 1 to 64.
 - Dates are `YYYY-MM-DD`. Times are `HH:MM` in 24-hour local time.
 - Booleans are `true` or `false`.
@@ -251,7 +251,7 @@ What follows is the usual shape of Infinite Campus, from public product knowledg
 
 | CampusView field | Usual Infinite Campus source | Notes |
 | --- | --- | --- |
-| `students.student_id` | The student number shown on the student record | Use that visible number. Do not use the internal person id, and do not export the SSN or a state identifier. |
+| `students.student_id` | The student number shown on the student record | Use that visible number as `student_id`, not the internal person id or a state identifier. Any other id the extract sends is kept as its own column. |
 | `students.first_name`, `last_name` | The identity name fields | Which name is the legal name is local. |
 | `students.gender_code` | Demographics gender, as stored | Codes are district-defined. Copy them through and map them. |
 | `students.race_code` | Federal race and ethnicity fields | Which field feeds equity groups is local. |
@@ -265,11 +265,11 @@ What follows is the usual shape of Infinite Campus, from public product knowledg
 | `incident_behaviors` | The coded offense (behavior event) for the offender role | One event with two codes becomes two rows. Several offenders become several incident rows. |
 | `incidents.location_code`, `incident_time` | Location and time on the incident | Both are only as good as local entry. |
 | `incidents.status_code` | The referral or incident status in the local workflow | Map each real status to processed, open, and cancelled. |
-| `consequences` | The behavior resolution: type, dates, duration | Comments on the resolution are not exported. |
+| `consequences` | The behavior resolution: type, dates, duration | Other resolution columns the extract sends are kept. |
 | `plans` for an IEP | The special education plan: start, end, and annual review | Field names differ by state edition. |
 | `plans` for a 504 | Whichever place this district stores Section 504 | This is not the same module everywhere. It may be a plan type, a program record, or something configured locally. |
 
-Leave these Infinite Campus values out of every export file: SSN, state student identifier, addresses, phone numbers, emails, dates of birth, attendance comments, behavior narratives, resolution comments, and participant notes.
+Keep every column Austin's extract sends. Columns this table does not map, such as a state student identifier, a date of birth, a referral's staff name, or a school's address, phone, and principal, are kept so later production tables can be built on them.
 
 The mapper does not invent codes and does not decide that a code is excused. It only reshapes rows. Meaning stays in the mapping tables so a code change is a district-repo edit, not a program change.
 
@@ -279,7 +279,7 @@ The mapper does not invent codes and does not decide that a code is excused. It 
 
 1. Which export will actually be scheduled onto SFTP: an Ad Hoc filter CSV, the data-extract utility, or another report. CampusView will not connect to the Infinite Campus database.
 2. That each nightly file set is a full snapshot of every school year that should be kept (current year and the prior year, by default), not a file of changes since the previous night.
-3. The student number to use as `student_id`: the number staff see on the student record. Confirm the extract will omit the internal person id, the SSN, and any state identifier.
+3. The student number to use as `student_id`: the number staff see on the student record, not the internal person id or a state identifier.
 4. The school identifier to use as `school_id`, so the same value can be used in Superset's row-level security rules.
 5. How the calendar's school year is stored, including an end-year number if that is what Infinite Campus shows, so the mapping can write `YYYY-YYYY`.
 6. Whether secondary schools record period attendance, elementary schools record daily attendance, or both already have a daily result. The standard file is one row per student per date.
@@ -294,4 +294,4 @@ The mapper does not invent codes and does not decide that a code is excused. It 
 15. Where 504 plans are stored in this district's Infinite Campus. IEP start, end, and annual review field names also need to be confirmed; they vary by state edition.
 16. Which race or ethnicity field should feed the equity groups.
 17. Grade values as stored, such as `K`, `KF`, `01`, or `1`, so the grade map can match them.
-18. Whether the scheduled extracts will be built to omit comments, narratives, and highly sensitive identifiers, so those columns never land in the drop folder.
+18. The full list of columns the scheduled extracts will carry. The loader keeps all of them; the list tells the docs what lands in the drop folder.

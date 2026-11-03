@@ -8,9 +8,9 @@ What counts as present, absent, chronic, open, processed, or expiring is defined
 
 A new number on a dashboard gets a view, then a hand-checked test, and only then a chart.
 
-## Fake data lives only outside production
+## Test data lives only outside production
 
-Production loads district extracts. It does not run the fake-data generator. Tests, examples, fixtures, and the testing install use the generator. Real student rows, real names, and real extracts never go into the product repo, a test, a log message, or a commit.
+Production loads district extracts. Tests, fixtures, and the testing install use Infinite Campus training-database extracts that Austin supplies (fake people, per Austin). Those files stay outside the repo until Austin answers whether the Infinite Campus vendor agreement allows them there. Real student rows, real names, and real extracts never go into the product repo, a test, a log message, or a commit.
 
 The testing install runs the same release tag as production. It is the only place the sandbox database user exists.
 
@@ -41,6 +41,7 @@ CI installs the release on a clean machine and upgrades a machine that was on th
 These follow from the same plan and are just as binding.
 
 - **Default deny.** No role, or no school, means no rows.
+- **Keep every column.** The loader keeps every column the district's extract sends. No column is dropped or banned. Production tables will be built on them. See [DECISIONS.md](DECISIONS.md), 2026-11-03.
 - **Files are the only ingest.** There is no direct connection to the student information system.
 - **No Celery and no Redis in v1.** Loads run as a timed job on the server. The `celery` and `redis` Python libraries come with Superset but nothing runs them.
 - **Only nginx faces the network.** PostgreSQL and gunicorn for Superset and Django listen on 127.0.0.1 only. PostgreSQL uses `listen_addresses = '127.0.0.1'`, not `localhost`, which also opens `[::1]`. When nginx is chosen in the installer, it is the only thing listening on the network. PostgreSQL is never exposed; DBeaver uses an SSH tunnel. Plain HTTP sends logins unencrypted, so it is only for test machines with fake data. Real student data needs HTTPS.

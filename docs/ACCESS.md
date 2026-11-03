@@ -60,7 +60,7 @@ SQL Lab for the system admin uses Superset's data connection as `campusview_read
 
 ## Permissions check
 
-Step 2 checks this table by hand in a browser, on fake data, as each role. School admin cases are run twice: once for one of their schools, and once trying a school that is not theirs. The second try must return no rows.
+Step 2 checks this table by hand in a browser, on the Infinite Campus training extracts, as each role. School admin cases are run twice: once for one of their schools, and once trying a school that is not theirs. The second try must return no rows.
 
 "Own schools" means only that person's schools. "All schools" means every school in the snapshot. "Nothing" means no student rows and no totals.
 

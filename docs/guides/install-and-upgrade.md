@@ -212,7 +212,7 @@ The file uses the same names as the saved password file.
 
 ## The testing install
 
-The same release, loaded with fake data, is not part of this installer. Production must refuse the fake-data command. That command is not built yet.
+The same release, loaded with Infinite Campus training-database extracts that Austin supplies, is not part of this installer. Production does not load those files.
 
 ## Uninstall
 

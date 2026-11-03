@@ -28,7 +28,7 @@ flowchart TD
 1. The district drops a full CSV snapshot on SFTP. CampusView never connects to the student information system.
 2. The mapping for that system rewrites the vendor files into CampusView's standard layouts. v1 ships the Infinite Campus mapping only. See [DATA_CONTRACT.md](DATA_CONTRACT.md).
 3. The loader checks every standard file and every code-mapping file. If any check fails, it loads nothing and leaves the previous data in place. If every check passes, it replaces the raw snapshot in one database transaction.
-4. Raw tables store explicit columns only. Code-mapping tables, from the district repo, say what each local code means.
+4. Raw tables store the standard columns, checked, plus every other column the extract sends. Code-mapping tables, from the district repo, say what each local code means.
 5. Reporting views join raw rows to those maps and expose every number the dashboards show. The SQL is in this repo. The metric list is [METRICS.md](METRICS.md).
 6. Superset dashboards read the views. Superset's roles and row-level security limit each person to their schools. See [ACCESS.md](ACCESS.md).
 
@@ -45,7 +45,7 @@ These names are the vocabulary for later code and SQL. They are a sketch, not a 
 | Name | Meaning |
 | --- | --- |
 | `SchoolId` | Text id from the extract. Stable. Not invented by CampusView. |
-| `StudentId` | Text student number from the extract. Never an SSN or a state id. |
+| `StudentId` | Text student number from the extract, the one staff see. Not the SSN or the state id; a state id the extract sends is kept as its own column. |
 | `SchoolYear` | Text `YYYY-YYYY`, second year = first + 1. Example shape: `2026-2027`. |
 | `Grade` | Text `K` or `1` through `12`, after the grade map. |
 | `GenderLabel` | Text label from the gender map. |
@@ -200,7 +200,7 @@ The district repo holds code mappings, branding, exported dashboards, display na
 
 `install.sh` is one script with a step-by-step wizard. It asks for every setting the base install needs, installs the pieces above, creates the three databases and their users, and sets up the first Superset admin. The CampusView Engineer built it, and it passed clean installs and re-runs on Debian 12, Ubuntu 24.04, and Ubuntu 22.04. It is merged to `main`. How to run it is in [guides/install-and-upgrade.md](guides/install-and-upgrade.md). Non-secret district settings live in the district repo, not in the product repo.
 
-The product repo builds a release only as a tag such as `v1.3.0`. The live server pulls a tag. CI for a release installs that tag on a clean machine and upgrades a machine that was on the previous tag. The testing install runs the same tag and may load fake data. Production refuses the fake-data command.
+The product repo builds a release only as a tag such as `v1.3.0`. The live server pulls a tag. CI for a release installs that tag on a clean machine and upgrades a machine that was on the previous tag. The testing install runs the same tag and loads Infinite Campus training-database extracts that Austin supplies. Production does not load them.
 
 The testing database has one extra user for the AI sandbox: it can read `raw` and `reporting`, and it can create objects only in `scratch`. Production does not have this user. A view that is ready to keep is added as SQL in the product repo, with a hand-checked test, and arrives through a release.
 

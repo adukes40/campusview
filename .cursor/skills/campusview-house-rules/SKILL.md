@@ -2,7 +2,7 @@
 name: campusview-house-rules
 description: >-
   House rules for every change in the CampusView repository. Covers the
-  stack, security, fake data, the parking lot, one pull request per step,
+  stack, security, test data, the parking lot, one pull request per step,
   CI, hand-checked metric tests, and updating docs with the code. Use
   before any CampusView work.
 ---
@@ -28,7 +28,8 @@ Step 0 is documentation and the base install. Do not add application code in a d
 ## Security
 
 - Fake data only, outside production. No real names, emails, student information, school names from a real district, keys, or district-specific values in code, tests, fixtures, logs, docs, or commits. Examples use obvious placeholders such as `STU-001` and `School A`.
-- Production must refuse the fake-data generator. The testing install uses the same release tag and the generator.
+- There is no fake-data generator. Tests and the testing install use Infinite Campus training-database extracts that Austin supplies, kept outside the repo. Production does not load them. The testing install uses the same release tag.
+- The loader keeps every column the extract sends. Do not drop or ban a column.
 - Secrets live only in `/etc/campusview/campusview.env` on the server (mode 600, owned by the account that runs CampusView, folder mode 700), loaded by systemd `EnvironmentFile=` or `start.sh`. `superset_config.py` and `settings.py` read them from the environment. Only Django's own generated `SECRET_KEY` stays in `settings.py`, which is mode 600. Never in source, argv, a fixture, or either git repo.
 - Default deny. No role, or no school, means no rows. Superset self-signup stays off.
 - Access lives in Superset roles and row-level security on `school_id`. Do not publish a dataset that has no `school_id`. A native filter is never a permission.
@@ -48,6 +49,6 @@ A new idea, including one that appears mid-build, is written into the Parking lo
 
 - One pull request per plan step. Do not mix two steps.
 - CI must pass before the step is done. Once releases exist, CI includes a fresh install and an upgrade from the previous release.
-- Every metric has a test with a hand-checked answer on fake data. The test reads the reporting view. It does not reimplement the formula.
+- Every metric has a test with a hand-checked answer on the training extracts. The test reads the reporting view. It does not reimplement the formula.
 - Definition choices still listed under Decisions for Austin in [docs/METRICS.md](../../../docs/METRICS.md) are open. Do not treat them as approved until Austin answers them. If Austin approves that document without changing an item, the item's working proposal becomes the definition.
 - Update the docs in the same pull request as the code. A step is not done while its guides are still stubs for behavior the step just added.

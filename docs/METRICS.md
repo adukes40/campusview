@@ -8,7 +8,7 @@ Views do the classifying. A chart may only sum, count, average, or divide column
 
 The preview's sparklines and the "versus last year" text on the headline numbers are parked. They are not metrics in v1. The absence number does name the day it counts. That part is in scope.
 
-A hand-checked test, when the views are built, uses the fake-data generator and a known answer for each formula below. The test reads the view. It does not reimplement the formula in Python.
+A hand-checked test, when the views are built, uses the Infinite Campus training extracts Austin supplies and a known answer for each formula below. The test reads the view. It does not reimplement the formula in Python.
 
 ## Shared rules
 

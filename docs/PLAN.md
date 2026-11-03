@@ -12,7 +12,7 @@ Nothing organization-specific belongs in the code. Names, schools, code values, 
 - The district may not allow a direct connection to the student information system. Files are the only way data comes in.
 - Loads run nightly. How much history to keep is a setting. The default is the current school year plus one prior year. Older data is purged on load.
 - The install is on-premises, installed directly on an Ubuntu or Debian server (no containers), with no license costs.
-- No student data in code, tests, examples, or commits. Fake data only.
+- No student data in code, tests, examples, or commits. Fake data only. Tests use Infinite Campus training-database extracts that Austin supplies (fake people, per Austin), kept outside the repo.
 
 ## The screen staff use: plain Superset
 
@@ -24,7 +24,7 @@ Why: a small team should own as little custom AI-written code as possible. Super
 
 ## Data flow
 
-SIS extracts (CSV on SFTP) go to an SIS mapping, then to a validated loader. The loader checks every file before loading. Each load is all or nothing. The loader writes a raw schema: the standard layouts, with explicit columns, and without free-text narratives or highly sensitive identifiers.
+SIS extracts (CSV on SFTP) go to an SIS mapping, then to a validated loader. The loader checks every file before loading. Each load is all or nothing. The loader writes a raw schema: the standard layouts, plus every other column the extract sends. The loader does not drop a column.
 
 Reporting views in PostgreSQL sit on top of the raw schema. All metric logic lives in those views, and the SQL for every view is kept in this repo. The views use code-mapping tables from the district repo. Every view can be filtered by school and school year. No view filters itself.
 
@@ -72,7 +72,7 @@ The Django access list, the Django-to-Superset sync, guest tokens, and the share
 
 - **Product repo** `adukes40/campusview`: generic code and SQL only. Build branches merge to `main` when CI passes. Releases are tags such as `v1.3.0`. The live server pulls tags and never pulls raw `main`.
 - **Private district repo** `adukes40/campusview-district`: that district's settings, code mappings, branding, and exported dashboards. Upgrades never overwrite it. It holds no secrets.
-- **Testing install:** the same release, loaded with fake data. It also serves as an AI query sandbox. The AI gets its own database user that can read raw tables and build views in a scratch schema only. Finished views become SQL in the repo with hand-checked tests and ship through releases. They are never copy-pasted to production.
+- **Testing install:** the same release, loaded with Infinite Campus training-database extracts that Austin supplies. It also serves as an AI query sandbox. The AI gets its own database user that can read raw tables and build views in a scratch schema only. Finished views become SQL in the repo with hand-checked tests and ship through releases. They are never copy-pasted to production.
 
 ## Build order
 
@@ -81,8 +81,8 @@ One pull request per step. Merge when CI is green.
 | Step | Work | Done when |
 | --- | --- | --- |
 | 0 | Docs, plus the bare-bones base install: PostgreSQL 17, plain Superset 6.1.0, default Django 6.1.2, and the `install.sh` wizard. **In progress.** | Austin approves the docs, and `install.sh` brings up the base install on a clean Ubuntu or Debian machine |
-| 1 | Getting data in: the SFTP drop, the raw schema, the validated loader, the Infinite Campus mapping, and the fake-data generator | Bad files are rejected, each load is all or nothing, and a good fake-data drop loads |
-| 2 | The first reporting view in PostgreSQL and the first Superset dashboard on it, with the three roles and school row-level security set up and checked | Each role sees exactly its schools on that dashboard, and the view's numbers match a hand-checked answer on fake data |
+| 1 | Getting data in: the SFTP drop, the raw schema, the validated loader, and the Infinite Campus mapping. Test files are Infinite Campus training-database extracts that Austin supplies, kept outside the repo | Bad files are rejected, each load is all or nothing, every column Austin sends is kept, and a good drop built from the training extracts loads |
+| 2 | The first reporting view in PostgreSQL and the first Superset dashboard on it, with the three roles and school row-level security set up and checked | Each role sees exactly its schools on that dashboard, and the view's numbers match a hand-checked answer on the training extracts |
 
 Later steps, in an order Austin will set: the rest of the reporting views and the Overview, Attendance, and Behavior dashboards; the nightly schedule and the history purge; and an adversarial review with fixes. Each new number gets a view and a hand-checked test before it gets a chart.
 
@@ -98,9 +98,9 @@ These are the numbers and charts v1 aims for. In plain Superset, a "card" is a b
 - Equity is rates per 100 students per group, totals only.
 - Filters are Superset native filters: school year, school, grade, and gender.
 
-## Fake data
+## Test data
 
-One small seeded generator, and it is deterministic. It builds 1 high school, 1 middle school, and 2 elementary schools, about 25 to 40 fake students each, one school year of attendance days, a scatter of referrals, and a few 504s and IEPs with some expiring soon. Tests and the testing install use it. Making more schools is a one-line change. Do not spend effort hand-writing data.
+There is no fake-data generator. Tests and the testing install use Infinite Campus training-database extracts that Austin supplies. Austin says the training database holds fake people. The files are kept outside the repo until Austin answers whether the Infinite Campus vendor agreement allows them in a public repo. Austin supplies whatever files a test needs. The loader keeps every column in them. See [DECISIONS.md](DECISIONS.md), 2026-11-03.
 
 ## Guarding against unwanted changes
 
