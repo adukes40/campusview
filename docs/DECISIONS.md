@@ -29,11 +29,13 @@ The cutoff date is a district setting kept in the district repo, not a value in 
 - An existing server gets the timer through one full `install.sh` run, because `install.sh --update` does not install systemd units.
 - The timer applies only when `CV_SYSTEMD=yes`. What a server that uses `start.sh` gets instead is to confirm.
 
-**To confirm:** which drop files count as old and how long old drop files are kept; whether the loader also drops rows dated before the cutoff or relies on the extract being capped at the source.
+Austin then picked how long drop files are kept (Austin, relayed by CampusView Engineer, 2026-11-03 7:33 PM ET): "Keep 7 nights of drop files, then delete older ones." Whether 7 is a fixed product value or a district setting is to confirm.
 
-**Who:** Austin, relayed by CampusView Engineer, 2026-11-03 7:04 PM and 7:30 PM ET. The timer details are CampusView Engineer's proposal.
+**To confirm:** whether 7 nights is a fixed product value or a district setting; whether the loader also drops rows dated before the cutoff or relies on the extract being capped at the source.
 
-**Status:** (a) to (e) decided by Austin (relayed by CampusView Engineer); confirmed when he merges this pull request. The timer details are Proposed.
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03 7:04 PM, 7:30 PM, and 7:33 PM ET. The timer details are CampusView Engineer's proposal.
+
+**Status:** (a) to (e) and the 7 nights decided by Austin (relayed by CampusView Engineer); confirmed when he merges this pull request. The timer details are Proposed.
 
 **Builds on:** 2026-11-01 "No Celery for loads", and "Years kept, the Day table, and SFTP for now" (below).
 

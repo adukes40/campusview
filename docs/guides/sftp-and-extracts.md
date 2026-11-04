@@ -68,4 +68,4 @@ Read the loader output, or `ops.load_batch`. A failed load names only the files 
 
 ## History
 
-The district cutoff date, set in the district repo, and why each extract must include everything dated on or after it: a good load replaces the warehouse with the drop, and the warehouse is not purged by school year. How the nightly run cleans old extract files out of the drop (which files count as old is to confirm).
+The district cutoff date, set in the district repo, and why each extract must include everything dated on or after it: a good load replaces the warehouse with the drop, and the warehouse is not purged by school year. How the nightly run cleans old extract files out of the drop: it keeps 7 nights of drop files, then deletes older ones (Austin, relayed by CampusView Engineer, 2026-11-03 7:33 PM ET). Whether 7 is a fixed product value or a district setting is to confirm.
