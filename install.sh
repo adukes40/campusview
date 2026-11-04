@@ -705,6 +705,7 @@ After=postgresql.service
 User=$CV_RUN_USER
 WorkingDirectory=$S
 EnvironmentFile=$ENVF
+UnsetEnvironment=CV_SFTP_PASSWORD
 Environment=SUPERSET_CONFIG_PATH=$S/superset_config.py
 ExecStart=$S/venv/bin/gunicorn -w $CV_SUPERSET_WORKERS -k gthread --threads 2 --timeout 120 -b 127.0.0.1:$CV_SUPERSET_PORT --limit-request-line 0 --limit-request-field_size 0 "superset.app:create_app()"
 Restart=on-failure
@@ -719,6 +720,7 @@ After=postgresql.service
 User=$CV_RUN_USER
 WorkingDirectory=$D
 EnvironmentFile=$ENVF
+UnsetEnvironment=CV_SFTP_PASSWORD
 ExecStart=$D/venv/bin/gunicorn -b 127.0.0.1:$CV_DJANGO_PORT campusview_base.wsgi
 Restart=on-failure
 [Install]
