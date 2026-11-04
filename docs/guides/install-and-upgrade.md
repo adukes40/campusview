@@ -151,9 +151,9 @@ The wizard asks `How should people reach CampusView?` right after the ports.
 | 2) HTTP on port 80 | `http://NAME/` (Superset) and `http://NAME/app/` (Django admin) | nginx on port 80 |
 | 3) HTTPS on port 443 (recommended, the default) | `https://NAME/` and `https://NAME/app/` | nginx on port 443, and on port 80 only to send people to https |
 
-`NAME` is the answer to `Server name or IP address`. It defaults to the server's main IP address. Use a DNS name if people have one for the server.
+`NAME` is the answer to `Server name or IP address`. It defaults to the server's main IP address. Use a DNS name if people have one for the server. `localhost` is not a name other machines can open.
 
-On a new server, that IP opens CampusView. If nginx on this server already serves a page, that page keeps the IP. Opening the IP does not open CampusView, on HTTP or on HTTPS. Enter a DNS name so CampusView has its own address. If you leave the IP, CampusView answers at this machine's hostname. A re-run keeps this choice. It is decided again only when you change how people reach CampusView.
+On a new server, that IP opens CampusView. If nginx on this server already serves a page, that page keeps the IP. Opening the IP does not open CampusView, on HTTP or on HTTPS. Enter a DNS name so CampusView has its own address. If you leave the IP, CampusView answers at this machine's hostname. A re-run keeps this choice while that name is still the one you entered or this machine's hostname. It is decided again when you change how people reach CampusView, or when that name no longer belongs to this server.
 
 In every mode, Superset, Django (gunicorn) and PostgreSQL keep listening on `127.0.0.1` only. nginx passes `/` to Superset and `/app/` to Django. DBeaver still connects through the SSH tunnel, exactly as above.
 
