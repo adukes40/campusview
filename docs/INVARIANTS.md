@@ -34,7 +34,7 @@ Secrets are not in either repo. They live only on the server, outside git, in `/
 
 ## No student data and no org-specific values in the product repo
 
-The product repo has no student information, no real staff names or emails, no school names from a real district, no local code lists, no logos, and no keys. Examples in docs use placeholders. No screenshots go in the public repo (Austin, relayed by CampusView Engineer, 2026-11-03). The district's identity stays in the district repo and on the server. Exception: the Infinite Campus start year, the extract cutoff date, and the homeroom attendance rule stay in the product docs (Austin, relayed by CampusView Engineer, 2026-11-03).
+The product repo has no student information, no real staff names or emails, no school names from a real district, no local code lists, no logos, and no keys. `examples/district/` is a fictional sample of the ten map files, with `FAKE-` codes and placeholder labels only. A district's real codes stay in the district repo. Examples in docs use placeholders. No screenshots go in the public repo (Austin, relayed by CampusView Engineer, 2026-11-03). The district's identity stays in the district repo and on the server. Exception: the Infinite Campus start year, the extract cutoff date, and the homeroom attendance rule stay in the product docs (Austin, relayed by CampusView Engineer, 2026-11-03).
 
 ## Every release is upgrade-tested
 
