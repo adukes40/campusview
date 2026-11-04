@@ -42,7 +42,7 @@ The installer puts the programs in `/opt/campusview` unless you choose another f
 
 ## Accounts on the machine
 
-The installer asks for an existing Linux login. It does not create one. The apps run as that login, and that login owns the program folder and the password file. On Debian the login is often root. In step 1, a separate upload user can write the SFTP drop and cannot read the database.
+The installer asks for an existing Linux login. It does not create one. The apps run as that login, and that login owns the program folder and the password file. On Debian the login is often root. CampusView pulls the extracts from the district's SFTP server. It has no built-in SFTP server and no upload account.
 
 ## What this guide will not cover
 

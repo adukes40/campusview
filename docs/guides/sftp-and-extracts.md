@@ -4,7 +4,7 @@ The loader is in this repo. SFTP is not built yet. The loader also builds the ty
 
 ## The drop folder
 
-Where files land, which account can upload, and the fact that this account cannot read the database. That uploaded files stay on the server and are never committed to either git repo.
+**Not built yet.** On the nightly timer, CampusView pulls the extracts from the SFTP server the district runs into a local drop folder, then validates and loads them, then removes drop files older than 7 nights. CampusView has no built-in SFTP server and no upload account. The files stay on the server and are never committed to either git repo. Decided (not built): the installer asks whether the SFTP sign-in uses a key or a password, because the district may not control the SFTP server. A password is kept only in `/etc/campusview/campusview.env` (mode 600), never in git. With a key, the server generates the key pair and prints the `.pub` for the SFTP server's admin. Proposed (not built): the remote host, user, and folder are district-repo settings, and the SFTP server's host key is pinned on first connect, then checked strictly, with the fingerprint in a `known_hosts` file on the server. See DECISIONS.md, 2026-11-03.
 
 ## What a nightly drop contains
 
@@ -38,7 +38,7 @@ UV_PYTHON_INSTALL_DIR=/opt/campusview/.uv/python \
 
 The first path is the drop folder and the second is the district config folder (PR #17, merge commit 856bf34). The older one-path form, `python -m loader FOLDER`, prints the usage line and exits with code 2.
 
-A good folder has every CSV file named in `loader/contract.py`, 24 files today, with the names spelled exactly. A CSV file that is not in that list fails the load, including a code-mapping file dropped in that folder. A listed file that is missing fails the load. Files that are not CSV, and folders, are ignored. A file fails when it is not UTF-8, has no header row, or has a blank, repeated, unknown, or missing header. The district directory must hold all ten code-mapping files.
+A good folder has every CSV file named in `loader/contract.py`, 24 files today, with the names spelled exactly. A CSV file that is not in that list fails the load, including a code-mapping file dropped in that folder. A listed file that is missing fails the load. Files that are not CSV, folders, and links that are not a listed file are ignored. A listed file that is a link fails the load. Remove the link. The loader does not read it. A file fails when it is not UTF-8, has no header row, or has a blank, repeated, unknown, or missing header. The district directory must hold all ten code-mapping files.
 
 You should see `Load passed.`, one line per extract file with its row count, and one line per map file. The same text is stored in `ops.load_batch`, in the `report` column. `outcome` is `pass` or `fail`. `fault` is `extract` when the files are wrong, and `server` when the machine or the database is the problem. `fault` is empty on a pass. The table also has `batch_id`, `started_at`, and `finished_at`. The loader creates `ops` and the table on its first run. Read the table as `campusview_owner`; `campusview_reader` cannot see it.
 
@@ -64,7 +64,7 @@ Until the list includes the new header, the loader fails that file and the repor
 
 ## When a load fails
 
-Read the loader output, or `ops.load_batch`. A failed load names only the files that failed, with the reason. When PostgreSQL rejects a row, it gives the line number. You do not see the cell value. The first line of a map-file failure says the district config folder's map files. A missing district folder says the district config folder. `fault` is still `extract` for a bad map file and `server` when the district folder itself is missing. `server` also means this machine, the database, or a load that is already running. The previous rows stay in place.
+Read the loader output, or `ops.load_batch`. A failed load names only the files that failed, with the reason. When PostgreSQL rejects a row, it gives the line number. A message that only names a column is kept. You do not see the cell value. A file that is a link fails. The report tells you to remove it. A first line that is not column names stays out of the report. The report says how many unknown columns are on line 1. A misspelled column name is still shown. The first line of a map-file failure says the district config folder's map files. A missing district folder says the district config folder. `fault` is still `extract` for a bad map file and `server` when the district folder itself is missing. `server` also means this machine, the database, or a load that is already running. The previous rows stay in place.
 
 ## Writing a mapping for another student information system
 

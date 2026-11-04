@@ -15,7 +15,7 @@ Done when Austin approves the docs, and `install.sh` brings up the base install 
 
 ## Step 1 — Getting data in
 
-- The SFTP drop folder.
+- The SFTP pull into a local drop folder. Not built yet. CampusView has no built-in SFTP server (Austin, relayed by CampusView Engineer, 2026-11-03 8:53 to 8:54 PM ET).
 - The code-mapping tables from [docs/DATA_CONTRACT.md](docs/DATA_CONTRACT.md), and the raw schema in `campusview_data`.
 - The loader: check every file, reject a bad file, load all or nothing. An unknown or misspelled header fails the file, and the failed load is recorded in `ops.load_batch` with the files that failed and the reason, plus the line number when PostgreSQL rejects a row.
 - The typed, checked copy of each raw table. It keeps the Infinite Campus table and column names, with real dates and numbers, in schema `ic`. Bad keys and unknown codes are warnings on the load report, and loading continues. Built in PR #14 (merge commit e06c651), except the checks listed under "Not yet" below.
