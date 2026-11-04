@@ -2,7 +2,7 @@ import csv
 import os
 import re
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import psycopg
@@ -13,7 +13,6 @@ from loader.maps import read_maps, replace_maps
 from loader.typed import replace_ic
 
 LOCK = 814202611
-_CUTOFF_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 def main(argv: list[str]) -> int:
@@ -38,7 +37,9 @@ def read_cutoff(district: Path) -> tuple[str | None, str | None]:
         return None, "The district config folder has no cutoff date."
     if not found:
         return None, "The district config folder has no cutoff date."
-    if _CUTOFF_DATE.fullmatch(found) is None:
+    try:
+        date.fromisoformat(found)
+    except ValueError:
         return None, "The cutoff date is not YYYY-MM-DD."
     return found, None
 
@@ -63,12 +64,9 @@ def load_drop(folder: Path, district: Path) -> tuple[bool, bool, str]:
     fault, lines, ready = check_folder(folder)
     map_lines, maps = read_maps(district, check_header)
     cutoff, cutoff_problem = read_cutoff(district)
-    if cutoff_problem and not map_lines and district.is_dir():
-        phrase = "the district config folder"
-    else:
-        phrase = _phrase(fault, map_lines, district)
     if cutoff_problem:
         map_lines = [*map_lines, cutoff_problem]
+    phrase = _phrase(fault, map_lines, district)
     if map_lines:
         lines = [*lines, *map_lines]
         if not district.is_dir():

@@ -13,11 +13,10 @@ file_value(){ local v; v=$(grep -m1 "^$2=" "$1") || return 1; v=${v#*=}; v=${v#\
 stop(){ [ -n "${partial:-}" ] && rm -rf -- "$partial"; fail "$1"; }
 
 unset CV_SFTP_PASSWORD SSHPASS || true
-sftp_host=$(file_value "$DISTRICT/settings" sftp_host) || fail "The district settings have no sftp_host."
-sftp_port=$(file_value "$DISTRICT/settings" sftp_port) || fail "The district settings have no sftp_port."
-sftp_user=$(file_value "$DISTRICT/settings" sftp_user) || fail "The district settings have no sftp_user."
-sftp_folder=$(file_value "$DISTRICT/settings" sftp_folder) || fail "The district settings have no sftp_folder."
-sftp_auth=$(file_value "$DISTRICT/settings" sftp_auth) || fail "The district settings have no sftp_auth."
+for key in sftp_host sftp_port sftp_user sftp_folder sftp_auth; do
+  val=$(file_value "$DISTRICT/settings" "$key") || fail "The district settings have no $key."
+  printf -v "$key" '%s' "$val"
+done
 install_dir=$(file_value "$ENVF" CV_INSTALL_DIR) || fail "CV_INSTALL_DIR is not set."
 owner_pw=$(file_value "$ENVF" CV_OWNER_DB_PASSWORD) || fail "CV_OWNER_DB_PASSWORD is not set."
 pg_port=$(file_value "$ENVF" CV_PG_PORT || true)
@@ -43,19 +42,15 @@ echo "Fetching extracts from ${sftp_user}@${sftp_host}:${sftp_port}${sftp_folder
 pinned=no
 [ -s "$KNOWN" ] || pinned=yes
 if [ "$sftp_auth" = password ]; then
-  sshpass -d 3 scp "${opts[@]}" \
-    -o PreferredAuthentications=password -o PubkeyAuthentication=no \
-    -o KbdInteractiveAuthentication=no -o NumberOfPasswordPrompts=1 \
-    "$remote" "$partial/" 3<<<"$sftp_pw" \
-    || stop "Could not fetch the extracts from the SFTP server. Nothing was loaded, and no drop folders were removed."
+  extra=(-o PreferredAuthentications=password -o PubkeyAuthentication=no -o KbdInteractiveAuthentication=no -o NumberOfPasswordPrompts=1)
 else
-  scp "${opts[@]}" \
-    -o BatchMode=yes -o PreferredAuthentications=publickey \
-    -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no \
-    -o IdentitiesOnly=yes -o IdentityFile="$sftp_key" \
-    "$remote" "$partial/" \
-    || stop "Could not fetch the extracts from the SFTP server. Nothing was loaded, and no drop folders were removed."
+  extra=(-o BatchMode=yes -o PreferredAuthentications=publickey -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o IdentitiesOnly=yes -o IdentityFile="$sftp_key")
 fi
+if [ "$sftp_auth" = password ]; then
+  sshpass -d 3 scp "${opts[@]}" "${extra[@]}" "$remote" "$partial/" 3<<<"$sftp_pw"
+else
+  scp "${opts[@]}" "${extra[@]}" "$remote" "$partial/"
+fi || stop "Could not fetch the extracts from the SFTP server. Nothing was loaded, and no drop folders were removed."
 compgen -G "$partial/*.csv" >/dev/null \
   || stop "The SFTP folder had no CSV files. Nothing was loaded, and no drop folders were removed."
 [ "$pinned" = no ] || echo "Pinned the SFTP host key. Check this fingerprint with the SFTP admin:"

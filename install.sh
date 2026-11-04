@@ -185,16 +185,12 @@ case ${1:-} in
 esac
 
 write_sftp_settings(){
-  local want have
-  want=$(printf 'sftp_host=%s\nsftp_port=%s\nsftp_user=%s\nsftp_folder=%s\nsftp_auth=%s\n' \
+  local want have tmp
+  want=$(printf 'sftp_host=%s\nsftp_port=%s\nsftp_user=%s\nsftp_folder=%s\nsftp_auth=%s' \
     "$CV_SFTP_HOST" "$CV_SFTP_PORT" "$CV_SFTP_USER" "$CV_SFTP_FOLDER" "$CV_SFTP_AUTH")
   have=$(grep -E '^(sftp_host|sftp_port|sftp_user|sftp_folder|sftp_auth)=' "$DISTRICT/settings" 2>/dev/null || true)
   [ "$have" = "$want" ] && return 0
-  if [ ! -d "$DISTRICT" ]; then
-    mkdir -p -m 755 -- "$DISTRICT"
-    chown "$CV_RUN_USER": "$DISTRICT"
-  fi
-  local tmp
+  [ -d "$DISTRICT" ] || { mkdir -p -m 755 -- "$DISTRICT"; chown "$CV_RUN_USER": "$DISTRICT"; }
   tmp=$(mktemp)
   if [ -f "$DISTRICT/settings" ]; then
     grep -v -E '^(sftp_host|sftp_port|sftp_user|sftp_folder|sftp_auth)=' "$DISTRICT/settings" > "$tmp" || true
@@ -240,15 +236,10 @@ HAS_SYSTEMD=no; [ -d /run/systemd/system ] && HAS_SYSTEMD=yes
 : "${CV_SFTP_PASSWORD:=}"; : "${CV_SFTP_KEY:=}"
 # Saved district settings win over the answers file, the same way the password file wins.
 if [ -f "$DISTRICT/settings" ]; then
-  while IFS= read -r _line; do
-    case ${_line%%=*} in
-      sftp_host) CV_SFTP_HOST=${_line#*=} ;;
-      sftp_port) CV_SFTP_PORT=${_line#*=} ;;
-      sftp_user) CV_SFTP_USER=${_line#*=} ;;
-      sftp_folder) CV_SFTP_FOLDER=${_line#*=} ;;
-      sftp_auth) CV_SFTP_AUTH=${_line#*=} ;;
-    esac
-  done < "$DISTRICT/settings"
+  for _k in host port user folder auth; do
+    _v=$(grep -m1 "^sftp_${_k}=" "$DISTRICT/settings" || true)
+    [ -n "$_v" ] && printf -v "CV_SFTP_${_k^^}" '%s' "${_v#*=}"
+  done
 fi
 : "${CV_SFTP_PORT:=22}"
 TLS=/etc/campusview/tls   # the certificate nginx uses (key: mode 0600, root only)

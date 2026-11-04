@@ -72,7 +72,7 @@ Until the list includes the new header, the loader fails that file and the repor
 
 ## When a load fails
 
-Read the loader output, or `ops.load_batch`. A failed load names only the files that failed, with the reason. When PostgreSQL rejects a row, it gives the line number. You do not see the cell value. The first line of a map-file failure says the district config folder's map files. A missing district folder says the district config folder. `fault` is still `extract` for a bad map file and `server` when the district folder itself is missing. `server` also means this machine, the database, or a load that is already running. The previous rows stay in place.
+Read the loader output, or `ops.load_batch`. A failed load names only the files that failed, with the reason. When PostgreSQL rejects a row, it gives the line number. You do not see the cell value. The first line of a map-file failure says the district config folder's map files. A missing district folder says the district config folder. `fault` is `extract` for a bad map file or a bad cutoff date, and `server` when the district folder itself is missing. `server` also means this machine, the database, or a load that is already running. The previous rows stay in place.
 
 ## Writing a mapping for another student information system
 
