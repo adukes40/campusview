@@ -5,9 +5,9 @@ Outline. Filled in as the base install and the loader are built. This guide does
 ## What must be backed up
 
 - The three PostgreSQL databases: `superset_meta` (Superset's users, roles, row-level security, charts, and dashboards), `django_app` (Django's default tables), and `campusview_data` (the warehouse).
-- The secrets file, `/etc/campusview/campusview.env` (the database passwords and Superset's secret key), and Django's `settings.py` (it holds Django's own secret key). Store their backup as carefully as the secrets themselves. Superset's secret key must match the restored `superset_meta` database, or Superset can't read the connection passwords saved in it.
+- The secrets file, `/etc/campusview/campusview.env` (the database passwords, Superset's secret key, and `CV_SFTP_PASSWORD` when the SFTP sign-in is a password), the SFTP private key named by `CV_SFTP_KEY`, `/etc/campusview/sftp_known_hosts`, and Django's `settings.py` (it holds Django's own secret key). Store their backup as carefully as the secrets themselves. Superset's secret key must match the restored `superset_meta` database, or Superset can't read the connection passwords saved in it.
 - The other server config files, `superset_config.py` and the systemd units, if they were added. They hold no secrets.
-- The SFTP drop and any local archive of loaded files, once step 1 exists.
+- The local drop folder `/var/lib/campusview/drop`.
 - The district repo, which already has its own git history for mappings, branding, and dashboard exports.
 
 ## What a backup must not do
