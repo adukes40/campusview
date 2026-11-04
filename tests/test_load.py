@@ -343,6 +343,8 @@ def test_cutoff_is_read_from_district_settings(tmp_path):
     assert read_cutoff(district)[1] == "The cutoff date is not YYYY-MM-DD."
     (district / "settings").write_text("cutoff_date=2026-13-45\n")
     assert read_cutoff(district)[1] == "The cutoff date is not YYYY-MM-DD."
+    (district / "settings").write_text("cutoff_date=20250701\n")
+    assert read_cutoff(district)[1] == "The cutoff date is not YYYY-MM-DD."
     assert read_cutoff(tmp_path / "missing") == (None, None)
 
 
@@ -505,6 +507,7 @@ def test_missing_cutoff_is_extract(db, tmp_path):
     (district / "settings").write_text("sftp_host=files.example.test\n")
     ok, saved, report = load_drop(tmp_path, district)
     assert not ok and saved
+    assert "problem with the district config folder." in report
     assert "has no cutoff date." in report
     assert stored("SELECT outcome, fault FROM ops.load_batch") == [("fail", "extract")]
 

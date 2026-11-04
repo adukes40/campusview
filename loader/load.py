@@ -29,16 +29,18 @@ def read_cutoff(district: Path) -> tuple[str | None, str | None]:
         return None, None
     found = None
     try:
-        for raw in (district / "settings").read_text(encoding="utf-8").splitlines():
-            line = raw.strip()
-            if line.startswith("cutoff_date="):
-                found = line.split("=", 1)[1].strip()
+        text = (district / "settings").read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
-        return None, "The district config folder has no cutoff date."
+        text = ""
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("cutoff_date="):
+            found = line.split("=", 1)[1].strip()
     if not found:
         return None, "The district config folder has no cutoff date."
     try:
-        date.fromisoformat(found)
+        if date.fromisoformat(found).isoformat() != found:
+            raise ValueError
     except ValueError:
         return None, "The cutoff date is not YYYY-MM-DD."
     return found, None
@@ -64,9 +66,11 @@ def load_drop(folder: Path, district: Path) -> tuple[bool, bool, str]:
     fault, lines, ready = check_folder(folder)
     map_lines, maps = read_maps(district, check_header)
     cutoff, cutoff_problem = read_cutoff(district)
+    phrase = _phrase(fault, map_lines, district)
+    if cutoff_problem and not map_lines and district.is_dir():
+        phrase = "the district config folder"
     if cutoff_problem:
         map_lines = [*map_lines, cutoff_problem]
-    phrase = _phrase(fault, map_lines, district)
     if map_lines:
         lines = [*lines, *map_lines]
         if not district.is_dir():

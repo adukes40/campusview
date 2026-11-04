@@ -17,6 +17,7 @@ trap 'echo "ERROR: line $LINENO: $BASH_COMMAND" >&2' ERR
 ENVF=/etc/campusview/campusview.env
 SUPERSET_VER=6.1.0; DJANGO_VER=6.1.2; PY=3.12   # one Python for both apps
 DISTRICT=/opt/campusview-district
+SFTP_KEYS=(sftp_host sftp_port sftp_user sftp_folder sftp_auth)
 RE_REF='^[A-Za-z0-9][A-Za-z0-9._/-]{0,80}$'
 export GIT_TERMINAL_PROMPT=0
 
@@ -185,15 +186,15 @@ case ${1:-} in
 esac
 
 write_sftp_settings(){
-  local want have tmp
-  want=$(printf 'sftp_host=%s\nsftp_port=%s\nsftp_user=%s\nsftp_folder=%s\nsftp_auth=%s' \
-    "$CV_SFTP_HOST" "$CV_SFTP_PORT" "$CV_SFTP_USER" "$CV_SFTP_FOLDER" "$CV_SFTP_AUTH")
-  have=$(grep -E '^(sftp_host|sftp_port|sftp_user|sftp_folder|sftp_auth)=' "$DISTRICT/settings" 2>/dev/null || true)
+  local want have tmp pat
+  pat="^($(IFS='|'; echo "${SFTP_KEYS[*]}"))="
+  want=$(for _k in "${SFTP_KEYS[@]}"; do _n=CV_${_k^^}; printf '%s=%s\n' "$_k" "${!_n}"; done)
+  have=$(grep -E "$pat" "$DISTRICT/settings" 2>/dev/null || true)
   [ "$have" = "$want" ] && return 0
   [ -d "$DISTRICT" ] || { mkdir -p -m 755 -- "$DISTRICT"; chown "$CV_RUN_USER": "$DISTRICT"; }
   tmp=$(mktemp)
   if [ -f "$DISTRICT/settings" ]; then
-    grep -v -E '^(sftp_host|sftp_port|sftp_user|sftp_folder|sftp_auth)=' "$DISTRICT/settings" > "$tmp" || true
+    grep -v -E "$pat" "$DISTRICT/settings" > "$tmp" || true
   fi
   printf '%s\n' "$want" >> "$tmp"
   chown "$CV_RUN_USER": "$tmp"
@@ -236,9 +237,9 @@ HAS_SYSTEMD=no; [ -d /run/systemd/system ] && HAS_SYSTEMD=yes
 : "${CV_SFTP_PASSWORD:=}"; : "${CV_SFTP_KEY:=}"
 # Saved district settings win over the answers file, the same way the password file wins.
 if [ -f "$DISTRICT/settings" ]; then
-  for _k in host port user folder auth; do
-    _v=$(grep -m1 "^sftp_${_k}=" "$DISTRICT/settings" || true)
-    [ -n "$_v" ] && printf -v "CV_SFTP_${_k^^}" '%s' "${_v#*=}"
+  for _k in "${SFTP_KEYS[@]}"; do
+    _v=$(grep -m1 "^${_k}=" "$DISTRICT/settings" || true)
+    [ -n "$_v" ] && printf -v "CV_${_k^^}" '%s' "${_v#*=}"
   done
 fi
 : "${CV_SFTP_PORT:=22}"

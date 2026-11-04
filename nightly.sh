@@ -21,12 +21,6 @@ install_dir=$(file_value "$ENVF" CV_INSTALL_DIR) || fail "CV_INSTALL_DIR is not 
 owner_pw=$(file_value "$ENVF" CV_OWNER_DB_PASSWORD) || fail "CV_OWNER_DB_PASSWORD is not set."
 pg_port=$(file_value "$ENVF" CV_PG_PORT || true)
 
-if [ "$sftp_auth" = password ]; then
-  sftp_pw=$(file_value "$ENVF" CV_SFTP_PASSWORD) || fail "CV_SFTP_PASSWORD is not set."
-else
-  sftp_key=$(file_value "$ENVF" CV_SFTP_KEY) || fail "CV_SFTP_KEY is not set."
-fi
-
 mkdir -p -- "$DROP"
 partial=$(mktemp -d "$DROP/.partial.XXXXXX")
 opts=(
@@ -42,14 +36,18 @@ echo "Fetching extracts from ${sftp_user}@${sftp_host}:${sftp_port}${sftp_folder
 pinned=no
 [ -s "$KNOWN" ] || pinned=yes
 if [ "$sftp_auth" = password ]; then
-  extra=(-o PreferredAuthentications=password -o PubkeyAuthentication=no -o KbdInteractiveAuthentication=no -o NumberOfPasswordPrompts=1)
+  sftp_pw=$(file_value "$ENVF" CV_SFTP_PASSWORD) || stop "CV_SFTP_PASSWORD is not set."
+  sshpass -d 3 scp "${opts[@]}" \
+    -o PreferredAuthentications=password -o PubkeyAuthentication=no \
+    -o KbdInteractiveAuthentication=no -o NumberOfPasswordPrompts=1 \
+    "$remote" "$partial/" 3<<<"$sftp_pw"
 else
-  extra=(-o BatchMode=yes -o PreferredAuthentications=publickey -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o IdentitiesOnly=yes -o IdentityFile="$sftp_key")
-fi
-if [ "$sftp_auth" = password ]; then
-  sshpass -d 3 scp "${opts[@]}" "${extra[@]}" "$remote" "$partial/" 3<<<"$sftp_pw"
-else
-  scp "${opts[@]}" "${extra[@]}" "$remote" "$partial/"
+  sftp_key=$(file_value "$ENVF" CV_SFTP_KEY) || stop "CV_SFTP_KEY is not set."
+  scp "${opts[@]}" \
+    -o BatchMode=yes -o PreferredAuthentications=publickey \
+    -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no \
+    -o IdentitiesOnly=yes -o IdentityFile="$sftp_key" \
+    "$remote" "$partial/"
 fi || stop "Could not fetch the extracts from the SFTP server. Nothing was loaded, and no drop folders were removed."
 compgen -G "$partial/*.csv" >/dev/null \
   || stop "The SFTP folder had no CSV files. Nothing was loaded, and no drop folders were removed."
