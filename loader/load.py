@@ -78,7 +78,8 @@ def copy_failure(exc, name) -> str:
     line_no = None
     if exc.diag is not None:
         primary = exc.diag.message_primary or ""
-        if primary and not any(c in primary for c in "\r\n\""):
+        quoted = re.findall(r'"([^"]*)"', primary)
+        if primary and "\n" not in primary and all(part in FILES.get(name or "", ()) for part in quoted):
             message = primary
         if exc.diag.context:
             found = re.search(r"\bline (\d+)\b", exc.diag.context)
@@ -101,7 +102,7 @@ def check_folder(folder: Path):
             names = [
                 entry.name
                 for entry in folder.iterdir()
-                if entry.is_file() and entry.name.lower().endswith(".csv")
+                if not entry.is_symlink() and entry.is_file() and entry.name.lower().endswith(".csv")
             ]
         except OSError:
             message = "The server could not read the folder."
@@ -115,6 +116,9 @@ def check_folder(folder: Path):
 
     for name, columns in FILES.items():
         path = folder / name
+        if path.is_symlink():
+            problem(name, "The file is a link. Remove it.")
+            continue
         if not path.is_file():
             problem(name, "The file is missing from the folder.")
             continue
@@ -161,8 +165,6 @@ def check_header(path: Path, columns: tuple[str, ...]):
     missing = [name for name in columns if name not in header]
     parts = []
     if unknown:
-        if any(any(c in name for c in "\r\n:") for name in unknown):
-            return "Line 1.", None
         parts.append("Unknown column " + ", ".join(unknown) + ".")
     if missing:
         parts.append("Missing column " + ", ".join(missing) + ".")

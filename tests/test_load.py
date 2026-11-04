@@ -131,10 +131,15 @@ def test_bad_headers(tmp_path):
     assert "Missing column personID." in lines
 
     fill(tmp_path)
-    (tmp_path / "race_ethnicity.csv").write_text("root:x:0:0:root:/root:/bin/bash\n")
+    secret = tmp_path / "secret.txt"
+    secret.write_text("CV_INSTALL_DIR=/opt/campusview\nBEGIN OPENSSH PRIVATE KEY\n")
+    school = tmp_path / "school.csv"
+    school.unlink()
+    school.symlink_to(secret)
     lines = "\n".join(check_folder(tmp_path)[1])
-    assert "race_ethnicity.csv: fail. Line 1." in lines
-    assert "root:x:0:0" not in lines
+    assert "school.csv: fail. The file is a link. Remove it." in lines
+    assert "CV_INSTALL_DIR" not in lines
+    assert "BEGIN OPENSSH PRIVATE KEY" not in lines
 
     fill(tmp_path)
     columns = FILES["person.csv"][:-1]

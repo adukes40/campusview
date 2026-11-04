@@ -86,7 +86,7 @@ mark_running(){ g config --local campusview.running "$(g rev-parse HEAD)"; }
 setup_sftp_drop(){
   local user=$CV_SFTP_USER chroot=/var/campusview-drop drop=$CV_SFTP_DROP
   local key=$CV_SFTP_KEY pub=/etc/ssh/${user}.pub conf=/etc/ssh/sshd_config.d/${user}.conf
-  local group=$user tmp prev pubtmp changed=yes pid
+  local group=$user tmp prev pubtmp changed=yes
   [ "$CV_RUN_USER" != "$user" ] || die "The CampusView account cannot be the SFTP upload account ($user)."
   getent group "$group" >/dev/null || groupadd --system "$group"
   if getent passwd "$user" >/dev/null; then
@@ -114,7 +114,7 @@ setup_sftp_drop(){
   cat > "$tmp" <<EOF
 Match User $user
     ChrootDirectory $chroot
-    ForceCommand internal-sftp -d /incoming -u 0027 -P setstat,fsetstat,symlink,hardlink
+    ForceCommand internal-sftp -d /incoming -u 0137 -P setstat,fsetstat,symlink,hardlink
     AuthorizedKeysFile $pub
     PasswordAuthentication no
     KbdInteractiveAuthentication no
@@ -140,12 +140,8 @@ EOF
   [ "$changed" = yes ] || return 0
   if [ "$HAS_SYSTEMD" = yes ]; then
     if systemctl is-active -q ssh; then systemctl reload ssh; else systemctl enable --now ssh; fi
-  elif pid=$(cat /run/sshd.pid 2>/dev/null || true); [ -n "${pid:-}" ] && kill -0 "$pid" 2>/dev/null; then
-    kill -HUP "$pid"
-  elif pid=$(pgrep -xo sshd || true); [ -n "${pid:-}" ]; then
-    kill -HUP "$pid"
   else
-    /usr/sbin/sshd
+    kill -HUP "$(pgrep -xo sshd)" 2>/dev/null || /usr/sbin/sshd
   fi
 }
 pull_district(){
@@ -391,17 +387,20 @@ B
   ask CV_REF "$RE_REF" "Branch or tag this server follows" "dev on the dev server. A release tag such as v1.3.0 on production. No server uses main."
 fi
 
-# ---------- validate ----------
+# ---------- validate, fill in generated secrets ----------
 chk(){ [[ ${!1} =~ $2 ]] || die "$1 has an invalid value${3:+ ($3)}"; }
+[ -z "$CV_SUPERSET_DB_PASSWORD" ] && CV_SUPERSET_DB_PASSWORD=$(openssl rand -hex 16)
+[ -z "$CV_DJANGO_DB_PASSWORD" ] && CV_DJANGO_DB_PASSWORD=$(openssl rand -hex 16)
+[ -z "$CV_OWNER_DB_PASSWORD" ] && CV_OWNER_DB_PASSWORD=$(openssl rand -hex 16)
+[ -z "$CV_READER_DB_PASSWORD" ] && CV_READER_DB_PASSWORD=$(openssl rand -hex 16)
+[ -z "$CV_SECRET_KEY" ] && CV_SECRET_KEY=$(openssl rand -base64 42)
+[ -z "$CV_ADMIN_PASSWORD" ] && CV_ADMIN_PASSWORD=$(openssl rand -hex 10)
 [ -z "$CV_ADMIN_EMAIL" ] && CV_ADMIN_EMAIL="$CV_ADMIN_USER@example.invalid"
 chk CV_INSTALL_DIR "$RE_PATH" "use a full path with letters, digits, . _ - and / only"; chk CV_SYSTEMD "$RE_YN"
 chk CV_ADMIN_EMAIL "$RE_EMAIL" "use a plain address like name@school.org"
 for v in CV_PG_PORT CV_SUPERSET_PORT CV_DJANGO_PORT; do chk $v "$RE_PORT"; done
 for v in CV_RUN_USER CV_ADMIN_USER CV_SUPERSET_DB_USER CV_DJANGO_DB_USER; do chk $v "$RE_NAME"; done
-for v in CV_SUPERSET_DB_PASSWORD CV_DJANGO_DB_PASSWORD CV_OWNER_DB_PASSWORD CV_READER_DB_PASSWORD CV_SECRET_KEY CV_ADMIN_PASSWORD; do
-  [ -z "${!v}" ] && continue
-  chk $v "$RE_SECRET" "8+ characters, no spaces, quotes or backslashes"
-done
+for v in CV_SUPERSET_DB_PASSWORD CV_DJANGO_DB_PASSWORD CV_OWNER_DB_PASSWORD CV_READER_DB_PASSWORD CV_SECRET_KEY CV_ADMIN_PASSWORD; do chk $v "$RE_SECRET" "8+ characters, no spaces, quotes or backslashes"; done
 valid_ref || die "CV_REF has an invalid value${CV_REF:+ ($CV_REF)}. Use dev, or a release tag. No server uses main."
 getent passwd "$CV_RUN_USER" >/dev/null || die "Linux user $CV_RUN_USER does not exist"
 # network: a fresh install defaults to HTTPS; an older install re-run from an answers file stays tunnel-only until asked
@@ -441,24 +440,6 @@ S
   read -r -p "  Go ahead? [Y/n]: " ans; case ${ans:-y} in [Yy]*) ;; *) echo "Nothing was changed."; exit 0;; esac
 fi
 
-cd /   # the run user may not be able to read the folder the installer was started from (uv reads ./uv.toml)
-
-# ---------- 1. packages ----------
-say "1. system packages"
-export DEBIAN_FRONTEND=noninteractive
-apt-get update </dev/null
-apt-get install -y build-essential libssl-dev libffi-dev libsasl2-dev libldap2-dev \
-  default-libmysqlclient-dev pkg-config libpq-dev curl ca-certificates gnupg openssl git openssh-server </dev/null
-[ -z "$CV_SUPERSET_DB_PASSWORD" ] && CV_SUPERSET_DB_PASSWORD=$(openssl rand -hex 16)
-[ -z "$CV_DJANGO_DB_PASSWORD" ] && CV_DJANGO_DB_PASSWORD=$(openssl rand -hex 16)
-[ -z "$CV_OWNER_DB_PASSWORD" ] && CV_OWNER_DB_PASSWORD=$(openssl rand -hex 16)
-[ -z "$CV_READER_DB_PASSWORD" ] && CV_READER_DB_PASSWORD=$(openssl rand -hex 16)
-[ -z "$CV_SECRET_KEY" ] && CV_SECRET_KEY=$(openssl rand -base64 42)
-[ -z "$CV_ADMIN_PASSWORD" ] && CV_ADMIN_PASSWORD=$(openssl rand -hex 10)
-for v in CV_SUPERSET_DB_PASSWORD CV_DJANGO_DB_PASSWORD CV_OWNER_DB_PASSWORD CV_READER_DB_PASSWORD CV_SECRET_KEY CV_ADMIN_PASSWORD; do
-  chk $v "$RE_SECRET" "8+ characters, no spaces, quotes or backslashes"
-done
-
 # ---------- save answers + secrets (0600, owned by the account that runs CampusView) ----------
 mkdir -p -m 700 /etc/campusview; chown "$CV_RUN_USER": /etc/campusview
 ( umask 077; tmp=$(mktemp /etc/campusview/.env.XXXXXX)
@@ -471,6 +452,15 @@ mkdir -p -m 700 /etc/campusview; chown "$CV_RUN_USER": /etc/campusview
 set -a; . "$ENVF"; set +a      # the apps read their secrets from these environment variables
 B=$CV_INSTALL_DIR; S=$B/superset; D=$B/django
 as_pg(){ (cd /tmp && runuser -u postgres -- "$@"); }
+
+cd /   # the run user may not be able to read the folder the installer was started from (uv reads ./uv.toml)
+
+# ---------- 1. packages ----------
+say "1. system packages"
+export DEBIAN_FRONTEND=noninteractive
+apt-get update </dev/null
+apt-get install -y build-essential libssl-dev libffi-dev libsasl2-dev libldap2-dev \
+  default-libmysqlclient-dev pkg-config libpq-dev curl ca-certificates gnupg openssl git openssh-server </dev/null
 say "SFTP drop"
 setup_sftp_drop
 create_checkout
@@ -851,7 +841,7 @@ Connect with DBeaver (or another database tool)
 SFTP drop
   Hand the Infinite Campus person these facts. Copy the key file. Do not paste the key.
     Server:    ${CV_SERVER_NAME:-$(primary_ip)}
-    Port:      22
+    Port:      $(sshd -T | awk '/^port /{print $2; exit}')
     User:      $CV_SFTP_USER
     Folder:    /incoming
     Key file:  $CV_SFTP_KEY
