@@ -6,7 +6,6 @@
 #
 # Interactive:      sudo ./install.sh                       (a short wizard asks the questions)
 # Non-interactive:  sudo CV_NONINTERACTIVE=1 CV_ANSWERS=/path/answers.env ./install.sh
-# SFTP drop: account campusview-drop, chrooted, files in /var/campusview-drop/incoming. Key /etc/campusview/sftp-drop.
 #
 # All answers, including the secrets, are saved to /etc/campusview/campusview.env, mode 0600, readable only by
 # the Linux account that runs CampusView (root on a default Debian install).
@@ -95,8 +94,6 @@ setup_sftp_drop(){
   else
     useradd --system --gid "$group" --no-create-home --home-dir /incoming --shell /usr/sbin/nologin "$user"
   fi
-  # A '!' in the shadow password makes PAM reject the key. '*' is not a password.
-  usermod -p '*' "$user"
   # sshd rejects a chroot the upload account can write. Only the inner folder is writable.
   install -d -o root -g root -m 755 "$chroot"
   install -d -o "$user" -g "$group" -m 2750 "$drop"
@@ -115,7 +112,6 @@ setup_sftp_drop(){
   rm -f "$pubtmp"
   tmp=$(mktemp)
   cat > "$tmp" <<EOF
-# CampusView SFTP drop. install.sh rewrites this file.
 Match User $user
     ChrootDirectory $chroot
     ForceCommand internal-sftp -d /incoming -u 0027
@@ -395,26 +391,17 @@ B
   ask CV_REF "$RE_REF" "Branch or tag this server follows" "dev on the dev server. A release tag such as v1.3.0 on production. No server uses main."
 fi
 
-# ---------- validate, fill in generated secrets ----------
+# ---------- validate ----------
 chk(){ [[ ${!1} =~ $2 ]] || die "$1 has an invalid value${3:+ ($3)}"; }
-# A minimal image has no openssl command yet. Passwords are generated before the package step.
-if ! command -v openssl >/dev/null; then
-  export DEBIAN_FRONTEND=noninteractive
-  apt-get update
-  apt-get install -y openssl ca-certificates
-fi
-[ -z "$CV_SUPERSET_DB_PASSWORD" ] && CV_SUPERSET_DB_PASSWORD=$(openssl rand -hex 16)
-[ -z "$CV_DJANGO_DB_PASSWORD" ] && CV_DJANGO_DB_PASSWORD=$(openssl rand -hex 16)
-[ -z "$CV_OWNER_DB_PASSWORD" ] && CV_OWNER_DB_PASSWORD=$(openssl rand -hex 16)
-[ -z "$CV_READER_DB_PASSWORD" ] && CV_READER_DB_PASSWORD=$(openssl rand -hex 16)
-[ -z "$CV_SECRET_KEY" ] && CV_SECRET_KEY=$(openssl rand -base64 42)
-[ -z "$CV_ADMIN_PASSWORD" ] && CV_ADMIN_PASSWORD=$(openssl rand -hex 10)
 [ -z "$CV_ADMIN_EMAIL" ] && CV_ADMIN_EMAIL="$CV_ADMIN_USER@example.invalid"
 chk CV_INSTALL_DIR "$RE_PATH" "use a full path with letters, digits, . _ - and / only"; chk CV_SYSTEMD "$RE_YN"
 chk CV_ADMIN_EMAIL "$RE_EMAIL" "use a plain address like name@school.org"
 for v in CV_PG_PORT CV_SUPERSET_PORT CV_DJANGO_PORT; do chk $v "$RE_PORT"; done
 for v in CV_RUN_USER CV_ADMIN_USER CV_SUPERSET_DB_USER CV_DJANGO_DB_USER; do chk $v "$RE_NAME"; done
-for v in CV_SUPERSET_DB_PASSWORD CV_DJANGO_DB_PASSWORD CV_OWNER_DB_PASSWORD CV_READER_DB_PASSWORD CV_SECRET_KEY CV_ADMIN_PASSWORD; do chk $v "$RE_SECRET" "8+ characters, no spaces, quotes or backslashes"; done
+for v in CV_SUPERSET_DB_PASSWORD CV_DJANGO_DB_PASSWORD CV_OWNER_DB_PASSWORD CV_READER_DB_PASSWORD CV_SECRET_KEY CV_ADMIN_PASSWORD; do
+  [ -z "${!v}" ] && continue
+  chk $v "$RE_SECRET" "8+ characters, no spaces, quotes or backslashes"
+done
 valid_ref || die "CV_REF has an invalid value${CV_REF:+ ($CV_REF)}. Use dev, or a release tag. No server uses main."
 getent passwd "$CV_RUN_USER" >/dev/null || die "Linux user $CV_RUN_USER does not exist"
 # network: a fresh install defaults to HTTPS; an older install re-run from an answers file stays tunnel-only until asked
@@ -454,6 +441,24 @@ S
   read -r -p "  Go ahead? [Y/n]: " ans; case ${ans:-y} in [Yy]*) ;; *) echo "Nothing was changed."; exit 0;; esac
 fi
 
+cd /   # the run user may not be able to read the folder the installer was started from (uv reads ./uv.toml)
+
+# ---------- 1. packages ----------
+say "1. system packages"
+export DEBIAN_FRONTEND=noninteractive
+apt-get update </dev/null
+apt-get install -y build-essential libssl-dev libffi-dev libsasl2-dev libldap2-dev \
+  default-libmysqlclient-dev pkg-config libpq-dev curl ca-certificates gnupg openssl git openssh-server </dev/null
+[ -z "$CV_SUPERSET_DB_PASSWORD" ] && CV_SUPERSET_DB_PASSWORD=$(openssl rand -hex 16)
+[ -z "$CV_DJANGO_DB_PASSWORD" ] && CV_DJANGO_DB_PASSWORD=$(openssl rand -hex 16)
+[ -z "$CV_OWNER_DB_PASSWORD" ] && CV_OWNER_DB_PASSWORD=$(openssl rand -hex 16)
+[ -z "$CV_READER_DB_PASSWORD" ] && CV_READER_DB_PASSWORD=$(openssl rand -hex 16)
+[ -z "$CV_SECRET_KEY" ] && CV_SECRET_KEY=$(openssl rand -base64 42)
+[ -z "$CV_ADMIN_PASSWORD" ] && CV_ADMIN_PASSWORD=$(openssl rand -hex 10)
+for v in CV_SUPERSET_DB_PASSWORD CV_DJANGO_DB_PASSWORD CV_OWNER_DB_PASSWORD CV_READER_DB_PASSWORD CV_SECRET_KEY CV_ADMIN_PASSWORD; do
+  chk $v "$RE_SECRET" "8+ characters, no spaces, quotes or backslashes"
+done
+
 # ---------- save answers + secrets (0600, owned by the account that runs CampusView) ----------
 mkdir -p -m 700 /etc/campusview; chown "$CV_RUN_USER": /etc/campusview
 ( umask 077; tmp=$(mktemp /etc/campusview/.env.XXXXXX)
@@ -466,15 +471,6 @@ mkdir -p -m 700 /etc/campusview; chown "$CV_RUN_USER": /etc/campusview
 set -a; . "$ENVF"; set +a      # the apps read their secrets from these environment variables
 B=$CV_INSTALL_DIR; S=$B/superset; D=$B/django
 as_pg(){ (cd /tmp && runuser -u postgres -- "$@"); }
-
-cd /   # the run user may not be able to read the folder the installer was started from (uv reads ./uv.toml)
-
-# ---------- 1. packages ----------
-say "1. system packages"
-export DEBIAN_FRONTEND=noninteractive
-apt-get update </dev/null
-apt-get install -y build-essential libssl-dev libffi-dev libsasl2-dev libldap2-dev \
-  default-libmysqlclient-dev pkg-config libpq-dev curl ca-certificates gnupg openssl git openssh-server </dev/null
 say "SFTP drop"
 setup_sftp_drop
 create_checkout
