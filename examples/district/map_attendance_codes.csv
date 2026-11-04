@@ -1,0 +1,3 @@
+attendance_code,label,counts_as,absence_portion
+FAKE-P,School A present,PRESENT,0
+FAKE-A,School A absent,ABSENT_UNEXCUSED,1
