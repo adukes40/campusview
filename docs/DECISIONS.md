@@ -12,11 +12,20 @@ Open metric questions are not listed here. They are the Decisions for Austin lis
 
 **Amends:** the Proposed timer detail in 2026-11-03 "The nightly timer and the drop cleanup move into step 1" (below), "It loads from the SFTP drop folder that PR #20 settles." The timer loads from the local drop folder that the pull fills.
 
-**To confirm:** where the remote host, user, folder, and the client key are kept; whether the SFTP server's host key is pinned.
+**Sign-in, decided (not built):** Austin's words (Austin, relayed by CampusView Engineer, 2026-11-03 8:56 PM ET): "ask if using pub key or password.. i do not have control over the sftp server.. so i will ahve to use a password".
 
-**Who:** Austin, relayed by CampusView Engineer, 2026-11-03 8:53 to 8:54 PM ET.
+- The installer asks whether the SFTP sign-in uses a key or a password, because the district may not control the SFTP server.
+- A password is kept only in `/etc/campusview/campusview.env` (mode 600), never in git.
+- With a key, the server generates the key pair and prints the `.pub` for the SFTP server's admin to install.
 
-**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed when he merges this pull request. Not built.
+**Proposed by CampusView Engineer (seen by Austin, not explicitly confirmed; not built):**
+
+- The remote host, user, and folder are district settings in the district repo.
+- The SFTP server's host key is pinned on first connect and checked strictly after that. The fingerprint is kept in a `known_hosts` file on the server.
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03 8:53 to 8:54 PM ET and 8:56 PM ET. The host, user, folder, and host-key details are CampusView Engineer's proposal.
+
+**Status:** The pull, no built-in server, and the sign-in choices are decided by Austin (relayed by CampusView Engineer); confirmed when he merges this pull request. The host, user, folder, and host-key details are Proposed. None of it is built.
 
 ## 2026-11-03 — The nightly timer and the drop cleanup move into step 1, and the warehouse keeps a cutoff date
 

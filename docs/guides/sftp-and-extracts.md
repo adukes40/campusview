@@ -4,7 +4,7 @@ The loader is in this repo. SFTP is not built yet. The loader also builds the ty
 
 ## The drop folder
 
-**Not built yet.** On the nightly timer, CampusView pulls the extracts from the SFTP server the district runs into a local drop folder, then validates and loads them, then removes drop files older than 7 nights. CampusView has no built-in SFTP server and no upload account. The files stay on the server and are never committed to either git repo. To confirm: where the remote host, user, folder, and client key are kept, and whether the SFTP server's host key is pinned.
+**Not built yet.** On the nightly timer, CampusView pulls the extracts from the SFTP server the district runs into a local drop folder, then validates and loads them, then removes drop files older than 7 nights. CampusView has no built-in SFTP server and no upload account. The files stay on the server and are never committed to either git repo. Decided (not built): the installer asks whether the SFTP sign-in uses a key or a password, because the district may not control the SFTP server. A password is kept only in `/etc/campusview/campusview.env` (mode 600), never in git. With a key, the server generates the key pair and prints the `.pub` for the SFTP server's admin. Proposed (not built): the remote host, user, and folder are district-repo settings, and the SFTP server's host key is pinned on first connect, then checked strictly, with the fingerprint in a `known_hosts` file on the server. See DECISIONS.md, 2026-11-03.
 
 ## What a nightly drop contains
 
