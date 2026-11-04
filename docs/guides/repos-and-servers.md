@@ -11,7 +11,7 @@ The release flow here comes from Austin (relayed by CampusView Engineer, 2026-11
 | Place | What it holds | What it never holds |
 | --- | --- | --- |
 | Product repo, public: `adukes40/campusview` | Generic code, the installer, SQL for the reporting views, and these docs. The same for every district. | Anything about one district. Student data. Training files. Screenshots. Secrets. |
-| District repo, private: for example `example-district/campusview-district` | That district's settings that are not secret: code mappings, branding, exported Superset dashboards, display name, time zone, and `settings` (`cutoff_date`, plus `sftp_host`, `sftp_port`, `sftp_user`, `sftp_folder`, and `sftp_auth`). | Secrets. Student data or extracts. The SFTP password. The SFTP private key. |
+| District repo, private: for example `example-district/campusview-district` | That district's settings that are not secret: code mappings, branding, exported Superset dashboards, display name, time zone, the cutoff date, and `settings` (`cutoff_date`, plus `sftp_host`, `sftp_port`, `sftp_user`, `sftp_folder`, and `sftp_auth`). | Secrets. Student data or extracts. The SFTP password. The SFTP private key. |
 | The server, outside both repos | Secrets in `/etc/campusview/campusview.env`, including `CV_SFTP_PASSWORD` when sign-in uses a password, and `CV_SFTP_KEY` when it uses a key. The TLS key. The deploy key that reads the district repo. The SFTP private key `/etc/campusview/sftp_ed25519` and `/etc/campusview/sftp_known_hosts`. Student extracts in `/var/lib/campusview/drop`. | Nothing from here is copied into a repo. |
 | The builder's computer | A clone of the product repo, and the training-database files used for testing. | Production data. |
 

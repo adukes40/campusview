@@ -6,7 +6,7 @@ The loader is in this repo. Each night `nightly.sh` pulls the extracts from the 
 
 The district's SFTP server holds the CSV files. CampusView copies them with `scp` into a new dated folder under `/var/lib/campusview/drop`, for example `2026-11-04`. A password is handed to `sshpass` on a file descriptor, not on the command line. `sftp -b` does not prompt, so a password cannot be supplied that way. That folder is owned by the account that runs CampusView. The files stay on this server and are never committed to either git repo.
 
-A full `install.sh` run asks for the SFTP host, port, user, remote folder, and whether sign-in is a key or a password. It asks once. A re-run keeps the answers. Host, port, user, folder, and the sign-in choice go in `/opt/campusview-district/settings`, next to `cutoff_date`. If that folder does not exist, the installer creates it and does not clone a git repo. The loader already reads that folder. A password is stored only as `CV_SFTP_PASSWORD` in `/etc/campusview/campusview.env`. A key is created at `/etc/campusview/sftp_ed25519`, and the done screen prints the public half for the SFTP admin. The path is `CV_SFTP_KEY` in the same env file.
+A full `install.sh` run asks for the SFTP host, port, user, remote folder, and whether sign-in is a key or a password, because the district may not control the SFTP server. It asks once. A re-run keeps the answers. Host, port, user, folder, and the sign-in choice go in `/opt/campusview-district/settings`, next to `cutoff_date`. If that folder does not exist, the installer creates it and does not clone a git repo. The loader already reads that folder. A password is stored only as `CV_SFTP_PASSWORD` in `/etc/campusview/campusview.env` (mode 600), never in git. A key is created at `/etc/campusview/sftp_ed25519`, and the done screen prints the `.pub` for the SFTP admin. The path is `CV_SFTP_KEY` in the same env file.
 
 The first successful connection saves the SFTP server's host key in `/etc/campusview/sftp_known_hosts` and prints the fingerprint in the journal. Later connections reject a different key and do not load. Check the fingerprint with the SFTP admin after the first run.
 
@@ -45,6 +45,8 @@ UV_PYTHON_INSTALL_DIR=/opt/campusview/.uv/python \
   /opt/campusview/.uv/bin/uv run --no-dev --no-python-downloads --python 3.12 \
   python -m loader /path/to/folder /opt/campusview-district
 ```
+
+The first path is the drop folder and the second is the district config folder (PR #17, merge commit 856bf34). The older one-path form, `python -m loader FOLDER`, prints the usage line and exits with code 2.
 
 A good folder has every CSV file named in `loader/contract.py`, 24 files today, with the names spelled exactly. A CSV file that is not in that list fails the load, including a code-mapping file dropped in that folder. A listed file that is missing fails the load. Files that are not CSV, folders, and links that are not a listed file are ignored. A listed file that is a link fails the load. Remove the link. The loader does not read it. A file fails when it is not UTF-8, has no header row, or has a blank, repeated, unknown, or missing header. The district directory must hold all ten code-mapping files.
 
