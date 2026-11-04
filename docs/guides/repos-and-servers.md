@@ -11,7 +11,7 @@ The release flow here comes from Austin (relayed by CampusView Engineer, 2026-11
 | Place | What it holds | What it never holds |
 | --- | --- | --- |
 | Product repo, public: `adukes40/campusview` | Generic code, the installer, SQL for the reporting views, and these docs. The same for every district. | Anything about one district. Student data. Training files. Screenshots. Secrets. |
-| District repo, private: for example `example-district/campusview-district` | That district's settings that are not secret: code mappings, branding, exported Superset dashboards, display name, time zone, and history length. | Secrets. Student data or extracts. |
+| District repo, private: for example `example-district/campusview-district` | That district's settings that are not secret: code mappings, branding, exported Superset dashboards, display name, time zone, and the cutoff date for the data kept. | Secrets. Student data or extracts. |
 | The server, outside both repos | Secrets in `/etc/campusview/campusview.env`. The TLS key. The deploy key that reads the district repo. Student extracts in the SFTP drop. | Nothing from here is copied into a repo. |
 | The builder's computer | A clone of the product repo, and the training-database files used for testing. | Production data. |
 
