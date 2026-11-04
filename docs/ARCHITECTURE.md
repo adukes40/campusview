@@ -93,7 +93,7 @@ Still planned: the timer, the drop cleanup, and SFTP.
 
 Planned for step 1 (Austin, relayed by CampusView Engineer, 2026-11-03 7:04 PM ET): the loader will also run nightly from a systemd timer that `install.sh` installs, with no new components. Not built: today the loader runs by hand. Proposed by CampusView Engineer: the timer runs as `CV_RUN_USER` and the loader connects as `campusview_owner`; it runs at 02:00 in the district time zone with `Persistent=true`; it pulls the extracts over SFTP from the district's SFTP server into the local drop folder, then loads from that folder (decided 2026-11-03, see "CampusView pulls extracts over SFTP; no built-in SFTP server" in [DECISIONS.md](DECISIONS.md)); existing servers get it through one full `install.sh` run, because the update does not install systemd units. It applies only when `CV_SYSTEMD=yes`; what a `start.sh` server gets is to confirm. It takes a lock so two runs cannot overlap (built). It does not use Celery; there is no Celery or Redis in v1.
 
-Logs and `ops.load_batch` may include file names, row counts, row numbers, and rule names. They may not include cell values, student names, or ids from the row that failed.
+Logs and `ops.load_batch` may include file names, row counts, row numbers, and rule names. They may not include cell values, student names, or ids from the row that failed. Header text is shown only when it looks like a column name, and a linked extract file is refused without being read (PR #23).
 
 ## Raw schema and mapping tables
 
@@ -186,7 +186,7 @@ flowchart LR
 | Superset web | Apache Superset 6.1.0, Python 3.12 (verified on 3.12.16), gunicorn. Installed with Superset's tested package list (`requirements/base.txt` from the 6.1.0 release) as pip constraints | 127.0.0.1:8088 |
 | Django | A default `startproject campusview_base` on Django 6.1.2, Python 3.12, in its own Python environment, gunicorn. No role in v1 features | 127.0.0.1:8000 |
 
-Optional nginx (decided 2026-11-02, in the installer on `main`; HTTPS with a self-signed certificate is the default): the installer can add nginx from the distro's apt repo as the only thing listening on the network. Choices are local only through an SSH tunnel, HTTP on port 80, or HTTPS on port 443 with a self-signed or supplied certificate (80 redirects to 443). A re-run shows the saved choice and asks whether to change it. nginx sends `/` to Superset and `/app/` to Django. PostgreSQL is never exposed. Plain HTTP is for test machines with fake data, plus Austin's accepted exception for the on-prem dev server during early testing. Production uses HTTPS. See [DECISIONS.md](DECISIONS.md).
+Optional nginx (decided 2026-11-02, in the installer on `main`; HTTPS with a self-signed certificate is the default): the installer can add nginx from the distro's apt repo as the only thing listening on the network. Choices are local only through an SSH tunnel, HTTP on port 80, or HTTPS on port 443 with a self-signed or supplied certificate (80 redirects to 443). A re-run shows the saved choice and asks whether to change it. On a server that already runs nginx sites, the installer leaves those sites alone and CampusView answers by name instead of at the IP (PR #18). nginx sends `/` to Superset and `/app/` to Django. PostgreSQL is never exposed. Plain HTTP is for test machines with fake data, plus Austin's accepted exception for the on-prem dev server during early testing. Production uses HTTPS. See [DECISIONS.md](DECISIONS.md).
 
 Not in the base install:
 
