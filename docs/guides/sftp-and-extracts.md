@@ -10,7 +10,7 @@ A full `install.sh` run asks for the SFTP host, port, user, remote folder, and w
 
 The first successful connection saves the SFTP server's host key in `/etc/campusview/sftp_known_hosts` and prints the fingerprint in the journal. Later connections reject a different key and do not load. Check the fingerprint with the SFTP admin after the first run.
 
-When systemd is in use, `cv-nightly.timer` runs the pull at 02:00 in the server's time zone. Set the server's time zone to the district's. `Persistent=true` means a missed night runs after the server is back. See the next run with `systemctl list-timers cv-nightly.timer`. See the last run with `journalctl -u cv-nightly.service`. `install.sh --update` does not install or refresh this timer. A full `install.sh` run does.
+When systemd is in use, the installer enables and starts `cv-nightly.timer`. It runs the pull at 02:00 in the server's time zone. Set the server's time zone to the district's. `Persistent=true` means a missed night runs after the server is back. See the next run with `systemctl list-timers cv-nightly.timer`. See the last run with `journalctl -u cv-nightly.service`. `install.sh --update` does not install or refresh this timer. A full `install.sh` run does.
 
 When systemd is not running, the done screen prints the one command to run each night. There is no cron job.
 

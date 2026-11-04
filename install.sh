@@ -746,7 +746,8 @@ Persistent=true
 WantedBy=timers.target
 C
   systemctl daemon-reload
-  systemctl enable cv-superset cv-django cv-nightly.timer
+  systemctl enable cv-superset cv-django
+  systemctl enable --now cv-nightly.timer
   restart_apps
 else
   say "8. starting with start.sh"
