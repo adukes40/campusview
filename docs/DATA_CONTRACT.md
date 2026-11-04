@@ -8,7 +8,7 @@ The Infinite Campus section says how a typical extract maps onto these files. It
 
 ## What the loader checks today
 
-The built loader (PR #10) reads the Infinite Campus files themselves, not the standard files below. It also reads the ten code-mapping files from the district directory you pass. It checks:
+The built loader (PR #10) reads the Infinite Campus files themselves, not the standard files below. It also reads the ten code-mapping files from the district directory you pass (PR #17, merge commit 856bf34), never from the drop. It checks:
 
 - The folder holds all 24 files listed in `loader/contract.py`: `att_day_aggregation`, `attendance`, `attendance_excuse`, `behavior_event`, `behavior_incident`, `behavior_res_type`, `behavior_resolution`, `behavior_role`, `behavior_type`, `calendar`, `campus_attribute`, `campus_dictionary`, `day`, `enrollment`, `identity`, `identity_race_ethnicity`, `period`, `person`, `plan`, `plan_type`, `program`, `program_participation`, `race_ethnicity`, and `school`, each ending in `.csv`. A missing file fails the load. A `.csv` file that is not on the list fails the load. Other files and folders are ignored.
 - Each file is UTF-8 and has a header row. The headers match the list exactly, with the same spelling and case, in any order. An unknown, missing, repeated, or blank header fails the file.
@@ -213,7 +213,7 @@ One row per 504 or IEP. Key: `plan_id`. The file has no school column. Reporting
 
 These ten files live in the district directory the loader is given, not in the SFTP drop. The loader puts each one in schema `ref` on every load, in the same transaction as `raw` and `ic`. The table name is the file name without `.csv`. It grants nothing, so `campusview_reader` cannot read `ref`.
 
-A missing file, a bad header, or a bad value fails the load before anything is written. The report says the problem is in the district config folder's map files. A missing district folder says the problem is the district config folder. The report names the map file, the line, and the rule, and it does not repeat the cell value. A blank required cell fails. A duplicate key fails, and so does a duplicate `sort_order`. Labels are 1 to 80 characters with no control characters. Booleans are exactly `true` or `false`. A header-only file replaces that table with zero rows and does not warn.
+A missing file, a bad header, or a bad value fails the load before anything is written. The report says the problem is in the district config folder's map files. A missing district folder says the problem is the district config folder. The report names the map file, the line, and the rule, and it does not repeat the cell value. A file that is not valid CSV fails, and so does a row whose length does not match the header. A blank required cell fails. A duplicate key fails, and so does a duplicate `sort_order`. Labels are 1 to 80 characters with no control characters. Booleans are exactly `true` or `false`. A header-only file replaces that table with zero rows and does not warn.
 
 An extract value with no map row warns, and the load still passes. The warning names the extract file, the column, the number of rows, and the first line. It does not include the value. A blank cell does not warn. Keys are the local codes exactly as they appear in the extracts.
 

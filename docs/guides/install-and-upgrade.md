@@ -207,6 +207,8 @@ After that, leave `CV_REF` as `dev` and run the update command.
 sudo bash /opt/campusview/install.sh --update
 ```
 
+Austin ran this on a fresh dev install, and it went from 9085d55 to 856bf34 (PR #17, merge commit 856bf34) cleanly (Austin, relayed by CampusView Engineer, 2026-11-03 8:48 PM ET).
+
 On production, change the `CV_REF` line in `/etc/campusview/campusview.env` to the release tag. Keep the quotes. Leave every other line alone.
 
 ```bash
