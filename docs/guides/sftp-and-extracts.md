@@ -8,13 +8,13 @@ The district's SFTP server holds the CSV files. CampusView copies them with `scp
 
 A full `install.sh` run asks for the SFTP host, port, user, remote folder, and whether sign-in is a key or a password, because the district may not control the SFTP server. It asks once. A re-run keeps the answers. Host, port, user, folder, and the sign-in choice go in `/opt/campusview-district/settings`, next to `cutoff_date`. If that folder does not exist, the installer creates it and does not clone a git repo. The loader already reads that folder. A password is stored only as `CV_SFTP_PASSWORD` in `/etc/campusview/campusview.env` (mode 600), never in git. A key is created at `/etc/campusview/sftp_ed25519`, and the done screen prints the `.pub` for the SFTP admin. The path is `CV_SFTP_KEY` in the same env file.
 
-The first successful connection saves the SFTP server's host key in `/etc/campusview/sftp_known_hosts` and prints the fingerprint in the journal. Later connections reject a different key and do not load. Check the fingerprint with the SFTP admin after the first run.
+The first connection saves the SFTP server's host key in `/etc/campusview/sftp_known_hosts`, even if the sign-in then fails. After a successful copy, the journal prints the fingerprint on every run, with `Pinned the SFTP host key` the first time. Later connections reject a different key and do not load. Check the fingerprint with the SFTP admin after the first run.
 
 When systemd is in use, the installer enables and starts `cv-nightly.timer`. It runs the pull at 02:00 in the server's time zone. Set the server's time zone to the district's. `Persistent=true` means a missed night runs after the server is back. See the next run with `systemctl list-timers cv-nightly.timer`. See the last run with `journalctl -u cv-nightly.service`. The update command is in [install-and-upgrade.md](install-and-upgrade.md#update-the-server).
 
 When systemd is not running, the done screen prints the one command to run each night. There is no cron job.
 
-A fetch or a load that fails deletes nothing. The journal says `Could not fetch the extracts from the SFTP server.` when the copy fails. The nightly load fails until the district map files and `cutoff_date` are in `/opt/campusview-district`.
+A fetch or a load that fails deletes nothing. The journal says `Could not fetch the extracts from the SFTP server.` when the copy fails, and `The SFTP folder had no CSV files.` when the remote folder is empty. Cleanup runs only when the loader exits 0. Drop folders use the server's date, and a second run on the same day gets a time suffix, such as `2026-11-04-021500`. The nightly load fails until the district map files and `cutoff_date` are in `/opt/campusview-district`.
 
 ## What a nightly drop contains
 
@@ -50,7 +50,7 @@ The first path is the drop folder and the second is the district config folder (
 
 A good folder has every CSV file named in `loader/contract.py`, 24 files today, with the names spelled exactly. A CSV file that is not in that list fails the load, including a code-mapping file dropped in that folder. A listed file that is missing fails the load. Files that are not CSV, folders, and links that are not a listed file are ignored. A listed file that is a link fails the load. Remove the link. The loader does not read it. A file fails when it is not UTF-8, has no header row, or has a blank, repeated, unknown, or missing header. The district directory must hold all ten code-mapping files.
 
-You should see `Load passed.`, one line per extract file with its row count, and one line per map file. The same text is stored in `ops.load_batch`, in the `report` column. `outcome` is `pass` or `fail`. `fault` is `extract` when the files are wrong, and `server` when the machine or the database is the problem. `fault` is empty on a pass. The table also has `batch_id`, `started_at`, and `finished_at`. The loader creates `ops` and the table on its first run. Read the table as `campusview_owner`; `campusview_reader` cannot see it.
+You should see `Load passed.`, one line per extract file with its row count, and one line per map file. The same text is stored in `ops.load_batch`, in the `report` column. `outcome` is `pass` or `fail`. `fault` is `extract` when the files are wrong, and `server` when the machine or the database is the problem. A missing or bad map file or `cutoff_date` counts as `extract`. A missing district folder counts as `server`. `fault` is empty on a pass. The table also has `batch_id`, `started_at`, and `finished_at`. The loader creates `ops` and the table on its first run. Read the table as `campusview_owner`; `campusview_reader` cannot see it.
 
 The exit code is 0 when the load passed and the report was saved, 1 otherwise, and 2 when the command did not have both paths. When `CV_OWNER_DB_PASSWORD` is not set, or the database cannot be reached, the loader prints the report and saves nothing to `ops.load_batch`.
 

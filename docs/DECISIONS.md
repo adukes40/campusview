@@ -12,11 +12,20 @@ Open metric questions are not listed here. They are the Decisions for Austin lis
 
 **Amends:** the Proposed timer detail in 2026-11-03 "The nightly timer and the drop cleanup move into step 1" (below), "It loads from the SFTP drop folder that PR #20 settles." The timer loads from the local drop folder that the pull fills.
 
-**Sign-in, built:** the installer asks whether the SFTP sign-in uses a key or a password, because the district may not control the SFTP server. A password is kept only in `/etc/campusview/campusview.env` (mode 600), never in git. With a key, the server generates the key pair and prints the `.pub` for the SFTP server's admin to install. The host, port, user, and folder are district settings. The SFTP server's host key is pinned on first connect and checked strictly after that.
+**Sign-in, built:** the installer asks whether the SFTP sign-in uses a key or a password, because the district may not control the SFTP server. A password is kept only in `/etc/campusview/campusview.env` (mode 600), never in git. With a key, the server generates the key pair and prints the `.pub` for the SFTP server's admin to install. The password-or-key question and the password kept only in the env file are Austin's decision.
 
-**Who:** Austin, relayed by CampusView Engineer, 2026-11-03 8:53 to 8:56 PM ET.
+**Proposed — built in PR #24, awaiting Austin's explicit confirmation** (CampusView Engineer's build choices; merging PR #24 did not settle them):
 
-**Status:** Built.
+- The SFTP host, port, user, folder, and sign-in choice are kept in the district repo's `settings` file (`sftp_host`, `sftp_port`, `sftp_user`, `sftp_folder`, `sftp_auth`), not in the env file.
+- The SFTP server's host key is pinned on the first connection (`StrictHostKeyChecking=accept-new`, saved in `/etc/campusview/sftp_known_hosts`) and checked strictly after that.
+- 7 nights is a fixed product value in `nightly.sh`, not a district setting.
+- A server that uses `start.sh` instead of systemd gets one printed command to run nightly, with no timer and no cron job.
+- The timer and service units are written only by a full `install.sh` run, never by `install.sh --update`.
+- A missing or bad map file or `cutoff_date` is recorded in `ops.load_batch` as `fault=extract`, because the column allows only `extract` or `server`. A missing district folder is recorded as `fault=server`.
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03 8:53 to 8:56 PM ET, for the SFTP client, no built-in server, and key or password. CampusView Engineer for the Proposed items.
+
+**Status:** Built (PR #24, merged by Austin 2026-11-03 11:08 PM ET). The items above are Proposed.
 
 ## 2026-11-03 — The nightly timer and the drop cleanup move into step 1, and the warehouse keeps a cutoff date
 
@@ -43,9 +52,9 @@ The cutoff date is a district setting kept in the district repo, not a value in 
 - An existing server gets the timer through one full `install.sh` run, because `install.sh --update` does not install systemd units.
 - The timer applies only when `CV_SYSTEMD=yes`. A `start.sh` server gets one command on the done screen and no cron. See the entry above.
 
-Austin then picked how long drop files are kept (Austin, relayed by CampusView Engineer, 2026-11-03 7:33 PM ET): "Keep 7 nights of drop files, then delete older ones." Settled above: 7 is a fixed product value.
+Austin then picked how long drop files are kept (Austin, relayed by CampusView Engineer, 2026-11-03 7:33 PM ET): "Keep 7 nights of drop files, then delete older ones." 7 as a fixed product value, not a district setting, is Proposed in the entry above.
 
-**Settled** by the entry above: 7 nights is a fixed product value. The loader does not drop rows dated before the cutoff. The extract is capped at the source, and the date is used for the calendar warning.
+7 nights as a fixed product value is Proposed in the entry above. The loader does not drop rows dated before the cutoff. The extract is capped at the source, and the date is used for the calendar warning.
 
 **Who:** Austin, relayed by CampusView Engineer, 2026-11-03 7:04 PM, 7:30 PM, and 7:33 PM ET. The timer details are CampusView Engineer's proposal.
 
