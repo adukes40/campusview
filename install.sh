@@ -191,8 +191,9 @@ if [ -n "$CV_ANSWERS" ]; then [ -f "$CV_ANSWERS" ] || { echo "answers file $CV_A
 # so a re-run can switch between tunnel, http and https.
 NETV="CV_ACCESS CV_SERVER_NAME CV_TLS_CERT_SOURCE CV_TLS_CERT_FILE CV_TLS_KEY_FILE"; declare -A GIVEN=()
 for v in $NETV; do [ -n "${!v:-}" ] && GIVEN[$v]=${!v}; done
-RERUN=no; NET_SAVED=no
-if [ -f "$ENVF" ]; then . "$ENVF"; RERUN=yes; grep -q "^CV_ACCESS='[a-z]" "$ENVF" && NET_SAVED=yes; fi
+RERUN=no; NET_SAVED=no; SAVED_ACCESS=; SAVED_NAME=
+if [ -f "$ENVF" ]; then . "$ENVF"; RERUN=yes; SAVED_ACCESS=${CV_ACCESS-}; SAVED_NAME=${CV_SERVER_NAME-}
+  grep -q "^CV_ACCESS='[a-z]" "$ENVF" && NET_SAVED=yes; fi
 for v in "${!GIVEN[@]}"; do printf -v "$v" '%s' "${GIVEN[$v]}"; done
 : "${CV_RUN_USER:=${SUDO_USER:-root}}"
 : "${CV_INSTALL_DIR:=/opt/campusview}"; : "${CV_PG_PORT:=5432}"; : "${CV_SUPERSET_PORT:=8088}"; : "${CV_DJANGO_PORT:=8000}"
@@ -212,6 +213,12 @@ RE_SECRET='^[^'"'"'"\[:space:]]{8,}$'   # 8+ chars, no spaces, no ' " or \
 RE_PATH='^/[A-Za-z0-9._/-]*$'; RE_EMAIL='^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$'   # nothing that could break the saved file
 RE_ACCESS='^(tunnel|http|https)$'; RE_CERTSRC='^(selfsigned|own)$'; RE_HOST='^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$'
 RE_IP='^[0-9]{1,3}(\.[0-9]{1,3}){3}$'
+public_name(){ # 0 when another machine can open this name
+  local n=$1
+  [[ $n =~ $RE_HOST ]] || return 1
+  [[ $n =~ $RE_IP || $n == localhost || $n == localhost.* ]] && return 1
+  return 0
+}
 
 ask(){ # ask VAR REGEX "Prompt" ["help line"] [secret]
   local var=$1 re=$2 prompt=$3 help=${4:-} secret=${5:-} ans again
@@ -345,6 +352,7 @@ chk CV_ACCESS "$RE_ACCESS" "tunnel, http or https"
 if [ "$CV_ACCESS" != tunnel ]; then
   [ -n "$CV_SERVER_NAME" ] || CV_SERVER_NAME=$(primary_ip)
   chk CV_SERVER_NAME "$RE_HOST" "a host name or IPv4 address, without http://"
+  [[ $CV_SERVER_NAME =~ $RE_IP ]] || public_name "$CV_SERVER_NAME" || die "Enter a DNS name for CampusView."
 fi
 if [ "$CV_ACCESS" = https ]; then chk CV_TLS_CERT_SOURCE "$RE_CERTSRC" "selfsigned or own"
   if [ "$CV_TLS_CERT_SOURCE" = own ]; then
@@ -644,9 +652,25 @@ fi
 put(){ # put FILE MODE < content: replace FILE only when the content differs (re-runs stay byte-identical)
   local t; t=$(mktemp "$1.XXXXXX"); cat > "$t"
   if cmp -s "$t" "$1"; then rm -f "$t"; return 1; fi; chmod "$2" "$t"; mv "$t" "$1"; }
-nginx_up(){ nginx -t -q || die "nginx rejected its configuration (see above)"
+nginx_up(){
+  if ! nginx -t -q; then
+    rm -f /etc/nginx/sites-enabled/campusview
+    if [ -n "${NGINX_PREV:-}" ] && [ -f "$NGINX_PREV" ]; then mv "$NGINX_PREV" "$SITE"; ln -sfn "$SITE" /etc/nginx/sites-enabled/campusview
+    else rm -f "$SITE"; fi
+    die "nginx rejected its configuration (see above)"
+  fi
+  rm -f "${NGINX_PREV:-}"; NGINX_PREV=
   if [ "$HAS_SYSTEMD" = yes ]; then systemctl enable -q nginx; systemctl reload-or-restart nginx
   elif [ -s /run/nginx.pid ] && kill -0 "$(cat /run/nginx.pid)" 2>/dev/null; then nginx -s reload; else nginx; fi; }
+untouched_packaged_welcome(){
+  [ -L /etc/nginx/sites-enabled/default ] || return 1
+  [ "$(readlink -f /etc/nginx/sites-enabled/default)" = /etc/nginx/sites-available/default ] || return 1
+  [ ! -e /var/www/html/index.html ] && [ ! -e /var/www/html/index.htm ] || return 1
+  local sum
+  sum=$(dpkg-query -W -f='${Conffiles}\n' nginx-common 2>/dev/null | awk '$1=="/etc/nginx/sites-available/default"{print $2}')
+  [ -n "$sum" ] && [ "$sum" = "$(md5sum /etc/nginx/sites-available/default | awk '{print $1}')" ] || return 1
+  cmp -s /usr/share/nginx/html/index.html /var/www/html/index.nginx-debian.html
+}
 SITE=/etc/nginx/sites-available/campusview
 if [ "$CV_ACCESS" = tunnel ]; then
   say "9. network access: SSH tunnel only (no web server)"
@@ -658,9 +682,46 @@ if [ "$CV_ACCESS" = tunnel ]; then
     else nginx_up; fi
   fi
 else
-  say "9. network access: nginx, $(access_desc)"
+  bare_ip=' default_server'; SNAME=_; kept_site=; keep=; other_443=no
+  for f in /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*.conf; do
+    [ -e "$f" ] || continue
+    b=$(basename "$f"); [ "$b" = campusview ] && continue
+    grep -qE '^[[:space:]]*listen[[:space:]][^;]*\b443\b[^;]*\bdefault_server\b' "$f" && other_443=yes
+    case $f in /etc/nginx/conf.d/*) continue ;; esac
+    if [ "$b" = default ] && untouched_packaged_welcome; then continue; fi
+    [ -z "$kept_site" ] && kept_site=$b
+  done
+  if [ "$RERUN" = yes ] && [ "$CV_ACCESS" = "$SAVED_ACCESS" ] && [ "$CV_SERVER_NAME" = "$SAVED_NAME" ] && [ -f "$SITE" ]; then
+    if grep -qx '# bare_ip yes' "$SITE"; then keep=yes
+    elif grep -qx '# bare_ip no' "$SITE"; then
+      SNAME=$(awk '$1=="server_name"{n=$2; sub(/;$/,"",n); if(n!="_"){print n; exit}}' "$SITE")
+      if [ "$SNAME" = "$CV_SERVER_NAME" ] || [ "$SNAME" = "$(hostname)" ]; then keep=no; else SNAME=_; fi
+    fi
+  fi
+  if [ "$keep" = yes ]; then :
+  elif [ "$keep" = no ]; then bare_ip=
+  else
+    if [ -n "$kept_site" ]; then
+      bare_ip=; SNAME=$CV_SERVER_NAME
+      if [[ $CV_SERVER_NAME =~ $RE_IP ]]; then
+        SNAME=$(hostname)
+        public_name "$SNAME" || die "This nginx already serves $CV_SERVER_NAME. Enter a DNS name for CampusView."
+      fi
+      echo "  Keeping the nginx site $kept_site. CampusView answers for $SNAME."
+    else rm -f /etc/nginx/sites-enabled/default; fi
+  fi
+  ip443=$bare_ip
+  if [ "$other_443" = yes ]; then
+    ip443=
+    if [ "$SNAME" = _ ]; then
+      if [[ $CV_SERVER_NAME =~ $RE_IP ]]; then SNAME=$(hostname); public_name "$SNAME" || die "This nginx already serves $CV_SERVER_NAME. Enter a DNS name for CampusView."
+      else SNAME=$CV_SERVER_NAME; fi
+    fi
+  fi
+  show=$CV_SERVER_NAME; [ "$SNAME" != _ ] && show=$SNAME
+  say "9. network access: nginx, $(CV_SERVER_NAME=$show access_desc)"
   L80=; L443=; if [ -f /proc/net/if_inet6 ]; then   # listen on IPv6 too, when the server has it
-    L80='    listen [::]:80 default_server;'$'\n'; L443='    listen [::]:443 ssl default_server;'$'\n'; fi
+    L80="    listen [::]:80${bare_ip};"$'\n'; L443="    listen [::]:443 ssl${ip443};"$'\n'; fi
   if [ "$CV_ACCESS" = https ]; then
     install -d -m 700 -o root -g root "$TLS"
     if [ "$CV_TLS_CERT_SOURCE" = own ]; then
@@ -680,15 +741,23 @@ else
       fi
     fi
   fi
+  NGINX_PREV=
+  if [ -f "$SITE" ]; then NGINX_PREV=$(mktemp); cp -a "$SITE" "$NGINX_PREV"; fi
   { echo "# CampusView, written by install.sh (re-running it rewrites this file)."
     echo "# Superset at /, Django at /app/. The apps and PostgreSQL listen on 127.0.0.1 only."
+    [ -n "$bare_ip" ] && echo "# bare_ip yes" || echo "# bare_ip no"
+    if [ -z "$ip443" ] && [ "$CV_ACCESS" = https ] && [ "$other_443" = no ]; then
+      printf 'server {\n    listen 443 ssl default_server;\n'
+      [ -n "$L443" ] && printf '    listen [::]:443 ssl default_server;\n'
+      printf '    server_name _;\n    ssl_certificate     %s/campusview.crt;\n    ssl_certificate_key %s/campusview.key;\n    return 301 http://$host$request_uri;\n}\n' $TLS $TLS
+    fi
     if [ "$CV_ACCESS" = https ]; then
-      printf 'server {\n    listen 80 default_server;\n%s    server_name _;\n    return 301 https://$host$request_uri;\n}\n' "$L80"
-      printf 'server {\n    listen 443 ssl default_server;\n%s' "$L443"
+      printf 'server {\n    listen 80%s;\n%s    server_name %s;\n    return 301 https://$host$request_uri;\n}\n' "$bare_ip" "$L80" "$SNAME"
+      printf 'server {\n    listen 443 ssl%s;\n%s' "$ip443" "$L443"
       printf '    ssl_certificate     %s/campusview.crt;\n    ssl_certificate_key %s/campusview.key;\n    ssl_protocols TLSv1.2 TLSv1.3;\n' $TLS $TLS
-    else printf 'server {\n    listen 80 default_server;\n%s' "$L80"; fi
-    sed -e "s#@D@#$D#g" -e "s#@SP@#$CV_SUPERSET_PORT#g" -e "s#@DP@#$CV_DJANGO_PORT#g" <<'NGX'
-    server_name _;
+    else printf 'server {\n    listen 80%s;\n%s' "$bare_ip" "$L80"; fi
+    sed -e "s#@D@#$D#g" -e "s#@SP@#$CV_SUPERSET_PORT#g" -e "s#@DP@#$CV_DJANGO_PORT#g" -e "s#@NAME@#$SNAME#g" <<'NGX'
+    server_name @NAME@;
     client_max_body_size 100m;
     proxy_http_version 1.1;
     proxy_read_timeout 300s;
@@ -706,7 +775,7 @@ else
 }
 NGX
   } | put "$SITE" 644 || true
-  ln -sfn "$SITE" /etc/nginx/sites-enabled/campusview; rm -f /etc/nginx/sites-enabled/default
+  ln -sfn "$SITE" /etc/nginx/sites-enabled/campusview
   nginx_up
   runuser -u www-data -- test -r "$D/static/admin/css/base.css" 2>/dev/null ||
     echo "  NOTE: nginx (www-data) can't read $D/static, so the Django admin pages will have no styling."
@@ -720,10 +789,13 @@ ok=1
 for u in "http://127.0.0.1:$CV_SUPERSET_PORT/health" "http://127.0.0.1:$CV_SUPERSET_PORT/login/" "http://127.0.0.1:$CV_DJANGO_PORT/admin/login/"; do
   wait200 "$u" || ok=0; echo "  $(code "$u")  $u"; done
 if [ "$CV_ACCESS" != tunnel ]; then   # through nginx, the way a browser comes in (curl -k: the certificate may be self-signed)
-  pcode(){ curl -sk --noproxy '*' --resolve "$CV_SERVER_NAME:80:127.0.0.1" --resolve "$CV_SERVER_NAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "$1" || true; }
+  hit=$CV_SERVER_NAME
+  if [ "$SNAME" != _ ] && [ "$SNAME" != "$CV_SERVER_NAME" ]; then
+    hit=$SNAME; URL_SS="$CV_ACCESS://$SNAME/"; URL_DJ="$CV_ACCESS://$SNAME/app/"; fi
+  pcode(){ curl -sk --noproxy '*' --resolve "$hit:80:127.0.0.1" --resolve "$hit:443:127.0.0.1" -o /dev/null -w '%{http_code}' "$1" || true; }
   for u in "${URL_SS}health" "${URL_SS}login/" "${URL_SS}app/admin/login/"; do
     for i in $(seq 30); do [ "$(pcode "$u")" = 200 ] && break; sleep 2; done; echo "  $(pcode "$u")  $u"; [ "$(pcode "$u")" = 200 ] || ok=0; done
-  if [ "$CV_ACCESS" = https ]; then u="http://$CV_SERVER_NAME/login/"; echo "  $(pcode "$u")  $u (should send you to https)"; [ "$(pcode "$u")" = 301 ] || ok=0; fi
+  if [ "$CV_ACCESS" = https ]; then u="http://$hit/login/"; echo "  $(pcode "$u")  $u (should send you to https)"; [ "$(pcode "$u")" = 301 ] || ok=0; fi
 fi
 dbs=$(psqlq -c "SELECT string_agg(datname, ' ' ORDER BY datname) FROM pg_database WHERE datname IN ('superset_meta','django_app','campusview_data')")
 echo "  databases: $dbs"; [ "$(wc -w <<<"$dbs")" = 3 ] || ok=0
