@@ -36,7 +36,8 @@ Step 0 is documentation and the base install. Do not add application code in a d
 - Default deny. No role, or no school, means no rows. Superset self-signup stays off.
 - Access lives in Superset roles and row-level security on `school_id`. Do not publish a dataset that has no `school_id`. A native filter is never a permission.
 - PostgreSQL and gunicorn (Superset and Django) listen on 127.0.0.1 only. PostgreSQL uses `listen_addresses = '127.0.0.1'`, not `localhost` (that also opens `[::1]`). nginx, when chosen in the installer, is the only listener on the network: HTTP on 80, or HTTPS on 443 with 80 redirecting to 443. Never expose PostgreSQL; DBeaver uses an SSH tunnel. Plain HTTP only on an on-prem test machine that is not on the internet; real student data needs HTTPS. One exception, accepted by Austin: the on-prem dev server may use plain HTTP during early testing, and must move to HTTPS before production gets Google sign-on or real users. Production always uses HTTPS. Do not open any other port without Austin's decision.
-- Do not log cell values, secrets, or full row dumps. A loader error names the file, the row number, and the rule.
+- Do not log cell values, secrets, or full row dumps. A loader error names the file, the row number, and the rule. Never echo header text or a database message that could hold file contents; show a header only when it matches `[A-Za-z_][A-Za-z0-9_]{0,63}`. Do not follow links in the drop folder.
+- The installer must not take over another nginx site: no default_server or 443 default when another site has it, and restore the CampusView site file if `nginx -t` fails.
 - Named working lists have no race column. Equity output has group totals only.
 
 ## YAGNI and KISS

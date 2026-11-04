@@ -223,6 +223,17 @@ Austin then picked how long drop files are kept (Austin, relayed by CampusView E
 
 **Status:** Decided by Austin (relayed by CampusView Engineer); confirmed by merging PR #8.
 
+## 2026-11-03 — nginx shares the server, and the load report hides file text
+
+**What:**
+
+- **nginx (built in PR #18, merged by Austin 2026-11-03 at 9:37 PM ET).** The installer no longer takes over a server that already runs nginx sites. On a new server it removes only the untouched distro welcome page, and CampusView answers at the server's IP. If another site is enabled in `sites-enabled`, that site stays and keeps the IP. CampusView then answers only at the DNS name entered, or at this machine's hostname when the answer was an IP. If another file in `sites-enabled` or `conf.d` already owns 443 as the default, CampusView does not claim it and answers by name. The installer stops when it has no name other machines could use. `localhost` is never accepted as the server name. If `nginx -t` fails, the installer puts back its own previous CampusView site file, or removes the new one, and stops. Other sites' files are not changed. The install prints the address CampusView really answers at. A re-run with the same access mode and name keeps the earlier choice while the saved name is still the one entered or this machine's hostname.
+- **Load report (built in PR #23, merged by Austin 2026-11-03 at 9:37 PM ET).** The report does not repeat file contents. An unknown or repeated header is named only when it looks like a column name: a letter or underscore, then letters, digits or underscores, 64 characters at most. Other header text is counted, not shown. A listed extract file that is a link fails with "The file is a link. Remove it." and is not read. Other links in the drop folder are ignored. A PostgreSQL row error keeps the database's one-line message unless it quotes something that is not a column of that file. A message that quotes nothing is kept. Otherwise the report says "The database rejected the file." with the line number. This fixes a headerless file printing its first line.
+
+**Who:** Built by CampusView Engineer; Austin merged both PRs.
+
+**Status:** Built. Merged to `dev` in PRs #18 and #23.
+
 ## 2026-11-03 — Test with IC training data and keep every column
 
 **What:** Two changes.
@@ -281,7 +292,7 @@ A re-run shows the saved choice and asks whether to change it. The default is HT
 
 **Tradeoff:** Plain HTTP sends logins and passwords unencrypted across the network. Austin accepted that for test machines because all data there is fake ("all data would be fake"). HTTP is for test machines with fake data only. Real student data needs HTTPS. *Amended 2026-11-03: Austin accepted plain HTTP on the on-prem dev server during early testing. See "Plain HTTP on the dev server during early testing" above.*
 
-**Status:** Built. The installer step merged to `main` in PR #5.
+**Status:** Built. The installer step merged to `main` in PR #5. *Amended 2026-11-03: on a server that already runs nginx sites, CampusView no longer takes the default site. See "nginx shares the server, and the load report hides file text" above.*
 
 **Alternatives:** Local only with an SSH tunnel for everyone. Still available as one of the three choices. Deferring the proxy until later. Set aside because Austin wants network access on his test machine now.
 
