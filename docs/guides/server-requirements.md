@@ -8,7 +8,7 @@ Ubuntu 22.04 or 24.04, or Debian 12. All three passed a clean install and a re-r
 
 ## Hardware
 
-What a single-server install needs: CPU, memory, and disk, including room for the three PostgreSQL databases, the SFTP drop (step 1), and a local archive of loaded files. How to think about growth when history is set to two school years.
+What a single-server install needs: CPU, memory, and disk, including room for the three PostgreSQL databases, the SFTP drop (step 1), and a local archive of loaded files. How to think about growth as years pile up after the district cutoff date, since the warehouse is not purged by school year.
 
 ## Software
 

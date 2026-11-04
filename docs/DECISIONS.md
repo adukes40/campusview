@@ -4,6 +4,41 @@ Dated log of decisions already made. The plan of record is [PLAN.md](PLAN.md). N
 
 Open metric questions are not listed here. They are the Decisions for Austin list in [METRICS.md](METRICS.md). Open extract questions are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md). Both lists are deferred for now and do not block step 0.
 
+## 2026-11-03 — The nightly timer and the drop cleanup move into step 1, and the warehouse keeps a cutoff date
+
+**What:** Austin moved two later-step items into step 1: "Move the nightly timer and old-data cleanup into Step 1." (Austin, relayed by CampusView Engineer, 2026-11-03 7:04 PM ET.) The loader will run nightly from a timer, and the cleanup is built with it. The email alert on a failed import stays parked.
+
+Austin then answered the cleanup questions (Austin, relayed by CampusView Engineer, 2026-11-03 7:30 PM ET):
+
+- (a) Keep everything dated on or after 2025-07-01. That is a fixed date, not a rolling window of school years.
+- (b) If a rolling window is used later, it counts back from today's school year.
+- (c) The cleanup removes old extract files from the SFTP drop. It does not remove old school years from the warehouse or the reports, and it does not remove old `ops.load_batch` rows. `ops.load_batch` keeps every row, as it does today.
+- (d) Each nightly drop is a full copy, not a file of changes.
+- (e) No records-retention rule applies.
+
+The cutoff date is a district setting kept in the district repo, not a value in the product code (CampusView Engineer, following PLAN.md: "Names, schools, code values, branding, and years are supplied at install time or kept in the district repo."). This district's value is 2025-07-01. Today the loader still has that date as a constant, `EXTRACT_CUTOFF_DATE` in `loader/load.py`, used only for the calendar warning; reading it from the district repo is not built yet.
+
+**Amends:** the 2026-11-01 "Also decided" row "History defaults to the current school year plus one prior year, then purges." The warehouse now keeps data dated on or after the district cutoff date, set in the district repo, and is not purged by school year. Because each drop is a full copy, each good load replaces the warehouse with the drop. ARCHITECTURE.md's loader interface is updated to match.
+
+**Proposed by CampusView Engineer (build plan, not yet built):**
+
+- A systemd timer that `install.sh` installs, with no new components.
+- It runs as the installer's run account (`CV_RUN_USER`), and the loader connects to the database as `campusview_owner`.
+- It runs nightly at 02:00 in the district time zone, with `Persistent=true` so a missed night runs when the server comes back.
+- It loads from the SFTP drop folder that PR #20 settles.
+- An existing server gets the timer through one full `install.sh` run, because `install.sh --update` does not install systemd units.
+- The timer applies only when `CV_SYSTEMD=yes`. What a server that uses `start.sh` gets instead is to confirm.
+
+Austin then picked how long drop files are kept (Austin, relayed by CampusView Engineer, 2026-11-03 7:33 PM ET): "Keep 7 nights of drop files, then delete older ones." Whether 7 is a fixed product value or a district setting is to confirm.
+
+**To confirm:** whether 7 nights is a fixed product value or a district setting; whether the loader also drops rows dated before the cutoff or relies on the extract being capped at the source.
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03 7:04 PM, 7:30 PM, and 7:33 PM ET. The timer details are CampusView Engineer's proposal.
+
+**Status:** (a) to (e) and the 7 nights decided by Austin (relayed by CampusView Engineer); confirmed when he merges this pull request. The timer details are Proposed.
+
+**Builds on:** 2026-11-01 "No Celery for loads", and "Years kept, the Day table, and SFTP for now" (below).
+
 ## 2026-11-03 — The typed copy takes its types from column names, and every date and time is a timestamp
 
 **What:**
@@ -360,7 +395,7 @@ These were approved in the same plan. Each is the rule the build follows. Rows c
 | --- | --- | --- |
 | Infinite Campus is the only mapping built and tested in v1. Docs explain how to write another. | One real extract is enough to prove the contract. | Building several SIS mappings up front. |
 | Google sign-in now. *Open since 2026-11-01: plain Superset does not do this out of the box. **Superseded 2026-11-03:** Austin confirmed Google sign-in is a future item, not in the plan; it is parked in [FEATURES.md](../FEATURES.md#parking-lot).* | The district can use accounts it already has. | ClassLink, which is parked. Local passwords as the main sign-in. |
-| History defaults to the current school year plus one prior year, then purges. | Attendance needs a last-year comparison. Unbounded history is unnecessary for v1. | Keeping every year, or keeping only the current year. |
+| History defaults to the current school year plus one prior year, then purges. *Amended 2026-11-03 (Austin, relayed by CampusView Engineer): the warehouse keeps data dated on or after a district cutoff date set in the district repo, and is not purged by school year. See "The nightly timer and the drop cleanup move into step 1" above.* | Attendance needs a last-year comparison. Unbounded history is unnecessary for v1. | Keeping every year, or keeping only the current year. |
 | All metric logic lives in PostgreSQL reporting views. Charts only filter and aggregate those views. | A number is defined once. | Computing metrics in Python or inside each chart. |
 | Materialize a view only after a query is proven slow. | Ordinary views stay correct for "today" without a refresh job. | Materializing everything at the start. |
 | Default deny. SQL Lab and chart building only for system admin. *Changed 2026-11-01: roles and school limits now live in Superset (roles plus row-level security). The Django access list and its sync are deferred.* | Staff see only their schools. | Editing access in two places. |
