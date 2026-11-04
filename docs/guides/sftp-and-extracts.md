@@ -36,6 +36,8 @@ UV_PYTHON_INSTALL_DIR=/opt/campusview/.uv/python \
   python -m loader /path/to/folder /opt/campusview-district
 ```
 
+The first path is the drop folder and the second is the district config folder (PR #17, merge commit 856bf34). The older one-path form, `python -m loader FOLDER`, prints the usage line and exits with code 2.
+
 A good folder has every CSV file named in `loader/contract.py`, 24 files today, with the names spelled exactly. A CSV file that is not in that list fails the load, including a code-mapping file dropped in that folder. A listed file that is missing fails the load. Files that are not CSV, folders, and links that are not a listed file are ignored. A listed file that is a link fails the load. Remove the link. The loader does not read it. A file fails when it is not UTF-8, has no header row, or has a blank, repeated, unknown, or missing header. The district directory must hold all ten code-mapping files.
 
 You should see `Load passed.`, one line per extract file with its row count, and one line per map file. The same text is stored in `ops.load_batch`, in the `report` column. `outcome` is `pass` or `fail`. `fault` is `extract` when the files are wrong, and `server` when the machine or the database is the problem. `fault` is empty on a pass. The table also has `batch_id`, `started_at`, and `finished_at`. The loader creates `ops` and the table on its first run. Read the table as `campusview_owner`; `campusview_reader` cannot see it.
