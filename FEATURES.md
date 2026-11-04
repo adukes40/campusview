@@ -27,8 +27,11 @@ Done when Austin approves the docs, and `install.sh` brings up the base install 
   - A product checkout on each server, with a setting for the branch or tag it follows: `dev` on the dev server, a tag on production.
   - An update command: pull the product ref and the district repo (fast-forward only), run migrations, restart, and leave the env file and the SFTP drop alone.
   - A `dev` branch and basic CI on GitHub. CI runs only the tests that need no data.
+- Moved into step 1 (Austin, relayed by CampusView Engineer, 2026-11-03 7:04 PM ET): "Move the nightly timer and old-data cleanup into Step 1."
+  - The loader on a nightly timer. CampusView Engineer plans a systemd timer that `install.sh` installs, with no new components. The account it runs as, the folder it loads from, and the time it runs are to confirm.
+  - The history purge. History kept is a setting, default the current school year plus one prior year. To confirm: whether the purge follows that rolling window or a fixed date, and what it removes (rows in `raw` and `ic`, files in the SFTP drop, a loaded-file archive, or old `ops.load_batch` rows).
 
-So far: the CSV loader for the Infinite Campus extracts (PR #10, commit 2f21b49), the `dev` branch, basic GitHub CI (`.github/workflows/ci.yml`), and the product checkout with its branch or tag setting (`CV_REF`) and the update command (`install.sh --update`, PR #12, commit d5b6890), and the typed copy in schema `ic` (PR #14, merge commit e06c651). CI runs the loader tests; the two that need a database skip there. The update command pulls `/opt/campusview-district` only when that folder is already a git checkout; it does not create or clone it. Not yet: SFTP, the mapping tables, the typed copy's mapping-file failure and impossible referral-flag check (both need a mapping file), the district folder setup and its setting, and the mappings layout. The nightly timer is a later step.
+So far: the CSV loader for the Infinite Campus extracts (PR #10, commit 2f21b49), the `dev` branch, basic GitHub CI (`.github/workflows/ci.yml`), and the product checkout with its branch or tag setting (`CV_REF`) and the update command (`install.sh --update`, PR #12, commit d5b6890), and the typed copy in schema `ic` (PR #14, merge commit e06c651). CI runs the loader tests; the two that need a database skip there. The update command pulls `/opt/campusview-district` only when that folder is already a git checkout; it does not create or clone it. Not yet: SFTP, the mapping tables, the typed copy's mapping-file failure and impossible referral-flag check (both need a mapping file), the district folder setup and its setting, the mappings layout, the nightly timer, and the history purge. The loader runs by hand today.
 
 Done when a bad file leaves the previous data in place, and a good file set replaces the snapshot in one transaction.
 
@@ -48,7 +51,6 @@ Order to be set by Austin.
 
 - The rest of the reporting views in [docs/METRICS.md](docs/METRICS.md), each with a hand-checked test.
 - The Attendance and Behavior dashboards in Superset, with native filters for school year, school, grade, and gender.
-- The loader on a nightly timer, with the history purge. History kept is a setting, default the current school year plus one prior year.
 - An adversarial review that tries to break school limits, the loader's all-or-nothing rule, and the "no real student data" rule. Each fix includes a test.
 
 ## Parking lot

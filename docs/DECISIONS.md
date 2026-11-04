@@ -4,6 +4,22 @@ Dated log of decisions already made. The plan of record is [PLAN.md](PLAN.md). N
 
 Open metric questions are not listed here. They are the Decisions for Austin list in [METRICS.md](METRICS.md). Open extract questions are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md). Both lists are deferred for now and do not block step 0.
 
+## 2026-11-03 — The nightly timer and the history purge move into step 1
+
+**What:** Austin moved two later-step items into step 1: "Move the nightly timer and old-data cleanup into Step 1." The loader will run nightly from a timer, and the history purge is built with it. CampusView Engineer plans a systemd timer that `install.sh` installs, with no new components. The email alert on a failed import stays parked.
+
+The rule on record is unchanged: history is a setting, default the current school year plus one prior year, and older data is purged on load ("Also decided", 2026-11-01, below). To confirm:
+
+- Whether the purge follows that rolling window or a fixed date. CampusView Engineer proposed dropping data dated before 2025-07-01, which today is the extract cutoff in "Years kept, the Day table, and SFTP for now" (below).
+- What the purge removes: rows in `raw` and `ic`, files in the SFTP drop, a loaded-file archive, or old `ops.load_batch` rows.
+- The account the timer runs as, the folder it loads from, and its time of day.
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03 7:04 PM ET.
+
+**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed when he merges this pull request.
+
+**Builds on:** 2026-11-01 "No Celery for loads" and the history row in "Also decided" (below).
+
 ## 2026-11-03 — The typed copy takes its types from column names, and every date and time is a timestamp
 
 **What:**

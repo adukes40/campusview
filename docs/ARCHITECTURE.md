@@ -91,9 +91,10 @@ Planned: `load(drop_dir, district_config_dir) -> LoadResult`
 - On success, replace the raw snapshot inside one transaction, purge school years outside the history window, and commit.
 - The drop is a full snapshot of the years to keep, not a file of changes. Running the same files twice leaves the same warehouse.
 - History length is a district setting, default 2: the newest school year in the drop and the one before it.
+- To confirm: whether the purge follows this rolling window or a fixed date such as the 2025-07-01 extract cutoff, and whether it also removes files from the SFTP drop, a loaded-file archive, or old `ops.load_batch` rows.
 - After a successful commit, a school that is new to the drop has no school admin yet. Until someone adds it to a Superset role's row-level security, only the all-schools roles see it. See the open question on school assignments in [ACCESS.md](ACCESS.md).
 
-The load will run as a timed job on the server; the timer is a later step. It takes a lock so two runs cannot overlap (built). It does not use Celery; there is no Celery or Redis in v1.
+Planned for step 1 (Austin, relayed by CampusView Engineer, 2026-11-03 7:04 PM ET): the loader will also run nightly from a systemd timer that `install.sh` installs, with no new components. Not built: today the loader runs by hand. The account the timer runs as, the folder it loads from, and its time of day are to confirm. It takes a lock so two runs cannot overlap (built). It does not use Celery; there is no Celery or Redis in v1.
 
 Logs and `ops.load_batch` may include file names, row counts, row numbers, and rule names. They may not include cell values, student names, or ids from the row that failed.
 
