@@ -4,7 +4,7 @@ The loader is in this repo. SFTP is not built yet. The loader also builds the ty
 
 ## The drop folder
 
-Where files land, which account can upload, and the fact that this account cannot read the database. That uploaded files stay on the server and are never committed to either git repo.
+**Not built yet.** On the nightly timer, CampusView pulls the extracts from the SFTP server the district runs into a local drop folder, then validates and loads them, then removes drop files older than 7 nights. CampusView has no built-in SFTP server and no upload account. The files stay on the server and are never committed to either git repo. To confirm: where the remote host, user, folder, and client key are kept, and whether the SFTP server's host key is pinned.
 
 ## What a nightly drop contains
 
