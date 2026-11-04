@@ -841,7 +841,7 @@ Connect with DBeaver (or another database tool)
 SFTP drop
   Hand the Infinite Campus person these facts. Copy the key file. Do not paste the key.
     Server:    ${CV_SERVER_NAME:-$(primary_ip)}
-    Port:      $(sshd -T | awk '/^port /{print $2; exit}')
+    Port:      $(sshd -T | awk '/^port /{print $2}')
     User:      $CV_SFTP_USER
     Folder:    /incoming
     Key file:  $CV_SFTP_KEY
