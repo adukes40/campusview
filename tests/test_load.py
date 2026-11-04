@@ -139,6 +139,33 @@ def test_header_text_stays_out_of_the_report(tmp_path):
     assert lines == ["person.csv: fail. Repeated column personID."]
 
 
+def test_link_is_not_read(tmp_path):
+    loadable(tmp_path)
+    secret = tmp_path / "secret.txt"
+    secret.write_text("SECRET\n")
+    school = tmp_path / "school.csv"
+    school.unlink()
+    school.symlink_to(secret)
+    (tmp_path / "leak.csv").symlink_to(secret)
+    fault, lines, _ready = check_folder(tmp_path)
+    report = "\n".join(lines)
+    assert fault == "extract"
+    assert lines == ["school.csv: fail. The file is a link. Remove it."]
+    assert "SECRET" not in report
+    assert "leak.csv" not in report
+
+
+def test_short_row_names_the_column(db, tmp_path):
+    loadable(tmp_path)
+    header = ",".join(FILES["person.csv"])
+    (tmp_path / "person.csv").write_text(header + "\nSTU-9,ONLY\n")
+    ok, saved, report = load_drop(tmp_path, EXAMPLES)
+    assert not ok and saved
+    assert 'person.csv: fail. Line 2: missing data for column "stateID"' in report
+    assert "STU-9" not in report
+    assert "ONLY" not in report
+
+
 def test_bad_headers(tmp_path):
     fill(tmp_path)
     enrollment = tmp_path / "enrollment.csv"

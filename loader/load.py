@@ -105,8 +105,11 @@ def copy_failure(exc, name) -> str:
     message = "The database rejected the file."
     line_no = None
     if exc.diag is not None:
-        if exc.diag.message_primary:
-            message = exc.diag.message_primary
+        primary = exc.diag.message_primary or ""
+        quoted = re.findall(r'"([^"]*)"', primary)
+        columns = FILES.get(name or "", ())
+        if primary and "\n" not in primary and all(part in columns for part in quoted):
+            message = primary
         if exc.diag.context:
             found = re.search(r"\bline (\d+)\b", exc.diag.context)
             if found:
@@ -128,7 +131,7 @@ def check_folder(folder: Path):
             names = [
                 entry.name
                 for entry in folder.iterdir()
-                if entry.is_file() and entry.name.lower().endswith(".csv")
+                if not entry.is_symlink() and entry.is_file() and entry.name.lower().endswith(".csv")
             ]
         except OSError:
             message = "The server could not read the folder."
@@ -142,6 +145,9 @@ def check_folder(folder: Path):
 
     for name, columns in FILES.items():
         path = folder / name
+        if path.is_symlink():
+            problem(name, "The file is a link. Remove it.")
+            continue
         if not path.is_file():
             problem(name, "The file is missing from the folder.")
             continue
