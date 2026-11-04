@@ -169,6 +169,17 @@ def has_rows(path: Path) -> bool:
         return next(reader, None) is not None
 
 
+def header_names(label: str, names: list[str]) -> str:
+    shown = [name for name in names if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", name)]
+    hidden = len(names) - len(shown)
+    parts = []
+    if shown:
+        parts.append(label + " " + ", ".join(shown) + ".")
+    if hidden:
+        parts.append(f"Line 1: the header has {hidden} unknown columns.")
+    return " ".join(parts)
+
+
 def check_header(path: Path, columns: tuple[str, ...]):
     try:
         with path.open(newline="", encoding="utf-8") as handle:
@@ -183,12 +194,12 @@ def check_header(path: Path, columns: tuple[str, ...]):
         return "A column has no name.", None
     repeated = sorted({name for name in header if header.count(name) > 1})
     if repeated:
-        return "Repeated column " + ", ".join(repeated) + ".", None
+        return header_names("Repeated column", repeated), None
     unknown = [name for name in header if name not in columns]
     missing = [name for name in columns if name not in header]
     parts = []
     if unknown:
-        parts.append("Unknown column " + ", ".join(unknown) + ".")
+        parts.append(header_names("Unknown column", unknown))
     if missing:
         parts.append("Missing column " + ", ".join(missing) + ".")
     if parts:
