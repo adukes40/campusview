@@ -118,7 +118,7 @@ In order, the script does this work for you.
 9. Django 6.1.2 in its own Python environment, as a default project named `campusview_base`.
 10. Django pointed at `django_app`. Django reads the database password from the environment.
 11. `start.sh` and `stop.sh` in the install folder.
-12. If you chose HTTP or HTTPS: nginx from the distro's own apt repo, with one site, `/etc/nginx/sites-available/campusview`. For HTTPS with a self-signed certificate, the certificate too. The installer removes nginx's own `default` site from `/etc/nginx/sites-enabled` and makes CampusView the default site on its port, If nginx on this server already serves other sites, check them after the install.
+12. If you chose HTTP or HTTPS: nginx from the distro's own apt repo, with one site, `/etc/nginx/sites-available/campusview`. For HTTPS with a self-signed certificate, the certificate too. The distro welcome page is removed so a new server answers at its IP. A page someone already added stays. See [How people reach CampusView](#how-people-reach-campusview).
 13. A check that the pages answer, described below.
 14. If you answered `yes`, the services `cv-superset` and `cv-django` start at boot, and `cv-nightly.timer` is enabled. The timer is not started during the install.
 15. The SFTP lines in `/opt/campusview-district/settings`, and the local drop folder `/var/lib/campusview/drop`. With key sign-in, the key `/etc/campusview/sftp_ed25519`.
@@ -157,7 +157,9 @@ The wizard asks `How should people reach CampusView?` right after the ports.
 | 2) HTTP on port 80 | `http://NAME/` (Superset) and `http://NAME/app/` (Django admin) | nginx on port 80 |
 | 3) HTTPS on port 443 (recommended, the default) | `https://NAME/` and `https://NAME/app/` | nginx on port 443, and on port 80 only to send people to https |
 
-`NAME` is the answer to `Server name or IP address`. It defaults to the server's main IP address. Use a DNS name if people have one for the server.
+`NAME` is the answer to `Server name or IP address`. It defaults to the server's main IP address. Use a DNS name if people have one for the server. `localhost` is not a name other machines can open.
+
+On a new server, that IP opens CampusView. If nginx on this server already serves a page, that page keeps the IP. Opening the IP does not open CampusView, on HTTP or on HTTPS. Enter a DNS name so CampusView has its own address. If you leave the IP, CampusView answers at this machine's hostname. A re-run keeps this choice while that name is still the one you entered or this machine's hostname. It is decided again when you change how people reach CampusView, or when that name no longer belongs to this server.
 
 In every mode, Superset, Django (gunicorn) and PostgreSQL keep listening on `127.0.0.1` only. nginx passes `/` to Superset and `/app/` to Django. DBeaver still connects through the SSH tunnel, exactly as above.
 
