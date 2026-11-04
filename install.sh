@@ -661,6 +661,7 @@ if [ "$(id -un)" != "$U" ]; then
 fi
 export HOME=$(getent passwd "$U" | cut -d: -f6)          # runuser keeps root's HOME; Superset writes under ~
 set -a; . /etc/campusview/campusview.env; set +a
+unset CV_SFTP_PASSWORD
 B=$CV_INSTALL_DIR; export SUPERSET_CONFIG_PATH=$B/superset/superset_config.py
 cd "$B/superset"                                          # gunicorn fails if it cannot read the starting folder
 running(){ [ -f "$B/$1.pid" ] && kill -0 "$(cat "$B/$1.pid")" 2>/dev/null; }
