@@ -6,6 +6,7 @@
 #
 # Interactive:      sudo ./install.sh                       (a short wizard asks the questions)
 # Non-interactive:  sudo CV_NONINTERACTIVE=1 CV_ANSWERS=/path/answers.env ./install.sh
+# SFTP drop: account campusview-drop, chrooted, files in /var/campusview-drop/incoming. Key /etc/campusview/sftp-drop.
 #
 # All answers, including the secrets, are saved to /etc/campusview/campusview.env, mode 0600, readable only by
 # the Linux account that runs CampusView (root on a default Debian install).
@@ -83,6 +84,74 @@ restart_apps(){
 }
 # campusview.running is the commit that finished a restart. A failed restart leaves it unset, so the next run retries.
 mark_running(){ g config --local campusview.running "$(g rev-parse HEAD)"; }
+setup_sftp_drop(){
+  local user=$CV_SFTP_USER chroot=/var/campusview-drop drop=$CV_SFTP_DROP
+  local key=$CV_SFTP_KEY pub=/etc/ssh/${user}.pub conf=/etc/ssh/sshd_config.d/${user}.conf
+  local group=$user tmp prev pubtmp changed=yes pid
+  [ "$CV_RUN_USER" != "$user" ] || die "The CampusView account cannot be the SFTP upload account ($user)."
+  getent group "$group" >/dev/null || groupadd --system "$group"
+  if getent passwd "$user" >/dev/null; then
+    usermod -s /usr/sbin/nologin -d /incoming -g "$group" "$user"
+  else
+    useradd --system --gid "$group" --no-create-home --home-dir /incoming --shell /usr/sbin/nologin "$user"
+  fi
+  # A '!' in the shadow password makes PAM reject the key. '*' is not a password.
+  usermod -p '*' "$user"
+  # sshd rejects a chroot the upload account can write. Only the inner folder is writable.
+  install -d -o root -g root -m 755 "$chroot"
+  install -d -o "$user" -g "$group" -m 2750 "$drop"
+  if [ "$CV_RUN_USER" != root ]; then usermod -aG "$group" "$CV_RUN_USER"; fi
+  if [ ! -s "$key" ]; then
+    rm -f -- "$key" "$key.pub"
+    ( umask 077; ssh-keygen -q -t ed25519 -N "" -f "$key" -C "$user" )
+  fi
+  chown "$CV_RUN_USER": "$key"
+  chmod 600 "$key"
+  mkdir -p /run/sshd
+  chmod 755 /run/sshd
+  pubtmp=$(mktemp)
+  ssh-keygen -y -f "$key" > "$pubtmp"
+  install -o root -g root -m 644 "$pubtmp" "$pub"
+  rm -f "$pubtmp"
+  tmp=$(mktemp)
+  cat > "$tmp" <<EOF
+# CampusView SFTP drop. install.sh rewrites this file.
+Match User $user
+    ChrootDirectory $chroot
+    ForceCommand internal-sftp -d /incoming -u 0027
+    AuthorizedKeysFile $pub
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    PubkeyAuthentication yes
+    AuthenticationMethods publickey
+    AllowTcpForwarding no
+    AllowAgentForwarding no
+    X11Forwarding no
+    PermitTunnel no
+    PermitTTY no
+EOF
+  if [ -f "$conf" ] && cmp -s "$tmp" "$conf"; then changed=no; fi
+  prev=$(mktemp)
+  if [ -f "$conf" ]; then cp -- "$conf" "$prev"; fi
+  install -o root -g root -m 644 "$tmp" "$conf"
+  rm -f "$tmp"
+  if ! sshd -t; then
+    if [ -s "$prev" ]; then install -o root -g root -m 644 "$prev" "$conf"; else rm -f "$conf"; fi
+    rm -f "$prev"
+    die "sshd rejected the SFTP drop configuration."
+  fi
+  rm -f "$prev"
+  [ "$changed" = yes ] || return 0
+  if [ "$HAS_SYSTEMD" = yes ]; then
+    if systemctl is-active -q ssh; then systemctl reload ssh; else systemctl enable --now ssh; fi
+  elif pid=$(cat /run/sshd.pid 2>/dev/null || true); [ -n "${pid:-}" ] && kill -0 "$pid" 2>/dev/null; then
+    kill -HUP "$pid"
+  elif pid=$(pgrep -xo sshd || true); [ -n "${pid:-}" ]; then
+    kill -HUP "$pid"
+  else
+    /usr/sbin/sshd
+  fi
+}
 pull_district(){
   if [ ! -e "$DISTRICT/.git" ]; then echo "No district checkout at $DISTRICT. Skipped."; return 0; fi
   local err
@@ -204,6 +273,9 @@ if [ -z "${CV_REF+x}" ]; then CV_REF=dev; fi
 HAS_SYSTEMD=no; [ -d /run/systemd/system ] && HAS_SYSTEMD=yes
 : "${CV_SYSTEMD:=$HAS_SYSTEMD}"
 : "${CV_ACCESS:=}"; : "${CV_SERVER_NAME:=}"; : "${CV_TLS_CERT_SOURCE:=selfsigned}"; : "${CV_TLS_CERT_FILE:=}"; : "${CV_TLS_KEY_FILE:=}"
+CV_SFTP_USER=campusview-drop
+CV_SFTP_DROP=/var/campusview-drop/incoming
+CV_SFTP_KEY=/etc/campusview/sftp-drop
 TLS=/etc/campusview/tls   # the certificate nginx uses (key: mode 0600, root only)
 
 # value rules (shared by the wizard and the answers file)
@@ -325,6 +397,12 @@ fi
 
 # ---------- validate, fill in generated secrets ----------
 chk(){ [[ ${!1} =~ $2 ]] || die "$1 has an invalid value${3:+ ($3)}"; }
+# A minimal image has no openssl command yet. Passwords are generated before the package step.
+if ! command -v openssl >/dev/null; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install -y openssl ca-certificates
+fi
 [ -z "$CV_SUPERSET_DB_PASSWORD" ] && CV_SUPERSET_DB_PASSWORD=$(openssl rand -hex 16)
 [ -z "$CV_DJANGO_DB_PASSWORD" ] && CV_DJANGO_DB_PASSWORD=$(openssl rand -hex 16)
 [ -z "$CV_OWNER_DB_PASSWORD" ] && CV_OWNER_DB_PASSWORD=$(openssl rand -hex 16)
@@ -370,6 +448,7 @@ if [ "$CV_NONINTERACTIVE" != 1 ]; then
     Django admin:  $URL_DJ
     Admin login:   $CV_ADMIN_USER ($CV_ADMIN_EMAIL)
     Start at boot: $CV_SYSTEMD
+    SFTP drop:     $CV_SFTP_DROP   (upload account $CV_SFTP_USER)
     Passwords:     saved to $ENVF (only $CV_RUN_USER can read it)
 S
   read -r -p "  Go ahead? [Y/n]: " ans; case ${ans:-y} in [Yy]*) ;; *) echo "Nothing was changed."; exit 0;; esac
@@ -381,7 +460,7 @@ mkdir -p -m 700 /etc/campusview; chown "$CV_RUN_USER": /etc/campusview
   for v in CV_INSTALL_DIR CV_REF CV_RUN_USER CV_PG_PORT CV_SUPERSET_PORT CV_DJANGO_PORT CV_SUPERSET_WORKERS \
            CV_SUPERSET_DB_USER CV_DJANGO_DB_USER CV_ADMIN_USER CV_ADMIN_EMAIL CV_SYSTEMD \
            CV_SUPERSET_DB_PASSWORD CV_DJANGO_DB_PASSWORD CV_OWNER_DB_PASSWORD CV_READER_DB_PASSWORD \
-           CV_SECRET_KEY CV_ADMIN_PASSWORD $NETV; do
+           CV_SECRET_KEY CV_ADMIN_PASSWORD CV_SFTP_USER CV_SFTP_DROP CV_SFTP_KEY $NETV; do
     printf "%s='%s'\n" "$v" "${!v}"; done > "$tmp"
   chown "$CV_RUN_USER": "$tmp"; mv "$tmp" "$ENVF" )
 set -a; . "$ENVF"; set +a      # the apps read their secrets from these environment variables
@@ -395,7 +474,9 @@ say "1. system packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update </dev/null
 apt-get install -y build-essential libssl-dev libffi-dev libsasl2-dev libldap2-dev \
-  default-libmysqlclient-dev pkg-config libpq-dev curl ca-certificates gnupg openssl git </dev/null
+  default-libmysqlclient-dev pkg-config libpq-dev curl ca-certificates gnupg openssl git openssh-server </dev/null
+say "SFTP drop"
+setup_sftp_drop
 create_checkout
 [ "$CV_ACCESS" = tunnel ] || apt-get install -y nginx </dev/null   # from the distro's own repo
 
@@ -770,5 +851,12 @@ Connect with DBeaver (or another database tool)
   SSH tunnel to this server (or run: ssh -L $CV_PG_PORT:127.0.0.1:$CV_PG_PORT you@this-server).
   Superset's data connection should use campusview_reader.
   django_app and superset_meta belong to the apps. Don't edit them by hand.
+
+SFTP drop
+  Infinite Campus uploads as $CV_SFTP_USER into /incoming.
+  On this server those files are in $CV_SFTP_DROP.
+  The upload key is $CV_SFTP_KEY (mode 600, only $CV_RUN_USER can read it).
+  That account has no shell and no database login. Run the loader by hand on that folder.
+  install.sh --update does not change the drop.
 E
 else echo "INSTALL FINISHED WITH ERRORS (see the lines above)"; exit 1; fi

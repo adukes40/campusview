@@ -1,10 +1,20 @@
 # SFTP and extracts
 
-The loader is in this repo. SFTP is not built yet. The loader also builds the typed copy, and that copy keeps the Infinite Campus names. The rules and meanings stay in [DATA_CONTRACT.md](../DATA_CONTRACT.md). The Infinite Campus headers the loader accepts are in `loader/contract.py`. This guide is the operator's version.
+The loader is in this repo. `install.sh` creates the SFTP drop described below. The loader also builds the typed copy, and that copy keeps the Infinite Campus names. The rules and meanings stay in [DATA_CONTRACT.md](../DATA_CONTRACT.md). The Infinite Campus headers the loader accepts are in `loader/contract.py`. This guide is the operator's version.
 
 ## The drop folder
 
-Where files land, which account can upload, and the fact that this account cannot read the database. That uploaded files stay on the server and are never committed to either git repo.
+`install.sh` creates the folder where Infinite Campus puts the nightly CSV files, and a Linux account that can upload there and nowhere else. The account is `campusview-drop`. It has no shell and no database login. The files stay on this server. They are not committed to the product repo or the district repo.
+
+From Infinite Campus, the upload folder is `/incoming`. On the server, that same folder is `/var/campusview-drop/incoming`. The account that runs CampusView can read it. Run the loader by hand on that path, with the command in [Run the loader](#run-the-loader). The installer does not start the loader, and it does not delete files from the drop.
+
+The upload account signs in with an SSH key. There is no password. The first install creates the key. The private key is `/etc/campusview/sftp-drop`, mode 600, owned by the account that runs CampusView. A later full `install.sh` keeps that same key and the files already in the folder. `install.sh --update` does not change the account, the key, the folder, or the files. To replace the key on purpose, move `/etc/campusview/sftp-drop` aside and run `install.sh` again. The previous key stops working.
+
+The server uses the SSH port it already has. The installer does not open another port. Other SSH logins are unchanged.
+
+Hand the Infinite Campus person the server address, the account name `campusview-drop`, the folder `/incoming`, and a copy of the private key. They upload the CSV files into `/incoming`. They do not get a password, a shell, or a database login.
+
+If that CampusView account was already logged in when you installed, log in again before reading the drop. Group membership is picked up at login. Root can read the drop without logging in again.
 
 ## What a nightly drop contains
 

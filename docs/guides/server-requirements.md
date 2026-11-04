@@ -38,11 +38,11 @@ The installer has an optional nginx step. Pressing Enter picks HTTPS with a self
 
 ## Disk layout
 
-The installer puts the programs in `/opt/campusview` unless you choose another folder. That folder holds the two Python environments, and `uv` with Python 3.12 in `.uv`. The folder is also a git checkout of the product repo at the branch or tag in `CV_REF`. The loader runs from a checkout of the product repo with that `uv` and Python. Passwords and the other saved answers go in `/etc/campusview/campusview.env`. The file mode is 600, and the folder `/etc/campusview` is mode 700. PostgreSQL keeps its data under `/var/lib/postgresql`. The SFTP drop, the loaded-file archive, and the district repo checkout are not created by this installer. None of these belong in the product git repo.
+The installer puts the programs in `/opt/campusview` unless you choose another folder. That folder holds the two Python environments, and `uv` with Python 3.12 in `.uv`. The folder is also a git checkout of the product repo at the branch or tag in `CV_REF`. The loader runs from a checkout of the product repo with that `uv` and Python. Passwords and the other saved answers go in `/etc/campusview/campusview.env`. The file mode is 600, and the folder `/etc/campusview` is mode 700. PostgreSQL keeps its data under `/var/lib/postgresql`. The installer creates the SFTP drop at `/var/campusview-drop/incoming`. The loaded-file archive and the district repo checkout are not created by this installer. None of these belong in the product git repo.
 
 ## Accounts on the machine
 
-The installer asks for an existing Linux login. It does not create one. The apps run as that login, and that login owns the program folder and the password file. On Debian the login is often root. In step 1, a separate upload user can write the SFTP drop and cannot read the database.
+The installer asks for an existing Linux login. It does not create one. The apps run as that login, and that login owns the program folder and the password file. On Debian the login is often root. The installer creates a separate upload account, `campusview-drop`. That account can write the SFTP drop. It has no shell and cannot read the database.
 
 ## What this guide will not cover
 
