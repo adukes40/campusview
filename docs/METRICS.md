@@ -230,7 +230,7 @@ The year-to-date rate number lives on Overview. The Attendance dashboard uses th
 | View | `reporting.v_attendance_month` |
 | Formula | For each month, sum of present-day equivalents divided by sum of membership-day equivalents. Same portions and the same unmarked-day rule as the year-to-date rate. The month is bounded by that calendar month, not by "today", except the current month, which stops at today. |
 | Last year | The same months in the previous school year, same school, grade, and gender filters, using whoever was enrolled then. This is not a follow-up of this year's students. |
-| Missing history | If the history setting kept only the current year, the prior-year line has no rows. The chart shows the current year alone. |
+| Missing history | If the warehouse has no rows for the prior year, for example in the first school year after the district cutoff date, the prior-year line has no rows. The chart shows the current year alone. |
 | Columns | `school_id`, `school_year`, `month`, `grade`, `gender`, `membership_days`, `present_days`. The chart divides. It does not redefine a day. |
 
 ### Chronic absenteeism rate by grade

@@ -81,20 +81,20 @@ Dashboards, charts, filters, roles, and row-level security are Superset settings
 
 ## Loader interface
 
-**Built today:** `python -m loader FOLDER`, which calls `load_drop(folder)` in `loader/load.py` and returns whether the load passed, whether the report was saved, and the report text. Exit code 0 means it passed and the report was saved, 1 means anything else, and 2 means the command was used wrong. It checks the 24 file names and the headers in `loader/contract.py`, loads all or nothing in one transaction, and rebuilds `ic` in that same transaction. The loader creates `ic` if it is missing. The installer creates the empty schema, owned by `campusview_owner`, with no grant to `campusview_reader`. It stores the report text in `ops.load_batch`. It takes a lock, and a second load fails at once instead of waiting. It reads no district folder, does no history purge, and runs by hand, not on a timer. The guide is [guides/sftp-and-extracts.md](guides/sftp-and-extracts.md).
+**Built today:** `python -m loader FOLDER`, which calls `load_drop(folder)` in `loader/load.py` and returns whether the load passed, whether the report was saved, and the report text. Exit code 0 means it passed and the report was saved, 1 means anything else, and 2 means the command was used wrong. It checks the 24 file names and the headers in `loader/contract.py`, loads all or nothing in one transaction, and rebuilds `ic` in that same transaction. The loader creates `ic` if it is missing. The installer creates the empty schema, owned by `campusview_owner`, with no grant to `campusview_reader`. It stores the report text in `ops.load_batch`. It takes a lock, and a second load fails at once instead of waiting. It reads no district folder, does no drop cleanup, and runs by hand, not on a timer. The guide is [guides/sftp-and-extracts.md](guides/sftp-and-extracts.md).
 
 Planned: `load(drop_dir, district_config_dir) -> LoadResult`
 
 - Look in `drop_dir` for the Infinite Campus extract files and in `district_config_dir` for the code-mapping files. Both sets are required.
 - Validate every file first: headers (an unknown or misspelled header fails the file). The typed copy then checks values, keys, codes, and cross-row rules. Those are warnings on the load report, a bad value is stored as NULL in `ic`, a row that fails a cross-row check is kept as it is, and loading continues. Details are in [DATA_CONTRACT.md](DATA_CONTRACT.md).
 - On any failure (a header or column problem, a missing or unexpected file, a row PostgreSQL rejects, an empty `school.csv` or `calendar.csv`, or a bad district code-mapping file), leave the previous snapshot in place. Warnings do not stop the load. Record the failed attempt on `ops.load_batch` with the file name, the row number, and the rule that failed. Do not record the cell value.
-- On success, replace the raw snapshot inside one transaction, purge school years outside the history window, and commit.
-- The drop is a full snapshot of the years to keep, not a file of changes. Running the same files twice leaves the same warehouse.
-- History length is a district setting, default 2: the newest school year in the drop and the one before it.
-- To confirm: whether the purge follows this rolling window or a fixed date such as the 2025-07-01 extract cutoff, and whether it also removes files from the SFTP drop, a loaded-file archive, or old `ops.load_batch` rows.
+- On success, replace the raw snapshot inside one transaction and commit. The warehouse is not purged by school year (Austin, relayed by CampusView Engineer, 2026-11-03 7:30 PM ET).
+- The drop is a full copy, not a file of changes (Austin, relayed by CampusView Engineer, 2026-11-03 7:30 PM ET). Running the same files twice leaves the same warehouse.
+- The warehouse keeps data dated on or after the cutoff date, a district setting in the district repo. Today the loader has that date as a constant for the calendar warning; reading it from the district repo is not built yet. To confirm: whether the loader also drops rows dated before the cutoff, or relies on the extract being capped at the source.
+- Planned: the nightly run removes old extract files from the SFTP drop. To confirm: which files count as old and how long they are kept. `ops.load_batch` keeps every row.
 - After a successful commit, a school that is new to the drop has no school admin yet. Until someone adds it to a Superset role's row-level security, only the all-schools roles see it. See the open question on school assignments in [ACCESS.md](ACCESS.md).
 
-Planned for step 1 (Austin, relayed by CampusView Engineer, 2026-11-03 7:04 PM ET): the loader will also run nightly from a systemd timer that `install.sh` installs, with no new components. Not built: today the loader runs by hand. The account the timer runs as, the folder it loads from, and its time of day are to confirm. It takes a lock so two runs cannot overlap (built). It does not use Celery; there is no Celery or Redis in v1.
+Planned for step 1 (Austin, relayed by CampusView Engineer, 2026-11-03 7:04 PM ET): the loader will also run nightly from a systemd timer that `install.sh` installs, with no new components. Not built: today the loader runs by hand. Proposed by CampusView Engineer: the timer runs as `CV_RUN_USER` and the loader connects as `campusview_owner`; it runs at 02:00 in the district time zone with `Persistent=true`; it loads from the drop folder PR #20 settles; existing servers get it through one full `install.sh` run, because the update does not install systemd units. It applies only when `CV_SYSTEMD=yes`; what a `start.sh` server gets is to confirm. It takes a lock so two runs cannot overlap (built). It does not use Celery; there is no Celery or Redis in v1.
 
 Logs and `ops.load_batch` may include file names, row counts, row numbers, and rule names. They may not include cell values, student names, or ids from the row that failed.
 
@@ -199,7 +199,7 @@ Not in the base install:
 
 Secrets (the database passwords and the Superset secret key) live in one server file outside both git repos, `/etc/campusview/campusview.env`: mode 600, owned by the account that runs CampusView, in a folder with mode 700. systemd (`EnvironmentFile=`) or `start.sh` loads it. `superset_config.py` and Django's `settings.py` read those values from the environment and contain no passwords. The one exception is Django's own generated `SECRET_KEY`, which stays in `settings.py`, so that file is mode 600. Secrets are never in either git repo.
 
-The district repo holds code mappings, branding, exported dashboards, display name, time zone, and history length. Upgrades do not replace it. Student extracts live in the SFTP drop on the server disk, which is outside both git repos.
+The district repo holds code mappings, branding, exported dashboards, display name, time zone, and the cutoff date for the data kept. Upgrades do not replace it. Student extracts live in the SFTP drop on the server disk, which is outside both git repos.
 
 ## Installer and releases
 

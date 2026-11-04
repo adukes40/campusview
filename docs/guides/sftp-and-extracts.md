@@ -8,7 +8,7 @@ Where files land, which account can upload, and the fact that this account canno
 
 ## What a nightly drop contains
 
-The file names in `loader/contract.py`, the rule that this is a full snapshot of the years to keep, and which files must contain rows. What a header-only incident file means (no incidents, and the previous incidents are replaced).
+The file names in `loader/contract.py`, the rule that this is a full copy of everything on or after the district cutoff date, and which files must contain rows. What a header-only incident file means (no incidents, and the previous incidents are replaced).
 
 ## Code-mapping files
 
@@ -68,4 +68,4 @@ Read the loader output, or `ops.load_batch`. A failed load names only the files 
 
 ## History
 
-How the "years to keep" setting purges older school years on a successful load, and why the extract must include every year that should survive.
+The district cutoff date, set in the district repo, and why each extract must include everything dated on or after it: a good load replaces the warehouse with the drop, and the warehouse is not purged by school year. How the nightly run cleans old extract files out of the drop (which files count as old is to confirm).
