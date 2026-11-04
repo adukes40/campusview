@@ -8,10 +8,11 @@ import pytest
 from psycopg import sql
 
 from loader.contract import FILES
-from loader.load import EXTRACT_CUTOFF_DATE, check_folder, load_drop, main
+from loader.load import check_folder, load_drop, main, read_cutoff
 
 PASSWORD = "throwaway"
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples" / "district"
+EXTRACT_CUTOFF_DATE = read_cutoff(EXAMPLES)[0]
 
 
 def write_csv(path: Path, header, rows, newline="\n") -> None:
@@ -324,9 +325,23 @@ def test_bad_cells_warn_without_values(db, tmp_path):
 def copy_district(tmp_path: Path) -> Path:
     district = tmp_path / "district"
     district.mkdir()
-    for path in EXAMPLES.glob("*.csv"):
-        (district / path.name).write_bytes(path.read_bytes())
+    for path in EXAMPLES.iterdir():
+        if path.suffix == ".csv" or path.name == "settings":
+            (district / path.name).write_bytes(path.read_bytes())
     return district
+
+
+def test_cutoff_is_read_from_district_settings(tmp_path):
+    assert EXTRACT_CUTOFF_DATE == "2025-07-01"
+    assert read_cutoff(EXAMPLES) == ("2025-07-01", None)
+    district = tmp_path / "plain"
+    district.mkdir()
+    assert read_cutoff(district)[1] == "The district config folder has no settings file."
+    (district / "settings").write_text("cutoff_date=2025-07-01\nsftp_host=files.example.test\n")
+    assert read_cutoff(district) == ("2025-07-01", None)
+    (district / "settings").write_text("# kept\ncutoff_date=07/01/2025\n")
+    assert read_cutoff(district)[1] == "The cutoff date is not YYYY-MM-DD."
+    assert read_cutoff(tmp_path / "missing") == (None, None)
 
 
 def test_maps_load_and_rerun(db, tmp_path):

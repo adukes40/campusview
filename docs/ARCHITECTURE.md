@@ -25,7 +25,7 @@ flowchart TD
   roles --> superset
 ```
 
-1. The district drops a full CSV snapshot on SFTP. CampusView never connects to the student information system.
+1. The district puts a full CSV snapshot on an SFTP server it runs. CampusView pulls that snapshot into a dated folder under `/var/lib/campusview/drop`. CampusView has no built-in SFTP server. CampusView never connects to the student information system.
 2. The loader checks every Infinite Campus file. Nothing is renamed. If the load fails (a header or column problem, a missing or unexpected file, a row PostgreSQL rejects, an empty `school.csv` or `calendar.csv`, or a bad district code-mapping file), it loads nothing and leaves the previous data in place. If every check passes, it replaces the raw snapshot in one database transaction. See [DATA_CONTRACT.md](DATA_CONTRACT.md).
 3. Raw tables store every column the contract lists, as text, with the Infinite Campus names. Nothing is dropped, and an unknown header fails the file.
 4. A typed, checked copy of each raw table keeps the same table and column names, with real dates and numbers. It lives in schema `ic`, so `raw.enrollment` becomes `ic.enrollment`. Bad values (stored as NULL), bad keys, unknown codes, and cross-row problems are warnings on the load report, and loading continues. Today's loader checks only some of these; see "Built so far" below. A row that fails a cross-row check is kept as it is and still counts. Code-mapping tables, from the district repo, say what each local code means. See 2026-11-03 "The typed layer keeps the Infinite Campus names" in [DECISIONS.md](DECISIONS.md).
@@ -69,7 +69,7 @@ Later code is expected to split along these lines. Only the `loader` package exi
 
 | Module | Responsibility | Reads | Writes |
 | --- | --- | --- | --- |
-| `ingest.drop` | Watch the SFTP folder | Files on disk | Nothing |
+| `nightly.sh` (built) | Pull the remote CSV files, run the loader, delete drop folders older than 7 nights | District `settings`, the SFTP server | `/var/lib/campusview/drop` |
 | `loader` (built) | Validate, then load all or nothing | Infinite Campus CSV and the district code maps | `raw`, `ic`, `ref`, `ops.load_batch` |
 | `loader/typed.py` (built) | Rebuild each `ic` table from `raw` in the load transaction. Bad values become NULL and warn. The three cross-row checks warn and keep the row | `raw` | `ic` |
 | `warehouse.ic` | Typed copy tables. The installer creates the empty schema. The loader creates the schema if it is missing and rebuilds the tables | | |
@@ -81,17 +81,15 @@ Dashboards, charts, filters, roles, and row-level security are Superset settings
 
 ## Loader interface
 
-**Built today:** `python -m loader FOLDER DISTRICT`, which calls `load_drop(folder, district)` in `loader/load.py` and returns whether the load passed, whether the report was saved, and the report text. Exit code 0 means it passed and the report was saved, 1 means anything else, and 2 means the command did not have both paths. It checks the 24 extract file names and the headers in `loader/contract.py`, and the ten code-mapping files in the district directory. It loads all or nothing in one transaction, rebuilds `ic` in that same transaction, and replaces the ten `ref` tables there too. The loader creates `ic` and `ref` if either is missing, and it grants nothing. The installer creates those empty schemas, owned by `campusview_owner`, with no grant to `campusview_reader`. It stores the report text in `ops.load_batch`. It takes a lock, and a second load fails at once instead of waiting. It does no drop cleanup, and it runs by hand, not on a timer. The guide is [guides/sftp-and-extracts.md](guides/sftp-and-extracts.md).
-
-Still planned: the timer, the drop cleanup, and SFTP.
+**Built today:** `python -m loader FOLDER DISTRICT`, which calls `load_drop(folder, district)` in `loader/load.py` and returns whether the load passed, whether the report was saved, and the report text. Exit code 0 means it passed and the report was saved, 1 means anything else, and 2 means the command did not have both paths. It checks the 24 extract file names and the headers in `loader/contract.py`, and the ten code-mapping files in the district directory. It loads all or nothing in one transaction, rebuilds `ic` in that same transaction, and replaces the ten `ref` tables there too. The loader creates `ic` and `ref` if either is missing, and it grants nothing. The installer creates those empty schemas, owned by `campusview_owner`, with no grant to `campusview_reader`. It stores the report text in `ops.load_batch`. It takes a lock, and a second load fails at once instead of waiting. `nightly.sh` pulls the extracts, runs that command, and deletes drop folders older than 7 nights. A full `install.sh` run installs `cv-nightly.timer` when systemd is in use. The guide is [guides/sftp-and-extracts.md](guides/sftp-and-extracts.md).
 
 - On success, the raw snapshot is replaced inside one transaction and committed. The warehouse is not purged by school year (Austin, relayed by CampusView Engineer, 2026-11-03 7:30 PM ET).
 - The drop is a full copy, not a file of changes (Austin, relayed by CampusView Engineer, 2026-11-03 7:30 PM ET). Running the same files twice leaves the same warehouse.
-- The warehouse keeps data dated on or after the cutoff date, a district setting in the district repo. Today the loader has that date as a constant for the calendar warning; reading it from the district repo is not built yet. To confirm: whether the loader also drops rows dated before the cutoff, or relies on the extract being capped at the source.
-- Planned: the nightly run removes old extract files from the SFTP drop. It keeps 7 nights of drop files, then deletes older ones (Austin, relayed by CampusView Engineer, 2026-11-03 7:33 PM ET). Whether 7 is a fixed product value or a district setting is to confirm. `ops.load_batch` keeps every row.
+- The warehouse keeps data dated on or after the cutoff date. That date is the `cutoff_date` line in the district folder's `settings` file. The loader uses it for the calendar warning and does not drop rows. The extract is capped at the source.
+- The nightly run deletes local drop folders older than 7 nights. 7 is a fixed product value. `ops.load_batch` keeps every row.
 - After a successful commit, a school that is new to the drop has no school admin yet. Until someone adds it to a Superset role's row-level security, only the all-schools roles see it. See the open question on school assignments in [ACCESS.md](ACCESS.md).
 
-Planned for step 1 (Austin, relayed by CampusView Engineer, 2026-11-03 7:04 PM ET): the loader will also run nightly from a systemd timer that `install.sh` installs, with no new components. Not built: today the loader runs by hand. Proposed by CampusView Engineer: the timer runs as `CV_RUN_USER` and the loader connects as `campusview_owner`; it runs at 02:00 in the district time zone with `Persistent=true`; it loads from the drop folder PR #20 settles; existing servers get it through one full `install.sh` run, because the update does not install systemd units. It applies only when `CV_SYSTEMD=yes`; what a `start.sh` server gets is to confirm. It takes a lock so two runs cannot overlap (built). It does not use Celery; there is no Celery or Redis in v1.
+The nightly job is `cv-nightly.timer`, installed by a full `install.sh` run. `install.sh --update` does not install it. It runs as `CV_RUN_USER` at 02:00 in the server's time zone, which is the district time zone, with `Persistent=true`. The loader connects as `campusview_owner`. It applies only when `CV_SYSTEMD=yes`. A server that uses `start.sh` gets one command on the done screen and no cron. It takes a lock so two runs cannot overlap. It does not use Celery. There is no Celery or Redis in v1.
 
 Logs and `ops.load_batch` may include file names, row counts, row numbers, and rule names. They may not include cell values, student names, or ids from the row that failed.
 
@@ -170,8 +168,8 @@ flowchart LR
   meta[(superset_meta)]
   djdb[(django_app)]
   data[(campusview_data)]
-  loader[Loader, run by hand, step 1]
-  drop[SFTP drop on disk, step 1]
+  loader[Nightly pull, then the loader]
+  drop[Local drop folder]
 
   ss --> meta
   ss --> data
@@ -191,12 +189,12 @@ Optional nginx (decided 2026-11-02, in the installer on `main`; HTTPS with a sel
 Not in the base install:
 
 - **No Redis, no Celery, no Superset worker or beat.** The `celery` and `redis` Python libraries are installed only because Superset's package list pulls them in. Nothing runs them. Async queries, alerts and reports, and caching are parked.
-- **No SFTP and no loader.** The loader is step 1 work in this repo (on `dev`). The installer does not install or run it. SFTP is not built yet.
+- **No built-in SFTP server.** A full `install.sh` run installs the nightly pull. `install.sh --update` does not add that timer. CampusView does not run an SFTP server.
 - **No example data and no theming.**
 
 Secrets (the database passwords and the Superset secret key) live in one server file outside both git repos, `/etc/campusview/campusview.env`: mode 600, owned by the account that runs CampusView, in a folder with mode 700. systemd (`EnvironmentFile=`) or `start.sh` loads it. `superset_config.py` and Django's `settings.py` read those values from the environment and contain no passwords. The one exception is Django's own generated `SECRET_KEY`, which stays in `settings.py`, so that file is mode 600. Secrets are never in either git repo.
 
-The district repo holds code mappings, branding, exported dashboards, display name, time zone, and the cutoff date for the data kept. Upgrades do not replace it. Student extracts live in the SFTP drop on the server disk, which is outside both git repos.
+The district repo holds code mappings, branding, exported dashboards, display name, time zone, and `settings`. `settings` holds `cutoff_date` and the SFTP host, port, user, folder, and sign-in choice. Upgrades do not replace it. Secrets stay in `/etc/campusview/campusview.env`: the database passwords, the Superset secret key, and, when the SFTP sign-in is a password, `CV_SFTP_PASSWORD`. When the sign-in is a key, `CV_SFTP_KEY` names `/etc/campusview/sftp_ed25519`, and that file stays on the server next to `/etc/campusview/sftp_known_hosts`. Student extracts live in `/var/lib/campusview/drop`, which is outside both git repos.
 
 ## Installer and releases
 

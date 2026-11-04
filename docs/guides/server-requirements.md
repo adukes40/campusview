@@ -38,11 +38,11 @@ The installer has an optional nginx step. Pressing Enter picks HTTPS with a self
 
 ## Disk layout
 
-The installer puts the programs in `/opt/campusview` unless you choose another folder. That folder holds the two Python environments, and `uv` with Python 3.12 in `.uv`. The folder is also a git checkout of the product repo at the branch or tag in `CV_REF`. The loader runs from a checkout of the product repo with that `uv` and Python. Passwords and the other saved answers go in `/etc/campusview/campusview.env`. The file mode is 600, and the folder `/etc/campusview` is mode 700. PostgreSQL keeps its data under `/var/lib/postgresql`. The SFTP drop, the loaded-file archive, and the district repo checkout are not created by this installer. None of these belong in the product git repo.
+The installer puts the programs in `/opt/campusview` unless you choose another folder. That folder holds the two Python environments, and `uv` with Python 3.12 in `.uv`. The folder is also a git checkout of the product repo at the branch or tag in `CV_REF`. The loader runs from a checkout of the product repo with that `uv` and Python. Passwords and the other saved answers go in `/etc/campusview/campusview.env`. The file mode is 600, and the folder `/etc/campusview` is mode 700. PostgreSQL keeps its data under `/var/lib/postgresql`. `/var/lib/campusview/drop` is created by a full install. The district repo checkout is created only when that folder is missing, as a plain folder, not a clone. None of these belong in the product git repo.
 
 ## Accounts on the machine
 
-The installer asks for an existing Linux login. It does not create one. The apps run as that login, and that login owns the program folder and the password file. On Debian the login is often root. In step 1, a separate upload user can write the SFTP drop and cannot read the database.
+The installer asks for an existing Linux login. It does not create one. The apps run as that login, and that login owns the program folder, the password file, the SFTP key, and `/var/lib/campusview/drop`. On Debian the login is often root. CampusView pulls the extracts from the district's SFTP server. It has no built-in SFTP server and no upload account. The nightly job connects to the database as `campusview_owner`.
 
 ## What this guide will not cover
 

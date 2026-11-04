@@ -13,7 +13,7 @@ from loader.maps import read_maps, replace_maps
 from loader.typed import replace_ic
 
 LOCK = 814202611
-EXTRACT_CUTOFF_DATE = "2025-07-01"
+_CUTOFF_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 def main(argv: list[str]) -> int:
@@ -25,12 +25,40 @@ def main(argv: list[str]) -> int:
     return 0 if ok and saved else 1
 
 
+def read_cutoff(district: Path) -> tuple[str | None, str | None]:
+    if not district.is_dir():
+        return None, None
+    path = district / "settings"
+    if not path.is_file():
+        return None, "The district config folder has no settings file."
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None, "The server could not read the district settings."
+    except UnicodeDecodeError:
+        return None, "The district settings file is not UTF-8."
+    found = None
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key.strip() == "cutoff_date":
+            found = value.strip()
+    if found is None:
+        return None, "The district config folder has no cutoff date."
+    if _CUTOFF_DATE.fullmatch(found) is None:
+        return None, "The cutoff date is not YYYY-MM-DD."
+    return found, None
+
+
 def _phrase(fault, map_lines, district: Path) -> str:
     if not map_lines:
         return "the extract" if fault == "extract" else "the server"
+    settings_only = all("cutoff" in note or "settings" in note for note in map_lines)
     district_phrase = (
         "the district config folder"
-        if not district.is_dir()
+        if not district.is_dir() or settings_only
         else "the district config folder's map files"
     )
     if fault == "server":
@@ -44,6 +72,9 @@ def load_drop(folder: Path, district: Path) -> tuple[bool, bool, str]:
     started = datetime.now(UTC)
     fault, lines, ready = check_folder(folder)
     map_lines, maps = read_maps(district, check_header)
+    cutoff, cutoff_problem = read_cutoff(district)
+    if cutoff_problem:
+        map_lines = [*map_lines, cutoff_problem]
     phrase = _phrase(fault, map_lines, district)
     if map_lines:
         lines = [*lines, *map_lines]
@@ -85,7 +116,7 @@ def load_drop(folder: Path, district: Path) -> tuple[bool, bool, str]:
                     warnings.extend(replace_ic(conn))
                     warnings.extend(
                         f"Warning: calendar {calendar_id} has enrollments and no Day rows."
-                        for calendar_id in day_warnings(conn)
+                        for calendar_id in day_warnings(conn, cutoff)
                     )
                     passed, notes = replace_maps(conn, maps)
                     lines.extend(passed)
@@ -240,7 +271,7 @@ def ensure_table(conn, table: str, columns: tuple[str, ...]) -> None:
         )
 
 
-def day_warnings(conn) -> list[str]:
+def day_warnings(conn, cutoff: str) -> list[str]:
     rows = conn.execute(
         """
         SELECT e."calendarID"
@@ -253,7 +284,7 @@ def day_warnings(conn) -> list[str]:
         GROUP BY e."calendarID"
         ORDER BY e."calendarID"::bigint
         """,
-        (EXTRACT_CUTOFF_DATE,),
+        (cutoff,),
     ).fetchall()
     return [row[0] for row in rows]
 

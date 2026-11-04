@@ -93,8 +93,13 @@ Each group is shown under its heading, such as `--- Where CampusView goes ---`.
 | 11 | Your admin login | Admin username | `admin` | No | The username and password YOU sign in with, on both the Superset web page and the Django admin page. |
 | 12 | | Admin email | `admin@example.invalid` when the username is `admin` | No | Not shown on screen. Type a real address. It must be a plain address, like `name@school.org`. |
 | 13 | | Admin password | Enter = make one for me | Yes | |
-| 14 | Starting up | Start CampusView automatically when the server boots (yes/no) | `yes` | No | Not shown on screen. `yes` sets up the services `cv-superset` and `cv-django`. With `no`, use `start.sh` and `stop.sh` in the install folder. Run them as root or as the CampusView account. As root they switch accounts with `runuser`. Otherwise they use `sudo`. If neither works, they say to run them as root or as that account. If systemd is not running, the installer says so and uses `start.sh` instead. |
-| 15 | | Branch or tag this server follows | `dev` | No | `dev` on the dev server. A release tag such as `v1.3.0` on production. No server uses `main`. |
+| 14 | Nightly extracts | SFTP host | Blank the first time | No | The district SFTP server's name or IP address. Example: `files.example.test`. |
+| 15 | | SFTP port | `22` | No | |
+| 16 | | SFTP user | Blank the first time | No | |
+| 17 | | Remote folder | Blank the first time | No | The folder on that server that holds the CSV files. A full path, such as `/exports`. |
+| 18 | | Choose 1 or 2 | `1` (SSH key) | No | `1` makes an ed25519 key on this server and prints the public half. `2` asks for the SFTP password, which is not shown as you type. |
+| 19 | Starting up | Start CampusView automatically when the server boots (yes/no) | `yes` | No | Not shown on screen. `yes` sets up the services `cv-superset` and `cv-django`, and the timer `cv-nightly.timer`. With `no`, use `start.sh` and `stop.sh` in the install folder, and run the nightly command the done screen prints. Run them as root or as the CampusView account. As root they switch accounts with `runuser`. Otherwise they use `sudo`. If neither works, they say to run them as root or as that account. If systemd is not running, the installer says so and uses `start.sh` instead. |
+| 20 | | Branch or tag this server follows | `dev` | No | `dev` on the dev server. A release tag such as `v1.3.0` on production. No server uses `main`. |
 
 After the questions, the installer shows a summary, then `Go ahead? [Y/n]`. Press Enter to accept `Y`. Answer `n` to quit, and the installer changes nothing.
 
@@ -115,13 +120,14 @@ In order, the script does this work for you.
 11. `start.sh` and `stop.sh` in the install folder.
 12. If you chose HTTP or HTTPS: nginx from the distro's own apt repo, with one site, `/etc/nginx/sites-available/campusview`. For HTTPS with a self-signed certificate, the certificate too. The installer removes nginx's own `default` site from `/etc/nginx/sites-enabled` and makes CampusView the default site on its port, If nginx on this server already serves other sites, check them after the install.
 13. A check that the pages answer, described below.
-14. If you answered `yes`, the services `cv-superset` and `cv-django` start at boot.
+14. If you answered `yes`, the services `cv-superset` and `cv-django` start at boot, and `cv-nightly.timer` is enabled. The timer is not started during the install.
+15. The SFTP lines in `/opt/campusview-district/settings`, and the local drop folder `/var/lib/campusview/drop`. With key sign-in, the key `/etc/campusview/sftp_ed25519`.
 
-The installer does not add a Redis server, Celery, a Superset worker, Docker, a firewall, Let's Encrypt (certbot), example data, or theming. nginx is the optional web server from the decision in [../DECISIONS.md](../DECISIONS.md). It is installed only when you choose HTTP or HTTPS. No second proxy is added. The `redis` and `celery` Python libraries are installed only because Superset depends on them, and nothing runs them. It does not install or run the loader, and it does not set up SFTP. The loader runs from a checkout of this repo; see [sftp-and-extracts.md](sftp-and-extracts.md).
+The installer does not add a Redis server, Celery, a Superset worker, Docker, a firewall, Let's Encrypt (certbot), example data, or theming. nginx is the optional web server from the decision in [../DECISIONS.md](../DECISIONS.md). It is installed only when you choose HTTP or HTTPS. No second proxy is added. The `redis` and `celery` Python libraries are installed only because Superset depends on them, and nothing runs them. It does not run the loader during the install, and it does not run an SFTP server. The nightly job is [sftp-and-extracts.md](sftp-and-extracts.md). `install.sh --update` does not install the timer. A full `install.sh` run does.
 
 ## Where the passwords live
 
-- Every secret goes in `/etc/campusview/campusview.env`. The file holds the two app database passwords, the `campusview_reader` password, the `campusview_owner` password, the Superset secret key, and the admin password. It also stores the non-secret answers, such as the ports, the install folder, and the branch or tag in `CV_REF`.
+- Every secret goes in `/etc/campusview/campusview.env`. The file holds the two app database passwords, the `campusview_reader` password, the `campusview_owner` password, the Superset secret key, and the admin password. When the SFTP sign-in is a password, it also holds `CV_SFTP_PASSWORD`. When the sign-in is a key, it holds `CV_SFTP_KEY`, the path of `/etc/campusview/sftp_ed25519`. It also stores the non-secret answers, such as the ports, the install folder, and the branch or tag in `CV_REF`. The SFTP host, port, user, folder, and sign-in choice are not in this file. They are in `/opt/campusview-district/settings`.
 - The file mode is 600, so only the Linux account that runs CampusView can read it. The folder `/etc/campusview` is mode 700 and owned by that same account.
 - systemd loads the file when the services start. `start.sh` loads it when you start the apps without systemd. The Superset config and Django's `settings.py` read the values from the environment. The installer writes no password into either file.
 - Django's own `SECRET_KEY` is the exception. Django generates it and it stays in `settings.py`, so that file is mode 600. Do not copy it into git.
@@ -176,6 +182,8 @@ No student data is needed for this check.
 Run the same command. The saved answers show up as the defaults, including the install folder and the branch or tag. The two behind-the-scenes database password prompts say `Enter = keep the saved one`.
 
 Questions 8 to 13 are not asked again. That is the two report data passwords, the secret key, and the admin login. Under the heading `Report data accounts, Superset secret key and your admin login` you see `Kept from the first install`, with the admin username, and `They are not asked again.`
+
+The nightly extract questions are not asked again. Under `Nightly extracts` you see `Kept from the first install`, with the SFTP host and user. The saved `settings` file wins over an answers file.
 
 Nothing is reset or duplicated. Existing admins are left unchanged. The databases and their data stay as they are. The database accounts, schemas, and permissions are checked and kept.
 
@@ -238,6 +246,8 @@ The file uses the same names as the saved password file.
 - `CV_REF`, default `dev`. The dev server keeps `dev`. Production puts a release tag here, such as `v1.3.0`.
 - `CV_PG_PORT`, `CV_SUPERSET_PORT`, `CV_DJANGO_PORT`
 - `CV_SUPERSET_DB_PASSWORD`, `CV_DJANGO_DB_PASSWORD`, `CV_READER_DB_PASSWORD`, `CV_OWNER_DB_PASSWORD`, `CV_SECRET_KEY`
+- `CV_SFTP_HOST`, `CV_SFTP_PORT` (default `22`), `CV_SFTP_USER`, `CV_SFTP_FOLDER`, `CV_SFTP_AUTH` (`key` or `password`). These are written to the district `settings` file. On a re-run, the saved `settings` file wins.
+- `CV_SFTP_PASSWORD`, only when `CV_SFTP_AUTH=password`. It is stored in the password file and nowhere else. Leave it blank when `CV_SFTP_AUTH=key`.
 - `CV_ADMIN_USER`, `CV_ADMIN_EMAIL`, `CV_ADMIN_PASSWORD`
 - `CV_SYSTEMD`, and `CV_SUPERSET_WORKERS`. The worker count is answers-file only. The default is 4.
 - `CV_ACCESS`: `tunnel`, `http`, or `https` (default `https` on a new install). `CV_SERVER_NAME`: blank means the server's main IP address. `CV_TLS_CERT_SOURCE`: `selfsigned` (default) or `own`, with `CV_TLS_CERT_FILE` and `CV_TLS_KEY_FILE` for `own`.
