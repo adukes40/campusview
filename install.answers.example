@@ -20,3 +20,11 @@ CV_SERVER_NAME=
 CV_TLS_CERT_SOURCE=selfsigned
 CV_TLS_CERT_FILE=
 CV_TLS_KEY_FILE=
+# Nightly SFTP pull. Host, port, user, and folder are written to /opt/campusview-district/settings.
+# They are not secrets. CV_SFTP_PASSWORD is stored only in the password file, and only for password sign-in.
+CV_SFTP_HOST=sftp.example.test
+CV_SFTP_PORT=22
+CV_SFTP_USER=campusview
+CV_SFTP_FOLDER=/exports
+CV_SFTP_AUTH=key
+CV_SFTP_PASSWORD=

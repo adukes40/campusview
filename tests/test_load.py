@@ -8,10 +8,11 @@ import pytest
 from psycopg import sql
 
 from loader.contract import FILES
-from loader.load import EXTRACT_CUTOFF_DATE, check_folder, load_drop, main
+from loader.load import check_folder, load_drop, main, read_cutoff
 
 PASSWORD = "throwaway"
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples" / "district"
+EXTRACT_CUTOFF_DATE = read_cutoff(EXAMPLES)[0]
 
 
 def write_csv(path: Path, header, rows, newline="\n") -> None:
@@ -373,9 +374,27 @@ def test_bad_cells_warn_without_values(db, tmp_path):
 def copy_district(tmp_path: Path) -> Path:
     district = tmp_path / "district"
     district.mkdir()
-    for path in EXAMPLES.glob("*.csv"):
-        (district / path.name).write_bytes(path.read_bytes())
+    for path in EXAMPLES.iterdir():
+        if path.suffix == ".csv" or path.name == "settings":
+            (district / path.name).write_bytes(path.read_bytes())
     return district
+
+
+def test_cutoff_is_read_from_district_settings(tmp_path):
+    assert EXTRACT_CUTOFF_DATE == "2025-07-01"
+    assert read_cutoff(EXAMPLES) == ("2025-07-01", None)
+    district = tmp_path / "plain"
+    district.mkdir()
+    assert read_cutoff(district)[1] == "The district config folder has no cutoff date."
+    (district / "settings").write_text("cutoff_date=2025-07-01\nsftp_host=files.example.test\n")
+    assert read_cutoff(district) == ("2025-07-01", None)
+    (district / "settings").write_text("# kept\ncutoff_date=07/01/2025\n")
+    assert read_cutoff(district)[1] == "The cutoff date is not YYYY-MM-DD."
+    (district / "settings").write_text("cutoff_date=2026-13-45\n")
+    assert read_cutoff(district)[1] == "The cutoff date is not YYYY-MM-DD."
+    (district / "settings").write_text("cutoff_date=20250701\n")
+    assert read_cutoff(district)[1] == "The cutoff date is not YYYY-MM-DD."
+    assert read_cutoff(tmp_path / "missing") == (None, None)
 
 
 def test_maps_load_and_rerun(db, tmp_path):
@@ -528,6 +547,18 @@ def test_bad_map_keeps_previous_ref(db, tmp_path):
     assert "Nothing was loaded." in report
     assert stored("SELECT grade_code, sort_order FROM ref.map_grades ORDER BY sort_order") == grades
     assert stored('SELECT "stateID" FROM ic.person') == [("001",)]
+    assert stored("SELECT outcome, fault FROM ops.load_batch ORDER BY batch_id DESC LIMIT 1") == [("fail", "extract")]
+
+
+def test_missing_cutoff_is_extract(db, tmp_path):
+    loadable(tmp_path)
+    district = copy_district(tmp_path)
+    (district / "settings").write_text("sftp_host=files.example.test\n")
+    ok, saved, report = load_drop(tmp_path, district)
+    assert not ok and saved
+    assert "problem with the district config folder." in report
+    assert "has no cutoff date." in report
+    assert stored("SELECT outcome, fault FROM ops.load_batch") == [("fail", "extract")]
 
 
 def test_reader_cannot_see_ref_or_ic(db, tmp_path):

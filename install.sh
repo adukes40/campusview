@@ -17,6 +17,7 @@ trap 'echo "ERROR: line $LINENO: $BASH_COMMAND" >&2' ERR
 ENVF=/etc/campusview/campusview.env
 SUPERSET_VER=6.1.0; DJANGO_VER=6.1.2; PY=3.12   # one Python for both apps
 DISTRICT=/opt/campusview-district
+SFTP_KEYS=(sftp_host sftp_port sftp_user sftp_folder sftp_auth)
 RE_REF='^[A-Za-z0-9][A-Za-z0-9._/-]{0,80}$'
 export GIT_TERMINAL_PROMPT=0
 
@@ -84,7 +85,7 @@ restart_apps(){
 # campusview.running is the commit that finished a restart. A failed restart leaves it unset, so the next run retries.
 mark_running(){ g config --local campusview.running "$(g rev-parse HEAD)"; }
 pull_district(){
-  if [ ! -e "$DISTRICT/.git" ]; then echo "No district checkout at $DISTRICT. Skipped."; return 0; fi
+  if [ ! -e "$DISTRICT/.git" ]; then echo "$DISTRICT is not a git checkout, so there is nothing to pull."; return 0; fi
   local err
   err=$(as_run git -C "$DISTRICT" pull --ff-only 2>&1) || {
     case $err in
@@ -184,6 +185,34 @@ case ${1:-} in
   *) usage ;;
 esac
 
+write_sftp_settings(){
+  local want have tmp pat
+  pat="^($(IFS='|'; echo "${SFTP_KEYS[*]}"))="
+  want=$(for _k in "${SFTP_KEYS[@]}"; do _n=CV_${_k^^}; printf '%s=%s\n' "$_k" "${!_n}"; done)
+  have=$(grep -E "$pat" "$DISTRICT/settings" 2>/dev/null || true)
+  [ "$have" = "$want" ] && return 0
+  [ -d "$DISTRICT" ] || { mkdir -p -m 755 -- "$DISTRICT"; chown "$CV_RUN_USER": "$DISTRICT"; }
+  tmp=$(mktemp)
+  if [ -f "$DISTRICT/settings" ]; then
+    grep -v -E "$pat" "$DISTRICT/settings" > "$tmp" || true
+  fi
+  printf '%s\n' "$want" >> "$tmp"
+  chown "$CV_RUN_USER": "$tmp"
+  chmod 644 "$tmp"
+  mv "$tmp" "$DISTRICT/settings"
+}
+ask_sftp_password(){
+  local ans again
+  while :; do
+    read -r -s -p "  SFTP password (not shown): " ans; echo
+    [[ $ans =~ $RE_SECRET ]] || { echo "  Use at least 8 characters, with no spaces, quotes (' or \") or backslashes."; continue; }
+    read -r -s -p "  Type it again: " again; echo
+    [ "$ans" = "$again" ] || { echo "  Those didn't match. Try again."; continue; }
+    CV_SFTP_PASSWORD=$ans
+    return 0
+  done
+}
+
 # ---------- answers: answers file, then saved values from a previous run (saved values win) ----------
 : "${CV_ANSWERS:=}"; : "${CV_NONINTERACTIVE:=0}"
 if [ -n "$CV_ANSWERS" ]; then [ -f "$CV_ANSWERS" ] || { echo "answers file $CV_ANSWERS not found" >&2; exit 1; }; . "$CV_ANSWERS"; fi
@@ -205,6 +234,16 @@ if [ -z "${CV_REF+x}" ]; then CV_REF=dev; fi
 HAS_SYSTEMD=no; [ -d /run/systemd/system ] && HAS_SYSTEMD=yes
 : "${CV_SYSTEMD:=$HAS_SYSTEMD}"
 : "${CV_ACCESS:=}"; : "${CV_SERVER_NAME:=}"; : "${CV_TLS_CERT_SOURCE:=selfsigned}"; : "${CV_TLS_CERT_FILE:=}"; : "${CV_TLS_KEY_FILE:=}"
+: "${CV_SFTP_HOST:=}"; : "${CV_SFTP_PORT:=}"; : "${CV_SFTP_USER:=}"; : "${CV_SFTP_FOLDER:=}"; : "${CV_SFTP_AUTH:=}"
+: "${CV_SFTP_PASSWORD:=}"; : "${CV_SFTP_KEY:=}"
+# Saved district settings win over the answers file, the same way the password file wins.
+if [ -f "$DISTRICT/settings" ]; then
+  for _k in "${SFTP_KEYS[@]}"; do
+    _v=$(grep -m1 "^${_k}=" "$DISTRICT/settings" || true)
+    [ -n "$_v" ] && printf -v "CV_${_k^^}" '%s' "${_v#*=}"
+  done
+fi
+: "${CV_SFTP_PORT:=22}"
 TLS=/etc/campusview/tls   # the certificate nginx uses (key: mode 0600, root only)
 
 # value rules (shared by the wizard and the answers file)
@@ -325,6 +364,21 @@ B
     section "Report data accounts, Superset secret key and your admin login"
     printf '\n  Kept from the first install (admin username: %s). They are not asked again.\n' "$CV_ADMIN_USER"
   fi
+  section "Nightly extracts"
+  if [ -n "$CV_SFTP_HOST" ]; then
+    printf '\n  Kept from the first install (SFTP host: %s, user: %s, %s).\n' "$CV_SFTP_HOST" "$CV_SFTP_USER" "$CV_SFTP_AUTH"
+  else
+    printf '\n  CampusView pulls the CSV extracts from the SFTP server the district runs.\n  This machine does not run an SFTP server. A password is not shown as you type.\n'
+    ask CV_SFTP_HOST "$RE_HOST" "SFTP host" "The district SFTP server's name or IP address. Example: files.example.test."
+    ask CV_SFTP_PORT "$RE_PORT" "SFTP port"
+    ask CV_SFTP_USER "$RE_NAME" "SFTP user"
+    ask CV_SFTP_FOLDER "$RE_PATH" "Remote folder" "The folder on that server that holds the CSV files. A full path, such as /exports."
+    printf '\n  How does that server sign CampusView in?\n    1) SSH key (this server makes a key and shows the public half)\n    2) Password\n'
+    CV_SFTP_AUTH_N=1; [ "$CV_SFTP_AUTH" = password ] && CV_SFTP_AUTH_N=2
+    ask CV_SFTP_AUTH_N '^[12]$' "Choose 1 or 2"
+    if [ "$CV_SFTP_AUTH_N" = 2 ]; then CV_SFTP_AUTH=password; ask_sftp_password
+    else CV_SFTP_AUTH=key; fi
+  fi
   section "Starting up"
   ask CV_SYSTEMD "$RE_YN" "Start CampusView automatically when the server boots (yes/no)"
   ask CV_REF "$RE_REF" "Branch or tag this server follows" "dev on the dev server. A release tag such as v1.3.0 on production. No server uses main."
@@ -345,6 +399,18 @@ for v in CV_PG_PORT CV_SUPERSET_PORT CV_DJANGO_PORT; do chk $v "$RE_PORT"; done
 for v in CV_RUN_USER CV_ADMIN_USER CV_SUPERSET_DB_USER CV_DJANGO_DB_USER; do chk $v "$RE_NAME"; done
 for v in CV_SUPERSET_DB_PASSWORD CV_DJANGO_DB_PASSWORD CV_OWNER_DB_PASSWORD CV_READER_DB_PASSWORD CV_SECRET_KEY CV_ADMIN_PASSWORD; do chk $v "$RE_SECRET" "8+ characters, no spaces, quotes or backslashes"; done
 valid_ref || die "CV_REF has an invalid value${CV_REF:+ ($CV_REF)}. Use dev, or a release tag. No server uses main."
+chk CV_SFTP_HOST "$RE_HOST" "a host name or IPv4 address"
+chk CV_SFTP_PORT "$RE_PORT" "a port"
+chk CV_SFTP_USER "$RE_NAME" "letters, digits, and . _ @ + -"
+chk CV_SFTP_FOLDER "$RE_PATH" "a full path with letters, digits, . _ - and / only"
+chk CV_SFTP_AUTH '^(key|password)$' "key or password"
+if [ "$CV_SFTP_AUTH" = password ]; then
+  chk CV_SFTP_PASSWORD "$RE_SECRET" "8+ characters, no spaces, quotes or backslashes"
+  CV_SFTP_KEY=
+else
+  CV_SFTP_PASSWORD=
+  CV_SFTP_KEY=/etc/campusview/sftp_ed25519
+fi
 getent passwd "$CV_RUN_USER" >/dev/null || die "Linux user $CV_RUN_USER does not exist"
 # network: a fresh install defaults to HTTPS; an older install re-run from an answers file stays tunnel-only until asked
 [ -n "$CV_ACCESS" ] || { [ $RERUN = yes ] && CV_ACCESS=tunnel || CV_ACCESS=https; }
@@ -378,6 +444,7 @@ if [ "$CV_NONINTERACTIVE" != 1 ]; then
     Django admin:  $URL_DJ
     Admin login:   $CV_ADMIN_USER ($CV_ADMIN_EMAIL)
     Start at boot: $CV_SYSTEMD
+    SFTP:          $CV_SFTP_USER@$CV_SFTP_HOST:$CV_SFTP_PORT $CV_SFTP_FOLDER ($CV_SFTP_AUTH)
     Passwords:     saved to $ENVF (only $CV_RUN_USER can read it)
 S
   read -r -p "  Go ahead? [Y/n]: " ans; case ${ans:-y} in [Yy]*) ;; *) echo "Nothing was changed."; exit 0;; esac
@@ -389,10 +456,12 @@ mkdir -p -m 700 /etc/campusview; chown "$CV_RUN_USER": /etc/campusview
   for v in CV_INSTALL_DIR CV_REF CV_RUN_USER CV_PG_PORT CV_SUPERSET_PORT CV_DJANGO_PORT CV_SUPERSET_WORKERS \
            CV_SUPERSET_DB_USER CV_DJANGO_DB_USER CV_ADMIN_USER CV_ADMIN_EMAIL CV_SYSTEMD \
            CV_SUPERSET_DB_PASSWORD CV_DJANGO_DB_PASSWORD CV_OWNER_DB_PASSWORD CV_READER_DB_PASSWORD \
-           CV_SECRET_KEY CV_ADMIN_PASSWORD $NETV; do
+           CV_SECRET_KEY CV_ADMIN_PASSWORD CV_SFTP_PASSWORD CV_SFTP_KEY $NETV; do
     printf "%s='%s'\n" "$v" "${!v}"; done > "$tmp"
   chown "$CV_RUN_USER": "$tmp"; mv "$tmp" "$ENVF" )
 set -a; . "$ENVF"; set +a      # the apps read their secrets from these environment variables
+write_sftp_settings
+install -d -m 700 -o "$CV_RUN_USER" -g "$CV_RUN_USER" /var/lib/campusview/drop
 B=$CV_INSTALL_DIR; S=$B/superset; D=$B/django
 as_pg(){ (cd /tmp && runuser -u postgres -- "$@"); }
 
@@ -403,7 +472,13 @@ say "1. system packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update </dev/null
 apt-get install -y build-essential libssl-dev libffi-dev libsasl2-dev libldap2-dev \
-  default-libmysqlclient-dev pkg-config libpq-dev curl ca-certificates gnupg openssl git </dev/null
+  default-libmysqlclient-dev pkg-config libpq-dev curl ca-certificates gnupg openssl git \
+  openssh-client sshpass </dev/null
+if [ "$CV_SFTP_AUTH" = key ] && [ ! -s "$CV_SFTP_KEY" ]; then
+  ssh-keygen -q -t ed25519 -N '' -f "$CV_SFTP_KEY" -C campusview
+  chown "$CV_RUN_USER": "$CV_SFTP_KEY" "$CV_SFTP_KEY.pub"
+  chmod 600 "$CV_SFTP_KEY"; chmod 644 "$CV_SFTP_KEY.pub"
+fi
 create_checkout
 [ "$CV_ACCESS" = tunnel ] || apt-get install -y nginx </dev/null   # from the distro's own repo
 
@@ -621,6 +696,7 @@ After=postgresql.service
 User=$CV_RUN_USER
 WorkingDirectory=$S
 EnvironmentFile=$ENVF
+UnsetEnvironment=CV_SFTP_PASSWORD
 Environment=SUPERSET_CONFIG_PATH=$S/superset_config.py
 ExecStart=$S/venv/bin/gunicorn -w $CV_SUPERSET_WORKERS -k gthread --threads 2 --timeout 120 -b 127.0.0.1:$CV_SUPERSET_PORT --limit-request-line 0 --limit-request-field_size 0 "superset.app:create_app()"
 Restart=on-failure
@@ -635,13 +711,36 @@ After=postgresql.service
 User=$CV_RUN_USER
 WorkingDirectory=$D
 EnvironmentFile=$ENVF
+UnsetEnvironment=CV_SFTP_PASSWORD
 ExecStart=$D/venv/bin/gunicorn -b 127.0.0.1:$CV_DJANGO_PORT campusview_base.wsgi
 Restart=on-failure
 [Install]
 WantedBy=multi-user.target
 C
+  cat > /etc/systemd/system/cv-nightly.service <<C
+[Unit]
+Description=CampusView nightly extract load
+After=network-online.target postgresql.service
+Wants=network-online.target
+[Service]
+Type=oneshot
+User=$CV_RUN_USER
+WorkingDirectory=$B
+ExecStart=$B/nightly.sh
+TimeoutStartSec=infinity
+C
+  cat > /etc/systemd/system/cv-nightly.timer <<C
+[Unit]
+Description=CampusView nightly extract load
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+[Install]
+WantedBy=timers.target
+C
   systemctl daemon-reload
   systemctl enable cv-superset cv-django
+  systemctl enable --now cv-nightly.timer
   restart_apps
 else
   say "8. starting with start.sh"
@@ -830,6 +929,27 @@ E
     $(openssl x509 -in $TLS/campusview.crt -noout -fingerprint -sha256 | cut -d= -f2)
 E
     fi
+  fi
+  if [ "$CV_SYSTEMD" = yes ]; then cat <<E
+
+Nightly load
+  cv-nightly.timer runs at 02:00 in this server's time zone. Set that zone to the district's.
+  Next: systemctl list-timers cv-nightly.timer
+  Last: journalctl -u cv-nightly.service
+  install.sh --update does not install this timer.
+E
+  else cat <<E
+
+Nightly load
+  This server has no systemd, so there is no timer. Run this once a night:
+    $([ "$CV_RUN_USER" = root ] && echo "$B/nightly.sh" || echo "runuser -u $CV_RUN_USER -- $B/nightly.sh")
+  install.sh --update does not install a timer either.
+E
+  fi
+  echo "  The nightly load fails until the district map files and cutoff_date are in $DISTRICT."
+  if [ "$CV_SFTP_AUTH" = key ]; then
+    echo "  SFTP public key (give this to the SFTP admin):"
+    cat "$CV_SFTP_KEY.pub"
   fi
   cat <<E
 

@@ -11,8 +11,8 @@ The release flow here comes from Austin (relayed by CampusView Engineer, 2026-11
 | Place | What it holds | What it never holds |
 | --- | --- | --- |
 | Product repo, public: `adukes40/campusview` | Generic code, the installer, SQL for the reporting views, and these docs. The same for every district. | Anything about one district. Student data. Training files. Screenshots. Secrets. |
-| District repo, private: for example `example-district/campusview-district` | That district's settings that are not secret: code mappings, branding, exported Superset dashboards, display name, time zone, and the cutoff date for the data kept. Proposed, not built: the SFTP host, user, and folder. | Secrets. Student data or extracts. |
-| The server, outside both repos | Secrets in `/etc/campusview/campusview.env`. The TLS key. The deploy key that reads the district repo. Not built yet: the SFTP password if one is used (in the env file), the SFTP client key, and the SFTP `known_hosts` file. Student extracts in the SFTP drop. | Nothing from here is copied into a repo. |
+| District repo, private: for example `example-district/campusview-district` | That district's settings that are not secret: code mappings, branding, exported Superset dashboards, display name, time zone, the cutoff date, and `settings` (`cutoff_date`, plus `sftp_host`, `sftp_port`, `sftp_user`, `sftp_folder`, and `sftp_auth`). | Secrets. Student data or extracts. The SFTP password. The SFTP private key. |
+| The server, outside both repos | Secrets in `/etc/campusview/campusview.env`, including `CV_SFTP_PASSWORD` when sign-in uses a password, and `CV_SFTP_KEY` when it uses a key. The TLS key. The deploy key that reads the district repo. The SFTP private key `/etc/campusview/sftp_ed25519` and `/etc/campusview/sftp_known_hosts`. Student extracts in `/var/lib/campusview/drop`. | Nothing from here is copied into a repo. |
 | The builder's computer | A clone of the product repo, and the training-database files used for testing. | Production data. |
 
 A district does not fork the product repo. Every district runs the same public code. What makes a server belong to one district is its district repo and its own secrets.
@@ -236,7 +236,7 @@ Change `CV_REF` in `/etc/campusview/campusview.env` to the new tag. Then run the
 
 ## Keep secrets out of both repos
 
-- Secrets live only in `/etc/campusview/campusview.env` on each server, mode 600. The TLS key and the deploy key also stay on the server. Not built yet: the SFTP password (if used) goes in that env file, and the SFTP client key and SFTP `known_hosts` file also stay on the server.
+- Secrets live only in `/etc/campusview/campusview.env` on each server, mode 600. The TLS key, the deploy key, and the SFTP client key also stay on the server. `CV_SFTP_PASSWORD` is the SFTP password. `CV_SFTP_KEY` is the path of the SFTP private key. The host key pin is `/etc/campusview/sftp_known_hosts`.
 - Neither repo ever holds a password, a key, a token, an extract, or a screenshot.
 - If a secret is committed by mistake, deleting it in a new commit is not enough, because git keeps history. Change that password or key on the server first, then clean the repo.
 - A deploy key that leaks can only read the district repo. Delete it on GitHub under **Deploy keys**, then make a new one.

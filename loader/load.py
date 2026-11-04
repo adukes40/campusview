@@ -2,7 +2,7 @@ import csv
 import os
 import re
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import psycopg
@@ -13,7 +13,6 @@ from loader.maps import read_maps, replace_maps
 from loader.typed import replace_ic
 
 LOCK = 814202611
-EXTRACT_CUTOFF_DATE = "2025-07-01"
 
 
 def main(argv: list[str]) -> int:
@@ -23,6 +22,28 @@ def main(argv: list[str]) -> int:
     ok, saved, report = load_drop(Path(argv[1]), Path(argv[2]))
     sys.stdout.write(report)
     return 0 if ok and saved else 1
+
+
+def read_cutoff(district: Path) -> tuple[str | None, str | None]:
+    if not district.is_dir():
+        return None, None
+    found = None
+    try:
+        text = (district / "settings").read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        text = ""
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("cutoff_date="):
+            found = line.split("=", 1)[1].strip()
+    if not found:
+        return None, "The district config folder has no cutoff date."
+    try:
+        if date.fromisoformat(found).isoformat() != found:
+            raise ValueError
+    except ValueError:
+        return None, "The cutoff date is not YYYY-MM-DD."
+    return found, None
 
 
 def _phrase(fault, map_lines, district: Path) -> str:
@@ -44,7 +65,12 @@ def load_drop(folder: Path, district: Path) -> tuple[bool, bool, str]:
     started = datetime.now(UTC)
     fault, lines, ready = check_folder(folder)
     map_lines, maps = read_maps(district, check_header)
+    cutoff, cutoff_problem = read_cutoff(district)
     phrase = _phrase(fault, map_lines, district)
+    if cutoff_problem and not map_lines and district.is_dir():
+        phrase = "the district config folder"
+    if cutoff_problem:
+        map_lines = [*map_lines, cutoff_problem]
     if map_lines:
         lines = [*lines, *map_lines]
         if not district.is_dir():
@@ -85,7 +111,7 @@ def load_drop(folder: Path, district: Path) -> tuple[bool, bool, str]:
                     warnings.extend(replace_ic(conn))
                     warnings.extend(
                         f"Warning: calendar {calendar_id} has enrollments and no Day rows."
-                        for calendar_id in day_warnings(conn)
+                        for calendar_id in day_warnings(conn, cutoff)
                     )
                     passed, notes = replace_maps(conn, maps)
                     lines.extend(passed)
@@ -257,7 +283,7 @@ def ensure_table(conn, table: str, columns: tuple[str, ...]) -> None:
         )
 
 
-def day_warnings(conn) -> list[str]:
+def day_warnings(conn, cutoff: str) -> list[str]:
     rows = conn.execute(
         """
         SELECT e."calendarID"
@@ -270,7 +296,7 @@ def day_warnings(conn) -> list[str]:
         GROUP BY e."calendarID"
         ORDER BY e."calendarID"::bigint
         """,
-        (EXTRACT_CUTOFF_DATE,),
+        (cutoff,),
     ).fetchall()
     return [row[0] for row in rows]
 
