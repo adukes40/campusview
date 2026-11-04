@@ -4,6 +4,29 @@ Dated log of decisions already made. The plan of record is [PLAN.md](PLAN.md). N
 
 Open metric questions are not listed here. They are the Decisions for Austin list in [METRICS.md](METRICS.md). Open extract questions are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md). Both lists are deferred for now and do not block step 0.
 
+## 2026-11-03 — CampusView pulls extracts over SFTP; no built-in SFTP server
+
+**What:** CampusView is an SFTP client. On the nightly timer it pulls the extracts from an SFTP server the district runs into a local drop folder on the CampusView server, then validates and loads them, then runs the 7-night cleanup of the drop folder. CampusView has no built-in SFTP server. PR #20, which added one, is closed unmerged.
+
+**Why:** Austin's words (Austin, relayed by CampusView Engineer, 2026-11-03 8:53 to 8:54 PM ET): "sftp will be happening on my own terms. and all this server will need to do at the omment is pull in data from an sftp server, drop the files in a fodler, then run the validotr and pull in the data." On an optional built-in SFTP server: "it does not need a built in one".
+
+**Amends:** the Proposed timer detail in 2026-11-03 "The nightly timer and the drop cleanup move into step 1" (below), "It loads from the SFTP drop folder that PR #20 settles." The timer loads from the local drop folder that the pull fills.
+
+**Sign-in, decided (not built):** Austin's words (Austin, relayed by CampusView Engineer, 2026-11-03 8:56 PM ET): "ask if using pub key or password.. i do not have control over the sftp server.. so i will ahve to use a password".
+
+- The installer asks whether the SFTP sign-in uses a key or a password, because the district may not control the SFTP server.
+- A password is kept only in `/etc/campusview/campusview.env` (mode 600), never in git.
+- With a key, the server generates the key pair and prints the `.pub` for the SFTP server's admin to install.
+
+**Proposed by CampusView Engineer (seen by Austin, not explicitly confirmed; not built):**
+
+- The remote host, user, and folder are district settings in the district repo.
+- The SFTP server's host key is pinned on first connect and checked strictly after that. The fingerprint is kept in a `known_hosts` file on the server.
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-03 8:53 to 8:54 PM ET and 8:56 PM ET. The host, user, folder, and host-key details are CampusView Engineer's proposal.
+
+**Status:** The pull, no built-in server, and the sign-in choices are decided by Austin (relayed by CampusView Engineer); confirmed when he merges this pull request. The host, user, folder, and host-key details are Proposed. None of it is built.
+
 ## 2026-11-03 — The nightly timer and the drop cleanup move into step 1, and the warehouse keeps a cutoff date
 
 **What:** Austin moved two later-step items into step 1: "Move the nightly timer and old-data cleanup into Step 1." (Austin, relayed by CampusView Engineer, 2026-11-03 7:04 PM ET.) The loader will run nightly from a timer, and the cleanup is built with it. The email alert on a failed import stays parked.
@@ -25,7 +48,7 @@ The cutoff date is a district setting kept in the district repo, not a value in 
 - A systemd timer that `install.sh` installs, with no new components.
 - It runs as the installer's run account (`CV_RUN_USER`), and the loader connects to the database as `campusview_owner`.
 - It runs nightly at 02:00 in the district time zone, with `Persistent=true` so a missed night runs when the server comes back.
-- It loads from the SFTP drop folder that PR #20 settles.
+- It loads from the SFTP drop folder that PR #20 settles. *Amended 2026-11-03: it loads from the local drop folder that the SFTP pull fills. PR #20 is closed unmerged. See "CampusView pulls extracts over SFTP; no built-in SFTP server" above.*
 - An existing server gets the timer through one full `install.sh` run, because `install.sh --update` does not install systemd units.
 - The timer applies only when `CV_SYSTEMD=yes`. What a server that uses `start.sh` gets instead is to confirm.
 

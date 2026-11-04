@@ -25,7 +25,7 @@ flowchart TD
   roles --> superset
 ```
 
-1. The district drops a full CSV snapshot on SFTP. CampusView never connects to the student information system.
+1. The district puts a full CSV snapshot on an SFTP server it runs, and CampusView pulls it into a local drop folder. CampusView has no built-in SFTP server. CampusView never connects to the student information system.
 2. The loader checks every Infinite Campus file. Nothing is renamed. If the load fails (a header or column problem, a missing or unexpected file, a row PostgreSQL rejects, an empty `school.csv` or `calendar.csv`, or a bad district code-mapping file), it loads nothing and leaves the previous data in place. If every check passes, it replaces the raw snapshot in one database transaction. See [DATA_CONTRACT.md](DATA_CONTRACT.md).
 3. Raw tables store every column the contract lists, as text, with the Infinite Campus names. Nothing is dropped, and an unknown header fails the file.
 4. A typed, checked copy of each raw table keeps the same table and column names, with real dates and numbers. It lives in schema `ic`, so `raw.enrollment` becomes `ic.enrollment`. Bad values (stored as NULL), bad keys, unknown codes, and cross-row problems are warnings on the load report, and loading continues. Today's loader checks only some of these; see "Built so far" below. A row that fails a cross-row check is kept as it is and still counts. Code-mapping tables, from the district repo, say what each local code means. See 2026-11-03 "The typed layer keeps the Infinite Campus names" in [DECISIONS.md](DECISIONS.md).
@@ -69,7 +69,7 @@ Later code is expected to split along these lines. Only the `loader` package exi
 
 | Module | Responsibility | Reads | Writes |
 | --- | --- | --- | --- |
-| `ingest.drop` | Watch the SFTP folder | Files on disk | Nothing |
+| `ingest.drop` | Pull the extracts over SFTP into the local drop folder | Files on disk | Nothing |
 | `loader` (built) | Validate, then load all or nothing | Infinite Campus CSV and the district code maps | `raw`, `ic`, `ref`, `ops.load_batch` |
 | `loader/typed.py` (built) | Rebuild each `ic` table from `raw` in the load transaction. Bad values become NULL and warn. The three cross-row checks warn and keep the row | `raw` | `ic` |
 | `warehouse.ic` | Typed copy tables. The installer creates the empty schema. The loader creates the schema if it is missing and rebuilds the tables | | |
@@ -91,7 +91,7 @@ Still planned: the timer, the drop cleanup, and SFTP.
 - Planned: the nightly run removes old extract files from the SFTP drop. It keeps 7 nights of drop files, then deletes older ones (Austin, relayed by CampusView Engineer, 2026-11-03 7:33 PM ET). Whether 7 is a fixed product value or a district setting is to confirm. `ops.load_batch` keeps every row.
 - After a successful commit, a school that is new to the drop has no school admin yet. Until someone adds it to a Superset role's row-level security, only the all-schools roles see it. See the open question on school assignments in [ACCESS.md](ACCESS.md).
 
-Planned for step 1 (Austin, relayed by CampusView Engineer, 2026-11-03 7:04 PM ET): the loader will also run nightly from a systemd timer that `install.sh` installs, with no new components. Not built: today the loader runs by hand. Proposed by CampusView Engineer: the timer runs as `CV_RUN_USER` and the loader connects as `campusview_owner`; it runs at 02:00 in the district time zone with `Persistent=true`; it loads from the drop folder PR #20 settles; existing servers get it through one full `install.sh` run, because the update does not install systemd units. It applies only when `CV_SYSTEMD=yes`; what a `start.sh` server gets is to confirm. It takes a lock so two runs cannot overlap (built). It does not use Celery; there is no Celery or Redis in v1.
+Planned for step 1 (Austin, relayed by CampusView Engineer, 2026-11-03 7:04 PM ET): the loader will also run nightly from a systemd timer that `install.sh` installs, with no new components. Not built: today the loader runs by hand. Proposed by CampusView Engineer: the timer runs as `CV_RUN_USER` and the loader connects as `campusview_owner`; it runs at 02:00 in the district time zone with `Persistent=true`; it pulls the extracts over SFTP from the district's SFTP server into the local drop folder, then loads from that folder (decided 2026-11-03, see "CampusView pulls extracts over SFTP; no built-in SFTP server" in [DECISIONS.md](DECISIONS.md)); existing servers get it through one full `install.sh` run, because the update does not install systemd units. It applies only when `CV_SYSTEMD=yes`; what a `start.sh` server gets is to confirm. It takes a lock so two runs cannot overlap (built). It does not use Celery; there is no Celery or Redis in v1.
 
 Logs and `ops.load_batch` may include file names, row counts, row numbers, and rule names. They may not include cell values, student names, or ids from the row that failed.
 
