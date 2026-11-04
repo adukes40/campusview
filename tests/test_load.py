@@ -117,6 +117,28 @@ def test_text_blanks_quotes_and_cutoff(db, tmp_path):
     assert "calendar 1 " not in report
 
 
+def test_header_text_stays_out_of_the_report(tmp_path):
+    loadable(tmp_path)
+    person = tmp_path / "person.csv"
+    person.write_text("0,175,0,175\n")
+    fault, lines, _ready = check_folder(tmp_path)
+    assert fault == "extract"
+    assert lines == ["person.csv: fail. Line 1: the header has 2 unknown columns."]
+    assert "175" not in lines[0]
+
+    person.write_text("root:x:0:0:root:/root:/bin/bash\n")
+    _fault, lines, _ready = check_folder(tmp_path)
+    assert lines == [
+        "person.csv: fail. Line 1: the header has 1 unknown columns. "
+        "Missing column personID, currentIdentityID, stateID, studentNumber, staffNumber, staffstateID."
+    ]
+    assert "root:x:0:0:root:/root:/bin/bash" not in lines[0]
+
+    write_csv(person, [*FILES["person.csv"], "personID"], [])
+    _fault, lines, _ready = check_folder(tmp_path)
+    assert lines == ["person.csv: fail. Repeated column personID."]
+
+
 def test_bad_headers(tmp_path):
     fill(tmp_path)
     enrollment = tmp_path / "enrollment.csv"
