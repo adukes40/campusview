@@ -114,7 +114,7 @@ setup_sftp_drop(){
   cat > "$tmp" <<EOF
 Match User $user
     ChrootDirectory $chroot
-    ForceCommand internal-sftp -d /incoming -u 0027
+    ForceCommand internal-sftp -d /incoming -u 0027 -P setstat,fsetstat,symlink,hardlink
     AuthorizedKeysFile $pub
     PasswordAuthentication no
     KbdInteractiveAuthentication no
@@ -849,10 +849,14 @@ Connect with DBeaver (or another database tool)
   django_app and superset_meta belong to the apps. Don't edit them by hand.
 
 SFTP drop
-  Infinite Campus uploads as $CV_SFTP_USER into /incoming.
-  On this server those files are in $CV_SFTP_DROP.
-  The upload key is $CV_SFTP_KEY (mode 600, only $CV_RUN_USER can read it).
-  That account has no shell and no database login. Run the loader by hand on that folder.
-  install.sh --update does not change the drop.
+  Hand the Infinite Campus person these facts. Copy the key file. Do not paste the key.
+    Server:    ${CV_SERVER_NAME:-$(primary_ip)}
+    Port:      22
+    User:      $CV_SFTP_USER
+    Folder:    /incoming
+    Key file:  $CV_SFTP_KEY
+  On this server the files are in $CV_SFTP_DROP.
+  If you are already logged in as $CV_RUN_USER, log out and back in before you read the drop. That login picks up the new group.
+  An older server gets this drop from a full install.sh run, not from install.sh --update.
 E
 else echo "INSTALL FINISHED WITH ERRORS (see the lines above)"; exit 1; fi

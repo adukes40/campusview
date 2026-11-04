@@ -12,7 +12,7 @@ The upload account signs in with an SSH key. There is no password. The first ins
 
 The server uses the SSH port it already has. The installer does not open another port. Other SSH logins are unchanged.
 
-Hand the Infinite Campus person the server address, the account name `campusview-drop`, the folder `/incoming`, and a copy of the private key. They upload the CSV files into `/incoming`. They do not get a password, a shell, or a database login.
+Hand the Infinite Campus person the server address, port 22, the account name `campusview-drop`, the folder `/incoming`, and a copy of the private key file. They upload the CSV files into `/incoming`. They do not get a password, a shell, or a database login. The account cannot change permissions on the folder or the files, and it cannot create links.
 
 If that CampusView account was already logged in when you installed, log in again before reading the drop. Group membership is picked up at login. Root can read the drop without logging in again.
 

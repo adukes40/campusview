@@ -131,6 +131,12 @@ def test_bad_headers(tmp_path):
     assert "Missing column personID." in lines
 
     fill(tmp_path)
+    (tmp_path / "race_ethnicity.csv").write_text("root:x:0:0:root:/root:/bin/bash\n")
+    lines = "\n".join(check_folder(tmp_path)[1])
+    assert "race_ethnicity.csv: fail. Line 1." in lines
+    assert "root:x:0:0" not in lines
+
+    fill(tmp_path)
     columns = FILES["person.csv"][:-1]
     write_csv(tmp_path / "person.csv", columns, [])
     assert "Missing column staffstateID." in "\n".join(check_folder(tmp_path)[1])

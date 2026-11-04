@@ -77,8 +77,9 @@ def copy_failure(exc, name) -> str:
     message = "The database rejected the file."
     line_no = None
     if exc.diag is not None:
-        if exc.diag.message_primary:
-            message = exc.diag.message_primary
+        primary = exc.diag.message_primary or ""
+        if primary and not any(c in primary for c in "\r\n\""):
+            message = primary
         if exc.diag.context:
             found = re.search(r"\bline (\d+)\b", exc.diag.context)
             if found:
@@ -160,6 +161,8 @@ def check_header(path: Path, columns: tuple[str, ...]):
     missing = [name for name in columns if name not in header]
     parts = []
     if unknown:
+        if any(any(c in name for c in "\r\n:") for name in unknown):
+            return "Line 1.", None
         parts.append("Unknown column " + ", ".join(unknown) + ".")
     if missing:
         parts.append("Missing column " + ", ".join(missing) + ".")

@@ -291,7 +291,7 @@ Key: `status_code`. Columns: `status_code` (required), `is_active` (boolean, req
 
 ## How an Infinite Campus extract maps to this
 
-Infinite Campus is the first source system. Districts usually schedule an export (often an Ad Hoc filter or a CSV data extract) onto a folder. CampusView picks that folder up over SFTP. It does not log in to Infinite Campus and it does not read the Infinite Campus database.
+Infinite Campus is the first source system. Districts usually schedule an export (often an Ad Hoc filter or a CSV data extract) onto a folder. Infinite Campus pushes those files to CampusView's SFTP drop at `/var/campusview-drop/incoming`. CampusView does not log in to Infinite Campus and it does not read the Infinite Campus database.
 
 There is no file transform. The loader loads the Infinite Campus files as they arrive, and the typed copy keeps their names. The table below says which Infinite Campus field carries each meaning the views need.
 
