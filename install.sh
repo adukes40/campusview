@@ -84,7 +84,7 @@ restart_apps(){
 # campusview.running is the commit that finished a restart. A failed restart leaves it unset, so the next run retries.
 mark_running(){ g config --local campusview.running "$(g rev-parse HEAD)"; }
 pull_district(){
-  if [ ! -e "$DISTRICT/.git" ]; then echo "No district checkout at $DISTRICT. Skipped."; return 0; fi
+  if [ ! -e "$DISTRICT/.git" ]; then echo "$DISTRICT is not a git checkout, so there is nothing to pull."; return 0; fi
   local err
   err=$(as_run git -C "$DISTRICT" pull --ff-only 2>&1) || {
     case $err in
@@ -184,19 +184,12 @@ case ${1:-} in
   *) usage ;;
 esac
 
-setting_get(){
-  [ -f "$DISTRICT/settings" ] || return 0
-  sed -n "s/^$1=//p" "$DISTRICT/settings" | head -n 1
-}
-sftp_settings_match(){
-  [ "$(setting_get sftp_host)" = "$CV_SFTP_HOST" ] &&
-  [ "$(setting_get sftp_port)" = "$CV_SFTP_PORT" ] &&
-  [ "$(setting_get sftp_user)" = "$CV_SFTP_USER" ] &&
-  [ "$(setting_get sftp_folder)" = "$CV_SFTP_FOLDER" ] &&
-  [ "$(setting_get sftp_auth)" = "$CV_SFTP_AUTH" ]
-}
 write_sftp_settings(){
-  sftp_settings_match && return 0
+  local want have
+  want=$(printf 'sftp_host=%s\nsftp_port=%s\nsftp_user=%s\nsftp_folder=%s\nsftp_auth=%s\n' \
+    "$CV_SFTP_HOST" "$CV_SFTP_PORT" "$CV_SFTP_USER" "$CV_SFTP_FOLDER" "$CV_SFTP_AUTH")
+  have=$(grep -E '^(sftp_host|sftp_port|sftp_user|sftp_folder|sftp_auth)=' "$DISTRICT/settings" 2>/dev/null || true)
+  [ "$have" = "$want" ] && return 0
   if [ ! -d "$DISTRICT" ]; then
     mkdir -p -m 755 -- "$DISTRICT"
     chown "$CV_RUN_USER": "$DISTRICT"
@@ -206,8 +199,7 @@ write_sftp_settings(){
   if [ -f "$DISTRICT/settings" ]; then
     grep -v -E '^(sftp_host|sftp_port|sftp_user|sftp_folder|sftp_auth)=' "$DISTRICT/settings" > "$tmp" || true
   fi
-  printf 'sftp_host=%s\nsftp_port=%s\nsftp_user=%s\nsftp_folder=%s\nsftp_auth=%s\n' \
-    "$CV_SFTP_HOST" "$CV_SFTP_PORT" "$CV_SFTP_USER" "$CV_SFTP_FOLDER" "$CV_SFTP_AUTH" >> "$tmp"
+  printf '%s\n' "$want" >> "$tmp"
   chown "$CV_RUN_USER": "$tmp"
   chmod 644 "$tmp"
   mv "$tmp" "$DISTRICT/settings"
@@ -248,11 +240,15 @@ HAS_SYSTEMD=no; [ -d /run/systemd/system ] && HAS_SYSTEMD=yes
 : "${CV_SFTP_PASSWORD:=}"; : "${CV_SFTP_KEY:=}"
 # Saved district settings win over the answers file, the same way the password file wins.
 if [ -f "$DISTRICT/settings" ]; then
-  _v=$(setting_get sftp_host); [ -n "$_v" ] && CV_SFTP_HOST=$_v
-  _v=$(setting_get sftp_port); [ -n "$_v" ] && CV_SFTP_PORT=$_v
-  _v=$(setting_get sftp_user); [ -n "$_v" ] && CV_SFTP_USER=$_v
-  _v=$(setting_get sftp_folder); [ -n "$_v" ] && CV_SFTP_FOLDER=$_v
-  _v=$(setting_get sftp_auth); [ -n "$_v" ] && CV_SFTP_AUTH=$_v
+  while IFS= read -r _line; do
+    case ${_line%%=*} in
+      sftp_host) CV_SFTP_HOST=${_line#*=} ;;
+      sftp_port) CV_SFTP_PORT=${_line#*=} ;;
+      sftp_user) CV_SFTP_USER=${_line#*=} ;;
+      sftp_folder) CV_SFTP_FOLDER=${_line#*=} ;;
+      sftp_auth) CV_SFTP_AUTH=${_line#*=} ;;
+    esac
+  done < "$DISTRICT/settings"
 fi
 : "${CV_SFTP_PORT:=22}"
 TLS=/etc/campusview/tls   # the certificate nginx uses (key: mode 0600, root only)
@@ -404,13 +400,8 @@ for v in CV_PG_PORT CV_SUPERSET_PORT CV_DJANGO_PORT; do chk $v "$RE_PORT"; done
 for v in CV_RUN_USER CV_ADMIN_USER CV_SUPERSET_DB_USER CV_DJANGO_DB_USER; do chk $v "$RE_NAME"; done
 for v in CV_SUPERSET_DB_PASSWORD CV_DJANGO_DB_PASSWORD CV_OWNER_DB_PASSWORD CV_READER_DB_PASSWORD CV_SECRET_KEY CV_ADMIN_PASSWORD; do chk $v "$RE_SECRET" "8+ characters, no spaces, quotes or backslashes"; done
 valid_ref || die "CV_REF has an invalid value${CV_REF:+ ($CV_REF)}. Use dev, or a release tag. No server uses main."
-[ -n "$CV_SFTP_HOST" ] || die "CV_SFTP_HOST is not set"
-[ -n "$CV_SFTP_USER" ] || die "CV_SFTP_USER is not set"
-[ -n "$CV_SFTP_FOLDER" ] || die "CV_SFTP_FOLDER is not set"
-[ -n "$CV_SFTP_AUTH" ] || die "CV_SFTP_AUTH is not set (key or password)"
 chk CV_SFTP_HOST "$RE_HOST" "a host name or IPv4 address"
-chk CV_SFTP_PORT "$RE_PORT" "a port from 10 to 65535"
-[ "$CV_SFTP_PORT" -le 65535 ] || die "CV_SFTP_PORT is not a port"
+chk CV_SFTP_PORT "$RE_PORT" "a port"
 chk CV_SFTP_USER "$RE_NAME" "letters, digits, and . _ @ + -"
 chk CV_SFTP_FOLDER "$RE_PATH" "a full path with letters, digits, . _ - and / only"
 chk CV_SFTP_AUTH '^(key|password)$' "key or password"
@@ -878,11 +869,10 @@ E
   if [ "$CV_SYSTEMD" = yes ]; then cat <<E
 
 Nightly load
-  The timer cv-nightly.timer runs at 02:00 in this server's time zone. Set that time zone to the district's.
-  A missed night runs after the server is back.
-  Next run:  systemctl list-timers cv-nightly.timer
-  Last run:  journalctl -u cv-nightly.service
-  install.sh --update does not install this timer. A full install.sh run does.
+  cv-nightly.timer runs at 02:00 in this server's time zone. Set that zone to the district's.
+  Next: systemctl list-timers cv-nightly.timer
+  Last: journalctl -u cv-nightly.service
+  install.sh --update does not install this timer.
 E
   else cat <<E
 
@@ -892,6 +882,7 @@ Nightly load
   install.sh --update does not install a timer either.
 E
   fi
+  echo "  The nightly load fails until the district map files and cutoff_date are in $DISTRICT."
   if [ "$CV_SFTP_AUTH" = key ]; then
     echo "  SFTP public key (give this to the SFTP admin):"
     cat "$CV_SFTP_KEY.pub"

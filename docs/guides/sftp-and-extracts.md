@@ -10,11 +10,11 @@ A full `install.sh` run asks for the SFTP host, port, user, remote folder, and w
 
 The first successful connection saves the SFTP server's host key in `/etc/campusview/sftp_known_hosts` and prints the fingerprint in the journal. Later connections reject a different key and do not load. Check the fingerprint with the SFTP admin after the first run.
 
-When systemd is in use, the installer enables and starts `cv-nightly.timer`. It runs the pull at 02:00 in the server's time zone. Set the server's time zone to the district's. `Persistent=true` means a missed night runs after the server is back. See the next run with `systemctl list-timers cv-nightly.timer`. See the last run with `journalctl -u cv-nightly.service`. `install.sh --update` does not install or refresh this timer. A full `install.sh` run does.
+When systemd is in use, the installer enables and starts `cv-nightly.timer`. It runs the pull at 02:00 in the server's time zone. Set the server's time zone to the district's. `Persistent=true` means a missed night runs after the server is back. See the next run with `systemctl list-timers cv-nightly.timer`. See the last run with `journalctl -u cv-nightly.service`. The update command is in [install-and-upgrade.md](install-and-upgrade.md#update-the-server).
 
 When systemd is not running, the done screen prints the one command to run each night. There is no cron job.
 
-A fetch that fails stops before the load and before any folder is deleted. The journal says `Could not fetch the extracts from the SFTP server.`
+A fetch or a load that fails deletes nothing. The journal says `Could not fetch the extracts from the SFTP server.` when the copy fails. The nightly load fails until the district map files and `cutoff_date` are in `/opt/campusview-district`.
 
 ## What a nightly drop contains
 
@@ -80,4 +80,4 @@ Read the loader output, or `ops.load_batch`. A failed load names only the files 
 
 ## History
 
-`cutoff_date` in the district `settings` file is the earliest date the extracts must include. A good load replaces the warehouse with the drop, and the warehouse is not purged by school year. The loader does not drop rows older than that date. After a successful fetch, `nightly.sh` deletes local drop folders whose age is more than 7 nights. 7 is fixed. It does not delete `ops.load_batch` rows.
+`cutoff_date` in the district `settings` file is the earliest date the extracts must include. A good load replaces the warehouse with the drop, and the warehouse is not purged by school year. The loader does not drop rows older than that date. After a successful load, `nightly.sh` deletes drop folders whose name starts with a `YYYY-MM-DD` older than 7 nights. Other names are left alone. 7 is fixed. It does not delete `ops.load_batch` rows.

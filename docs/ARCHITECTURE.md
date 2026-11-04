@@ -86,10 +86,10 @@ Dashboards, charts, filters, roles, and row-level security are Superset settings
 - On success, the raw snapshot is replaced inside one transaction and committed. The warehouse is not purged by school year (Austin, relayed by CampusView Engineer, 2026-11-03 7:30 PM ET).
 - The drop is a full copy, not a file of changes (Austin, relayed by CampusView Engineer, 2026-11-03 7:30 PM ET). Running the same files twice leaves the same warehouse.
 - The warehouse keeps data dated on or after the cutoff date. That date is the `cutoff_date` line in the district folder's `settings` file. The loader uses it for the calendar warning and does not drop rows. The extract is capped at the source.
-- The nightly run deletes local drop folders older than 7 nights. 7 is a fixed product value. `ops.load_batch` keeps every row.
+- After a successful load, the nightly run deletes dated drop folders older than 7 nights. The date is the `YYYY-MM-DD` at the start of the folder name. A failed fetch or load deletes nothing. 7 is a fixed product value. `ops.load_batch` keeps every row.
 - After a successful commit, a school that is new to the drop has no school admin yet. Until someone adds it to a Superset role's row-level security, only the all-schools roles see it. See the open question on school assignments in [ACCESS.md](ACCESS.md).
 
-The nightly job is `cv-nightly.timer`, installed by a full `install.sh` run. `install.sh --update` does not install it. It runs as `CV_RUN_USER` at 02:00 in the server's time zone, which is the district time zone, with `Persistent=true`. The loader connects as `campusview_owner`. It applies only when `CV_SYSTEMD=yes`. A server that uses `start.sh` gets one command on the done screen and no cron. It takes a lock so two runs cannot overlap. It does not use Celery. There is no Celery or Redis in v1.
+The nightly job is `cv-nightly.timer`, installed by a full `install.sh` run. It runs as `CV_RUN_USER` at 02:00 in the server's time zone, which is the district time zone, with `Persistent=true`. The loader connects as `campusview_owner`. It applies only when `CV_SYSTEMD=yes`. A server that uses `start.sh` gets one command on the done screen and no cron. It takes a lock so two runs cannot overlap. It does not use Celery. There is no Celery or Redis in v1. See [install-and-upgrade.md](guides/install-and-upgrade.md#update-the-server).
 
 Logs and `ops.load_batch` may include file names, row counts, row numbers, and rule names. They may not include cell values, student names, or ids from the row that failed.
 

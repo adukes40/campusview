@@ -336,7 +336,7 @@ def test_cutoff_is_read_from_district_settings(tmp_path):
     assert read_cutoff(EXAMPLES) == ("2025-07-01", None)
     district = tmp_path / "plain"
     district.mkdir()
-    assert read_cutoff(district)[1] == "The district config folder has no settings file."
+    assert read_cutoff(district)[1] == "The district config folder has no cutoff date."
     (district / "settings").write_text("cutoff_date=2025-07-01\nsftp_host=files.example.test\n")
     assert read_cutoff(district) == ("2025-07-01", None)
     (district / "settings").write_text("# kept\ncutoff_date=07/01/2025\n")
@@ -494,6 +494,18 @@ def test_bad_map_keeps_previous_ref(db, tmp_path):
     assert "Nothing was loaded." in report
     assert stored("SELECT grade_code, sort_order FROM ref.map_grades ORDER BY sort_order") == grades
     assert stored('SELECT "stateID" FROM ic.person') == [("001",)]
+    assert stored("SELECT outcome, fault FROM ops.load_batch ORDER BY batch_id DESC LIMIT 1") == [("fail", "extract")]
+
+
+def test_missing_cutoff_is_extract(db, tmp_path):
+    loadable(tmp_path)
+    district = copy_district(tmp_path)
+    (district / "settings").write_text("sftp_host=files.example.test\n")
+    ok, saved, report = load_drop(tmp_path, district)
+    assert not ok and saved
+    assert "problem with the district config folder." in report
+    assert "has no cutoff date." in report
+    assert stored("SELECT outcome, fault FROM ops.load_batch") == [("fail", "extract")]
 
 
 def test_reader_cannot_see_ref_or_ic(db, tmp_path):

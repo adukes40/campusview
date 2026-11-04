@@ -6,26 +6,11 @@ Open metric questions are not listed here. They are the Decisions for Austin lis
 
 ## 2026-11-03 — CampusView pulls extracts over SFTP, and the nightly timer is built
 
-**What:** CampusView is an SFTP client. The nightly job pulls the extracts from an SFTP server the district runs into a dated folder under `/var/lib/campusview/drop`, runs the loader, then deletes local drop folders older than 7 nights. CampusView has no built-in SFTP server. PR #20, which added one, is closed unmerged.
+**What:** CampusView pulls CSV extracts from an SFTP server the district runs. There is no built-in SFTP server. A full `install.sh` installs the 02:00 timer. Details are in [sftp-and-extracts.md](guides/sftp-and-extracts.md).
 
-**Why:** Austin's words (Austin, relayed by CampusView Engineer, 2026-11-03 8:53 to 8:54 PM ET): "sftp will be happening on my own terms. and all this server will need to do at the omment is pull in data from an sftp server, drop the files in a fodler, then run the validotr and pull in the data." On an optional built-in SFTP server: "it does not need a built in one". On sign-in (8:56 PM ET): "ask if using pub key or password.. i do not have control over the sftp server.. so i will ahve to use a password".
+**Why:** Austin, relayed by CampusView Engineer, 2026-11-03 8:53 to 8:56 PM ET: this server only pulls from the district's SFTP server, and sign-in is a key or a password.
 
-**How it is built:**
-
-- A full `install.sh` run asks, once, for the SFTP host, port, user, remote folder, and whether sign-in is a key or a password. A re-run keeps those answers.
-- Host, port, user, folder, and the sign-in choice are written to `/opt/campusview-district/settings`, next to `cutoff_date`. They are not secrets. If that folder is missing, the installer creates it and does not run `git init` or clone. That is the folder the loader already reads. If it is already a git checkout, the installer updates the five `sftp_` lines and leaves `cutoff_date`.
-- A password is read with no echo and stored only as `CV_SFTP_PASSWORD` in `/etc/campusview/campusview.env` (mode 600). The nightly job does not put it on a command line.
-- A key is an ed25519 key at `/etc/campusview/sftp_ed25519`, mode 600, owned by `CV_RUN_USER`. The path is `CV_SFTP_KEY` in the env file. The installer prints the `.pub` for the SFTP admin. The same handling as the TLS key and the deploy key: the file stays on the server.
-- The first successful connection pins the host key in `/etc/campusview/sftp_known_hosts` and prints the fingerprint. Later connections use strict checking.
-- When `CV_SYSTEMD=yes`, the installer installs `cv-nightly.service` and `cv-nightly.timer`. The timer is 02:00 in the server's time zone, which is the district time zone, with `Persistent=true`. The service runs as `CV_RUN_USER`. The loader connects as `campusview_owner`. `install.sh --update` does not install or refresh the timer.
-- When systemd is not running, there is no timer and no cron. The done screen prints the one command to run each night.
-- 7 nights is a fixed product value, not a district setting. The loader reads `cutoff_date` from the district `settings` file for the calendar warning. It does not drop rows.
-
-**Amends:** the Proposed timer lines in "The nightly timer and the drop cleanup move into step 1" below, including "It loads from the SFTP drop folder that PR #20 settles" and the two "to confirm" questions.
-
-**Who:** Austin, relayed by CampusView Engineer, 2026-11-03. The file names and the `start.sh` command are the build of that decision.
-
-**Status:** Built in this pull request.
+**Status:** Built. Amends the timer proposal below, including the PR #20 line.
 
 ## 2026-11-03 — The nightly timer and the drop cleanup move into step 1, and the warehouse keeps a cutoff date
 

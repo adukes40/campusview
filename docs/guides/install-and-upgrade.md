@@ -123,7 +123,7 @@ In order, the script does this work for you.
 14. If you answered `yes`, the services `cv-superset` and `cv-django` start at boot, and `cv-nightly.timer` is enabled. The timer is not started during the install.
 15. The SFTP lines in `/opt/campusview-district/settings`, and the local drop folder `/var/lib/campusview/drop`. With key sign-in, the key `/etc/campusview/sftp_ed25519`.
 
-The installer does not add a Redis server, Celery, a Superset worker, Docker, a firewall, Let's Encrypt (certbot), example data, or theming. nginx is the optional web server from the decision in [../DECISIONS.md](../DECISIONS.md). It is installed only when you choose HTTP or HTTPS. No second proxy is added. The `redis` and `celery` Python libraries are installed only because Superset depends on them, and nothing runs them. It does not run the loader during the install, and it does not run an SFTP server. The nightly job is [sftp-and-extracts.md](sftp-and-extracts.md). `install.sh --update` does not install the timer. A full `install.sh` run does.
+The installer does not add a Redis server, Celery, a Superset worker, Docker, a firewall, Let's Encrypt (certbot), example data, or theming. nginx is the optional web server from the decision in [../DECISIONS.md](../DECISIONS.md). It is installed only when you choose HTTP or HTTPS. No second proxy is added. The `redis` and `celery` Python libraries are installed only because Superset depends on them, and nothing runs them. It does not run the loader during the install, and it does not run an SFTP server. The nightly job is [sftp-and-extracts.md](sftp-and-extracts.md). How the copy avoids putting a password on the command line is in [The drop folder](sftp-and-extracts.md#the-drop-folder).
 
 ## Where the passwords live
 
@@ -227,7 +227,7 @@ After you save that line, run the same update command. To go back to an older ta
 sudo bash /opt/campusview/install.sh --update --allow-downgrade
 ```
 
-The update installs the Superset and Django versions pinned by the release it just checked out. If that install fails, the previous checkout is put back and the services are not restarted. A failed database update puts the previous checkout back and restarts it. If only the district repo changed, the command pulls that and does not restart. The command does not change the password file, the SFTP drop, or the database data. It does not rewrite `superset_config.py`, the Django settings, the units, or nginx. A release that changes any of those needs a full `install.sh` run.
+The update installs the Superset and Django versions pinned by the release it just checked out. If that install fails, the previous checkout is put back and the services are not restarted. A failed database update puts the previous checkout back and restarts it. If only the district repo changed, the command pulls that and does not restart. The command does not change the password file, the SFTP drop, or the database data. It does not rewrite `superset_config.py`, the Django settings, the units, or nginx, so `install.sh --update` does not install the nightly timer. A release that changes any of those needs a full `install.sh` run.
 
 ## Run it from an answers file
 
