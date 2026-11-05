@@ -6,23 +6,25 @@ Open metric questions are not listed here. They are the Decisions for Austin lis
 
 ## 2026-11-05 — Nightly pull moves to 05:00, and the remote folder holds only the contract files
 
-**What:** The one nightly pull moves from 02:00 to 05:00 in the district time zone. There is still one timer and one full pull of every contract file. Austin chose that over a second, later job for attendance alone. Reason: Infinite Campus finishes `att_day_aggregation.csv` around 3:45 AM; the other extracts export at 1:00 AM. A 05:00 run gets a fresh attendance rollup with the rest.
+**What:** The one nightly pull moves from 02:00 to 05:00 in the district time zone. There is still one timer and one full pull of every contract file. Austin chose that over a second, later job for attendance alone. Reason: Infinite Campus finishes `att_day_aggregation.csv` around 3:45 AM. The other extracts export at 1:00 AM. A 05:00 run gets a fresh attendance rollup with the rest.
+
+A full `install.sh` run writes `OnCalendar=*-*-* 05:00:00` on `cv-nightly.timer`, with `Persistent=true`. The service still runs as `CV_RUN_USER`. `install.sh --update` does not rewrite systemd units. A server that already has the timer keeps the `OnCalendar` line on disk until a full `install.sh` run, or until that line is `*-*-* 05:00:00`, followed by `systemctl daemon-reload` and `systemctl restart cv-nightly.timer`. Restarting the timer does not run the load.
 
 The remote SFTP folder CampusView pulls from must hold only the 24 contract CSV files. Austin already pointed his district export at a clean folder like that on his fresh LXC, so no product change for filtering or pull-by-name is needed. The loader already fails a drop that has unexpected files. Filtering extras in CampusView stays out of scope while that config works.
 
 **Why:** Austin, relayed by CampusView Engineer, 2026-11-05 about 3:36 PM ET. He picked option (a) from the scope check: move the one job to about 5:00 AM. On extras: he uses a clean remote folder with only the contract files.
 
-**Amends:** the 02:00 timer time in 2026-11-03 "CampusView pulls extracts over SFTP, and the nightly timer is built" and in the Proposed timer detail under 2026-11-03 "The nightly timer and the drop cleanup move into step 1". Guides that still say 02:00 as a fact about the installed unit stay until the Engineer's timer code PR lands; `dev` still writes `OnCalendar=02:00` today.
+**Amends:** the 02:00 timer time in 2026-11-03 "CampusView pulls extracts over SFTP, and the nightly timer is built" and in the Proposed timer detail under 2026-11-03 "The nightly timer and the drop cleanup move into step 1". A full `install.sh` run writes `OnCalendar=*-*-* 05:00:00`. `install.sh --update` does not rewrite an existing unit.
 
 **Who:** Austin, relayed by CampusView Engineer, 2026-11-05 about 3:36 PM ET.
 
-**Status:** Decided. CampusView Engineer is building the timer PR that writes 05:00. Mark Built/Settled when that PR merges. The six Proposed items in the 2026-11-03 SFTP entry stay Proposed; this entry does not confirm them.
+**Status:** Decided. This change writes the 05:00 timer. Mark Built/Settled when Austin merges it. The six Proposed items in the 2026-11-03 SFTP entry stay Proposed; this entry does not confirm them.
 
 **Builds on:** 2026-11-03 "CampusView pulls extracts over SFTP, and the nightly timer is built".
 
 ## 2026-11-03 — CampusView pulls extracts over SFTP, and the nightly timer is built
 
-**What:** CampusView is an SFTP client. On the nightly timer it pulls the extracts from an SFTP server the district runs into a dated folder under `/var/lib/campusview/drop`, then validates and loads them, then deletes dated drop folders older than 7 nights. CampusView has no built-in SFTP server. PR #20, which added one, is closed unmerged. A full `install.sh` installs the nightly timer. *Amended 2026-11-05 (Austin, relayed by CampusView Engineer): the product time is 05:00, not 02:00. See "Nightly pull moves to 05:00" above. The installed unit on `dev` still says 02:00 until the Engineer's timer PR merges.* Details are in [sftp-and-extracts.md](guides/sftp-and-extracts.md).
+**What:** CampusView is an SFTP client. On the nightly timer it pulls the extracts from an SFTP server the district runs into a dated folder under `/var/lib/campusview/drop`, then validates and loads them, then deletes dated drop folders older than 7 nights. CampusView has no built-in SFTP server. PR #20, which added one, is closed unmerged. A full `install.sh` installs the nightly timer. *Amended 2026-11-05 (Austin, relayed by CampusView Engineer): the product time is 05:00. A full `install.sh` run writes `OnCalendar=*-*-* 05:00:00`. See "Nightly pull moves to 05:00" above. `install.sh --update` does not rewrite an existing unit.* Details are in [sftp-and-extracts.md](guides/sftp-and-extracts.md).
 
 **Why:** Austin's words (Austin, relayed by CampusView Engineer, 2026-11-03 8:53 to 8:54 PM ET): "sftp will be happening on my own terms. and all this server will need to do at the omment is pull in data from an sftp server, drop the files in a fodler, then run the validotr and pull in the data." On an optional built-in SFTP server: "it does not need a built in one". On sign-in (8:56 PM ET): "ask if using pub key or password.. i do not have control over the sftp server.. so i will ahve to use a password".
 
@@ -63,7 +65,7 @@ The cutoff date is a district setting kept in the district repo, not a value in 
 
 - A systemd timer that `install.sh` installs, with no new components.
 - It runs as the installer's run account (`CV_RUN_USER`), and the loader connects to the database as `campusview_owner`.
-- It runs nightly at 02:00 in the district time zone, with `Persistent=true` so a missed night runs when the server comes back. *Amended 2026-11-05 (Austin, relayed by CampusView Engineer): the decided time is 05:00. See "Nightly pull moves to 05:00" above.*
+- It runs nightly at 02:00 in the district time zone, with `Persistent=true` so a missed night runs when the server comes back. *Amended 2026-11-05 (Austin, relayed by CampusView Engineer): the decided time is 05:00. A full `install.sh` run writes `OnCalendar=*-*-* 05:00:00`. See "Nightly pull moves to 05:00" above.*
 - It loads from the SFTP drop folder that PR #20 settles. *Amended 2026-11-03: it loads from the local drop folder that the SFTP pull fills. PR #20 is closed unmerged. See "CampusView pulls extracts over SFTP, and the nightly timer is built" above.*
 - An existing server gets the timer through one full `install.sh` run, because `install.sh --update` does not install systemd units.
 - The timer applies only when `CV_SYSTEMD=yes`. A `start.sh` server gets one command on the done screen and no cron. See the entry above.
