@@ -4,9 +4,21 @@ Dated log of decisions already made. The plan of record is [PLAN.md](PLAN.md). N
 
 Open metric questions are not listed here. They are the Decisions for Austin list in [METRICS.md](METRICS.md). Open extract questions are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md). Both lists are deferred for now and do not block step 0.
 
+## 2026-11-05 — The nightly extract pull runs at 05:00
+
+**What:** The one nightly job runs at 05:00 in the server's time zone. A full `install.sh` run writes `OnCalendar=*-*-* 05:00:00` on `cv-nightly.timer`, with `Persistent=true`. The service still runs as `CV_RUN_USER`. There is no second timer.
+
+**Why:** Infinite Campus finishes `att_day_aggregation.csv` at 3:45 AM. The other extracts are ready by about 1 AM. One run at 05:00 loads a complete drop. Austin set this time on 2026-11-05.
+
+**Amends:** the 02:00 time in the two 2026-11-03 entries below. `Persistent=true` and `CV_RUN_USER` stay. `install.sh --update` does not rewrite systemd units. A server that already has the timer keeps the `OnCalendar` line on disk until a full `install.sh` run, or until that line is `*-*-* 05:00:00`, followed by `systemctl daemon-reload` and `systemctl restart cv-nightly.timer`. Restarting the timer does not run the load.
+
+**Who:** Austin, 2026-11-05.
+
+**Status:** Decided.
+
 ## 2026-11-03 — CampusView pulls extracts over SFTP, and the nightly timer is built
 
-**What:** CampusView is an SFTP client. On the nightly timer it pulls the extracts from an SFTP server the district runs into a dated folder under `/var/lib/campusview/drop`, then validates and loads them, then deletes dated drop folders older than 7 nights. CampusView has no built-in SFTP server. PR #20, which added one, is closed unmerged. A full `install.sh` installs the 02:00 timer. Details are in [sftp-and-extracts.md](guides/sftp-and-extracts.md).
+**What:** CampusView is an SFTP client. On the nightly timer it pulls the extracts from an SFTP server the district runs into a dated folder under `/var/lib/campusview/drop`, then validates and loads them, then deletes dated drop folders older than 7 nights. CampusView has no built-in SFTP server. PR #20, which added one, is closed unmerged. A full `install.sh` installs the nightly timer. *Amended 2026-11-05: the time is 05:00. See the entry above.* Details are in [sftp-and-extracts.md](guides/sftp-and-extracts.md).
 
 **Why:** Austin's words (Austin, relayed by CampusView Engineer, 2026-11-03 8:53 to 8:54 PM ET): "sftp will be happening on my own terms. and all this server will need to do at the omment is pull in data from an sftp server, drop the files in a fodler, then run the validotr and pull in the data." On an optional built-in SFTP server: "it does not need a built in one". On sign-in (8:56 PM ET): "ask if using pub key or password.. i do not have control over the sftp server.. so i will ahve to use a password".
 
@@ -47,7 +59,7 @@ The cutoff date is a district setting kept in the district repo, not a value in 
 
 - A systemd timer that `install.sh` installs, with no new components.
 - It runs as the installer's run account (`CV_RUN_USER`), and the loader connects to the database as `campusview_owner`.
-- It runs nightly at 02:00 in the district time zone, with `Persistent=true` so a missed night runs when the server comes back.
+- It runs nightly at 02:00 in the district time zone, with `Persistent=true` so a missed night runs when the server comes back. *Amended 2026-11-05: the time is 05:00. See the entry above.*
 - It loads from the SFTP drop folder that PR #20 settles. *Amended 2026-11-03: it loads from the local drop folder that the SFTP pull fills. PR #20 is closed unmerged. See "CampusView pulls extracts over SFTP, and the nightly timer is built" above.*
 - An existing server gets the timer through one full `install.sh` run, because `install.sh --update` does not install systemd units.
 - The timer applies only when `CV_SYSTEMD=yes`. A `start.sh` server gets one command on the done screen and no cron. See the entry above.

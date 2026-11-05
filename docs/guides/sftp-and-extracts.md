@@ -10,7 +10,9 @@ A full `install.sh` run asks for the SFTP host, port, user, remote folder, and w
 
 The first connection saves the SFTP server's host key in `/etc/campusview/sftp_known_hosts`, even if the sign-in then fails. After a successful copy, the journal prints the fingerprint on every run, with `Pinned the SFTP host key` the first time. Later connections reject a different key and do not load. Check the fingerprint with the SFTP admin after the first run.
 
-When systemd is in use, the installer enables and starts `cv-nightly.timer`. It runs the pull at 02:00 in the server's time zone. Set the server's time zone to the district's. `Persistent=true` means a missed night runs after the server is back. See the next run with `systemctl list-timers cv-nightly.timer`. See the last run with `journalctl -u cv-nightly.service`. The update command is in [install-and-upgrade.md](install-and-upgrade.md#update-the-server).
+When systemd is in use, a full `install.sh` run enables and starts `cv-nightly.timer`. It runs the pull at 05:00 in the server's time zone. Set the server's time zone to the district's. `Persistent=true` means a missed night runs after the server is back. See the next run with `systemctl list-timers cv-nightly.timer`. See the last run with `journalctl -u cv-nightly.service`.
+
+`install.sh --update` does not rewrite units. A server that already has `cv-nightly.timer` keeps the `OnCalendar` time on disk. To move that server to 05:00 without a full install, set `OnCalendar=*-*-* 05:00:00` in `/etc/systemd/system/cv-nightly.timer`. Then run `systemctl daemon-reload` and `systemctl restart cv-nightly.timer`. Restarting the timer does not run the load. The update command is in [install-and-upgrade.md](install-and-upgrade.md#update-the-server).
 
 When systemd is not running, the done screen prints the one command to run each night. There is no cron job.
 
