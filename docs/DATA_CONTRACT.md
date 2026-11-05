@@ -32,11 +32,12 @@ What the typed copy warns about today. Each warning gives the file, the column, 
 - A boolean, number, school year, or timestamp that PostgreSQL's `pg_input_is_valid` rejects for that type. It becomes NULL. PostgreSQL also accepts `t`, `yes`, `1`, and `on` (and their opposites) as booleans.
 - A blank key in three columns only: `school.schoolID`, `calendar.calendarID`, and `enrollment.enrollmentID` (`REQUIRED` in `loader/contract.py`). No other blank cell warns.
 
-The three cross-row checks warn and keep the row. Each gives the file and the number of rows, with no line number:
+The two cross-row checks warn and keep the row. Each gives the file and the number of rows, with no line number:
 
 - Two grades for the same student, school, and year: `enrollment` rows with the same `personID`, the calendar's `schoolID`, and `endYear`, and more than one `grade`.
 - Attendance outside enrollment: an `attendance` row with no `enrollment` for the same person at the same school (matched through each calendar's `schoolID`) whose `startDate` is on or before the date and whose `endDate` is blank or on or after it. Any enrollment counts, not only a primary one.
-- An action date before the incident was entered: a `behavior_resolution` whose `discassignDate` falls on an earlier calendar day than its incident's `timestamp`, joined through `behavior_role` and `behavior_event`. A same-day action does not warn.
+
+`behavior_incident.timestamp` is when the incident occurred (Austin, 2026-11-05). The extract has no column for when a person logged the entry. The loader does not compare `behavior_resolution.discassignDate` to that timestamp, and it does not warn that an action date came before the incident was entered.
 
 **Not built yet:** duplicate-key checks on the extracts, foreign-key checks, and the impossible referral-flag check.
 
@@ -62,7 +63,7 @@ These rules were written for vendor-neutral standard files, which will not be bu
 - Mapping files live in the district directory passed to the loader, not in the SFTP drop. They are required on every load (Austin, relayed by CampusView Engineer, 2026-11-03, 12:47 PM ET). The failure and warning rules are in [Code-mapping files](#code-mapping-files).
 - One failed file fails the whole load. The previous snapshot stays. Warnings do not fail a file.
 - **What fails the load:** an unknown, missing, repeated, or blank header; a missing or unexpected file; a row PostgreSQL rejects when loading `raw` (raw is all text, so this is a file-format problem, not a bad value); an empty `school.csv` or `calendar.csv` (zero data rows); and a bad code-mapping file. Each of these fails before anything is written to `raw`, `ic`, or `ref`. The failed attempt is still recorded in `ops.load_batch`.
-- **What warns and keeps loading:** any other file with zero data rows, bad values (stored as NULL in `ic`), bad or duplicate keys (duplicates not checked yet), extract codes with no map row, and the cross-row checks in the file sections below. Three of those checks are built. The referral-flag check is not built yet. A row that fails a cross-row check stays as it is in `ic` and still counts in the metrics (Austin, 2026-11-03, 12:56 PM ET).
+- **What warns and keeps loading:** any other file with zero data rows, bad values (stored as NULL in `ic`), bad or duplicate keys (duplicates not checked yet), extract codes with no map row, and the cross-row checks in the file sections below. Two of those checks are built (two grades, and attendance outside enrollment). The action-date comparison against `behavior_incident.timestamp` is not a warning: that column is when the incident occurred, and the extract has no entry-time column (Austin, 2026-11-05). The referral-flag check is not built yet. A row that fails a cross-row check stays as it is in `ic` and still counts in the metrics (Austin, 2026-11-03, 12:56 PM ET).
 - Error reports name the file, the row number, and the rule. They do not repeat the cell value. Today's loader names the file and the reason, and gives a line number when PostgreSQL rejects a row. It keeps the one-line database message unless the message quotes something that is not a column of that file. Header text that does not look like a column name is counted, not shown. A typed-copy warning names the file, column, row count, rule, and first line. A cross-row warning names the file and row count.
 
 ## Changing the contract
@@ -164,7 +165,7 @@ One referral, one student. If the source system records several students on one 
 | `incident_time` | time | no | Blank if the time was not recorded. |
 | `location_code` | text | no | If present, must exist in `map_locations.csv`. |
 | `status_code` | text | yes | Must exist in `map_referral_statuses.csv`. |
-| `action_date` | date | no | Date of the first action or consequence. Blank if there is no action yet. Must be on or after `behavior_incident.timestamp`, the date the referral was entered into Infinite Campus, when set (Austin, 2026-11-03, 12:55 PM ET; the column per Austin, 2026-11-03, 1:16 PM ET). An earlier date is a warning; the row is kept and still counts (Austin, 2026-11-03, 12:56 PM ET). |
+| `action_date` | date | no | Date of the first action or consequence. Blank if there is no action yet. Days to action count from when the entry was logged, which is not a column in the extract. `behavior_incident.timestamp` is when the incident occurred, not that log time (Austin, 2026-11-05). An earlier action date is not a load warning. |
 
 No narrative, participant notes, or victim names.
 
@@ -368,4 +369,4 @@ Raised from the Day table rules above (2026-11-03). Ask the district's Infinite 
 1. `instruction` or `schoolDay`: which Day table flag is right for counting attendance days? CampusView uses `instruction` for now.
 2. Are there half-day, AM, or PM schedules, and how are half days marked in the Day table? Should a half day, or a half-day absence, ever count as half? For now, CampusView counts every instruction day as 1 day and every half-day absence as a full day absent.
 3. Should a calendar ever have enrollments but no Day rows? CampusView loads it with a warning for now.
-4. Confirm `behavior_incident.timestamp` is the entry date (Austin believes it is, Austin, 2026-11-03, 1:16 PM ET). Days to action and days open count from it.
+4. **Answered** (Austin, 2026-11-05): `behavior_incident.timestamp` is when the incident occurred, not the entry date. The extract has no column for when a person logged the entry. Days to action and days open stay unbuilt until that column exists. They still count from the log time, not from when the incident occurred (Austin, 2026-11-03, 12:55 PM ET).

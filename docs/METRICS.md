@@ -54,7 +54,8 @@ The views read `ic`, not `raw`, and use the Infinite Campus names (PR #14). Each
 | Consequence and action date | `ic.behavior_resolution` (`roleID`, `typeID`, `discassignDate`) to `ic.behavior_res_type` | |
 | 504 plan | `ic.program_participation` with `ic.program` | |
 | IEP | Probably `ic.plan` with `ic.plan_type` | TO CONFIRM 15. |
-| Incident date and time, plan review date | No column in today's contract | Open. `behavior_incident.timestamp` is the entry time, not the incident time. |
+| Incident date and time | `ic.behavior_incident.timestamp` | When the incident occurred (Austin, 2026-11-05). Not when a person logged the entry. The extract has no entry-time column. |
+| Plan review date | No column in today's contract | Open. |
 
 Every date and time column in `ic` is a `timestamp`. A time-only value, such as `ic.period."startTime"`, is stored on a placeholder date such as 1900-01-01. Compare times of day with `::time`, for example `"startTime"::time`, never the whole timestamp. Compare calendar days with `::date`.
 
@@ -118,9 +119,9 @@ The view is an ordinary view, because the date depends on today. No attendance r
 | --- | --- |
 | Shows | A number, one decimal. The plan's name for this number is average days to resolve or action. The working definition uses the first action. |
 | View | `reporting.v_incident`, rows where `days_to_action` is not null. |
-| Formula | Average of `days_to_action`. That column is the calendar-day difference from `ic.behavior_incident.timestamp`, the date the referral was entered into Infinite Campus, to the action date (`ic.behavior_resolution."discassignDate"`, the column the loader's cross-row check uses). It does not start at the incident date (Austin, 2026-11-03, 12:55 PM ET; the column per Austin, 2026-11-03, 1:16 PM ET). |
+| Formula | Average of `days_to_action`. The clock starts when a person logged the entry, not when the incident occurred (Austin, 2026-11-03, 12:55 PM ET). `ic.behavior_incident.timestamp` is when the incident occurred, not that log time (Austin, 2026-11-05). The extract has no entry-time column, so this metric stays unbuilt. Do not substitute `timestamp`. The action date, once the metric is built, is `ic.behavior_resolution."discassignDate"`. |
 | Denominator | The count of referrals in the filter that have an action date. Referrals with no action yet are excluded, not treated as still running. |
-| Edge | Same-day action is 0. A negative span (an action date before `behavior_incident.timestamp`) is flagged on the load report. The row is kept and counts in the average (Austin, 2026-11-03, 12:56 PM ET). |
+| Edge | Same-day action is 0, once an entry-time column exists. The loader does not flag an action date before `behavior_incident.timestamp`. |
 | Table columns | Student id, name, school, incident date, action date, days. |
 
 ### Active 504 plans
@@ -166,7 +167,7 @@ These are Superset charts on the dashboard. They read the view named here and us
 | --- | --- |
 | View | `reporting.v_open_referral` |
 | Who is on it | Incident rows with `is_open` true. That includes not-yet-processed referrals and referrals that have an action and are not closed. |
-| Days open | Calendar days from `behavior_incident.timestamp`, the date the referral was entered, through today (Austin, 2026-11-03, 1:16 PM ET). |
+| Days open | Calendar days from when a person logged the entry through today (Austin, 2026-11-03, 1:16 PM ET). `behavior_incident.timestamp` is when the incident occurred, not that log time (Austin, 2026-11-05). The extract has no entry-time column, so this column stays unbuilt. |
 | Color | Under 18 days, plain. 18 through 29, warning. 30 or more, strong warning. Cutoffs are a display rule from the approved preview. |
 | Sort | Days open descending, then student id. |
 | Columns | Name, school, grade, behavior labels, days open. No race. |
@@ -178,7 +179,7 @@ These are Superset charts on the dashboard. They read the view named here and us
 | | |
 | --- | --- |
 | View | `reporting.v_behavior_event` |
-| Formula | Count of behavior rows. By calendar month of the incident date (no file in `loader/contract.py` has an incident-date column today; see [Source columns in `ic`](#source-columns-in-ic)). By grade. By location label. A blank location is its own bar, labeled unknown, not dropped. |
+| Formula | Count of behavior rows. By calendar month of `ic.behavior_incident.timestamp`, when the incident occurred (Austin, 2026-11-05; see [Source columns in `ic`](#source-columns-in-ic)). By grade. By location label. A blank location is its own bar, labeled unknown, not dropped. |
 | Denominator | None. These are counts. |
 
 ### Heatmap of location by time of day
@@ -186,7 +187,7 @@ These are Superset charts on the dashboard. They read the view named here and us
 | | |
 | --- | --- |
 | View | `reporting.v_behavior_event` |
-| Formula | Count of behavior rows by location label (`ic.behavior_incident.location`) and hour of the incident time (0 through 23) in the district time zone. No file in `loader/contract.py` has an incident-time column today. |
+| Formula | Count of behavior rows by location label (`ic.behavior_incident.location`) and hour of `ic.behavior_incident.timestamp` (0 through 23) in the district time zone. That column is when the incident occurred (Austin, 2026-11-05). |
 | Missing time | Rows with no time are left off the heatmap. They remain on the month, grade, and location charts. |
 
 ### Consequences
@@ -317,7 +318,7 @@ Working proposals are in the body above. Each item below is the choice that woul
 
 9. **Two referral lists.** "Not yet processed" means the status map says there has been no action. "Open" means the status map says the referral is not closed, including ones already acted on. The overview headline number counts the first. The list shows the second. Confirm these are two different lists in your office, or say they should be the same list.
 
-10. **Days to action.** *Start date answered (Austin, 2026-11-03, 1:16 PM ET): the clock starts at `behavior_incident.timestamp`, when the referral was entered into Infinite Campus, not on the incident date. Days open counts from the same timestamp.* The average is calendar days from that timestamp to the first action date. Referrals with no action yet are left out. Same-day action is 0. A negative span is flagged on the load report and the row still counts (Austin, 2026-11-03, 12:56 PM ET). Still open: whether the clock should stop on the closed date instead, and whether referrals that are still waiting should count.
+10. **Days to action.** *Clock answered (Austin, 2026-11-03, 12:55 PM ET): days to action and days open count from when a person logged the entry, not from when the incident occurred. Column corrected (Austin, 2026-11-05): `behavior_incident.timestamp` is when the incident occurred. The extract has no entry-time column, so both metrics stay unbuilt. The loader does not flag an action date before that timestamp.* Still open, once an entry-time column exists: whether the clock should stop on the closed date instead, and whether referrals that are still waiting should count.
 
 11. **Days-open colors.** The open list colors days at 18 and at 30, matching the approved preview. Confirm those cutoffs, or give different ones, or say no color until you choose.
 
