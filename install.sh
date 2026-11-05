@@ -734,7 +734,7 @@ C
 [Unit]
 Description=CampusView nightly extract load
 [Timer]
-OnCalendar=*-*-* 02:00:00
+OnCalendar=*-*-* 05:00:00
 Persistent=true
 [Install]
 WantedBy=timers.target
@@ -934,10 +934,11 @@ E
   if [ "$CV_SYSTEMD" = yes ]; then cat <<E
 
 Nightly load
-  cv-nightly.timer runs at 02:00 in this server's time zone. Set that zone to the district's.
+  cv-nightly.timer runs at 05:00 in this server's time zone. Set that zone to the district's.
   Next: systemctl list-timers cv-nightly.timer
   Last: journalctl -u cv-nightly.service
-  install.sh --update does not install this timer.
+  install.sh --update does not rewrite units. A server that already has this timer keeps its old time until a full install.sh run, or until OnCalendar in /etc/systemd/system/cv-nightly.timer is *-*-* 05:00:00.
+  After that edit, run systemctl daemon-reload and systemctl restart cv-nightly.timer. Restarting the timer does not run the load.
 E
   else cat <<E
 

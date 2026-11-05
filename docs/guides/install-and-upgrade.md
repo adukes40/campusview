@@ -231,7 +231,9 @@ After you save that line, run the same update command. To go back to an older ta
 sudo bash /opt/campusview/install.sh --update --allow-downgrade
 ```
 
-The update installs the Superset and Django versions pinned by the release it just checked out. If that install fails, the previous checkout is put back and the services are not restarted. A failed database update puts the previous checkout back and restarts it. If only the district repo changed, the command pulls that and does not restart. The command does not change the password file, the SFTP drop, or the database data. It does not rewrite `superset_config.py`, the Django settings, the units, or nginx, so `install.sh --update` does not install the nightly timer. A release that changes any of those needs a full `install.sh` run.
+The update installs the Superset and Django versions pinned by the release it just checked out. If that install fails, the previous checkout is put back and the services are not restarted. A failed database update puts the previous checkout back and restarts it. If only the district repo changed, the command pulls that and does not restart. The command does not change the password file, the SFTP drop, or the database data. It does not rewrite `superset_config.py`, the Django settings, the units, or nginx, so `install.sh --update` does not install the nightly timer and does not change when it runs. A release that changes any of those needs a full `install.sh` run.
+
+A full `install.sh` run writes `cv-nightly.timer` with `OnCalendar=*-*-* 05:00:00` and `Persistent=true`. The service runs as `CV_RUN_USER`. A server whose timer still says 02:00 stays at 02:00 after `--update`, because the update leaves the unit file alone. Run a full `install.sh` to replace the units. To change only that time, set `OnCalendar=*-*-* 05:00:00` in `/etc/systemd/system/cv-nightly.timer`, then run `systemctl daemon-reload` and `systemctl restart cv-nightly.timer`. Restarting the timer does not run the load.
 
 ## Run it from an answers file
 
