@@ -4,6 +4,26 @@ Dated log of decisions already made. The plan of record is [PLAN.md](PLAN.md). N
 
 Open metric questions are not listed here. They are the Decisions for Austin list in [METRICS.md](METRICS.md). Open extract questions are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md). Both lists are deferred for now and do not block step 0.
 
+## 2026-11-05 — Answers from the SIS questions: school days, present, behavior time, grades, calendars, plans, locations, extra tables
+
+**What:**
+
+1. The 05:00 nightly pull is safely after Infinite Campus finishes `att_day_aggregation` (about 3:45 AM). This confirms the 05:00 decision in PR #29; the timer change is PR #30.
+2. Half instructional days count as full days. Early-dismissal codes (ED, EED, NUR, UED, RTS and similar) and tardies count as present in the attendance rollup. The rule: if the student was here at all during the day, they are present. Early-dismissal and tardy codes are still kept for reporting.
+3. Membership days use the Day table's `schoolDay` flag, not `instruction`. This amends 2026-11-03 "Day table rules for attendance".
+4. `behavior_incident.timestamp` is when the incident occurred (Infinite Campus docs: "Date and time incident occurred"), not when it was entered. An action dated before the incident should be impossible. The roughly 69,000 "action before incident" warnings are more likely a flaw in the comparison than bad entry. The comparison is to be re-checked before they are treated as real. This corrects the column meaning in 2026-11-03 "Days to action and days open start when the referral is entered"; whether the clock should start at the incident or at entry is open for Austin.
+5. Two grades for one student, school, and year can both be legitimate. Before treating them as mid-year promotions, rule out a back-to-back grade change, a same-day correction, and overlapping service types (P plus S or N, sometimes on another calendar in the same building). `noShow` rows add to all three.
+6. A calendar with enrollments and no Day rows is not always an error. Four patterns: a next-year roll-forward calendar (days not expected yet), a shell calendar for alternative, out-of-district, or homebound tracking (no days expected), a test or demo calendar (exclude), and a current-year attended calendar (missing days are an extract or setup gap). Calendars 370 and 375 get classified on Austin's server.
+7. Ignore `plan.status`; Infinite Campus leaves it empty. A plan is active on date d when `startDate` is on or before d and `endDate` is blank or on or after d. `locked` true is finalized; `locked` false is a draft (about 1 in 5) and is left out. `archive` true is left out. Amendments (`amendedFromPlanID`, `endDatePreAmend`) use the same date rule. Count DISTINCT `personID`.
+8. Location names are cross-checked against the Infinite Campus dictionary table.
+9. Roster, section, term and other extra tables will be used later. The 24-file set stays as is, and the contract is not expanded yet.
+
+**Caveat:** items 2 to 8 were answered from Infinite Campus training data, which is fake. They are provisional against live extracts and get re-checked when real drops disagree.
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-05, about 4:18 PM ET.
+
+**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed when he merges this pull request. Built code is unchanged by this entry. The loader's action-before-incident check (`loader/typed.py`) needs a code change by CampusView Engineer; see the pull request.
+
 ## 2026-11-03 — CampusView pulls extracts over SFTP, and the nightly timer is built
 
 **What:** CampusView is an SFTP client. On the nightly timer it pulls the extracts from an SFTP server the district runs into a dated folder under `/var/lib/campusview/drop`, then validates and loads them, then deletes dated drop folders older than 7 nights. CampusView has no built-in SFTP server. PR #20, which added one, is closed unmerged. A full `install.sh` installs the 02:00 timer. Details are in [sftp-and-extracts.md](guides/sftp-and-extracts.md).
@@ -99,7 +119,7 @@ Austin then picked how long drop files are kept (Austin, relayed by CampusView E
 
 **Who:** Austin, 2026-11-03, 12:55 PM ET, in his words: "discipline actions count from the time that they are entered into the system, not when the incident occurred. It's whenever the person or the referee put it in the system, not when the incidents took place." Then Austin, 2026-11-03, 1:16 PM ET, on the column and on days open: "I do believe that's the date it was entered. No, you would use the timestamp from the first question because that's when it was entered. Yes, I should count from the same timestamp."
 
-**Status:** Decided by Austin; confirmed by merging PR #11.
+**Status:** Decided by Austin; confirmed by merging PR #11. **Amended 2026-11-05:** `timestamp` is when the incident occurred, not the entry date (see the 2026-11-05 entry).
 
 ## 2026-11-03 — The typed layer keeps the Infinite Campus names
 
@@ -151,7 +171,7 @@ Austin then picked how long drop files are kept (Austin, relayed by CampusView E
 
 **What:**
 
-- Attendance counts Day rows with the `instruction` flag set, not `schoolDay`.
+- Attendance counts Day rows with the `instruction` flag set, not `schoolDay`. *Amended 2026-11-05: `schoolDay`, not `instruction` (see the 2026-11-05 entry).*
 - For now, every instruction day counts as 1 day (weight 1), and a half-day absence counts as a full day absent, the same as any other absence (Austin, relayed by CampusView Engineer, 2026-11-03, 10:32 AM ET). The half-day absence codes map to `absence_portion` 1. This is provisional; whether half days should ever count as half is a follow-up for the SIS person.
 - A calendar with enrollments but no Day rows loads with a warning on the load report. It does not fail the file. This replaces the earlier rule that every school with an enrollment must have a calendar day.
 

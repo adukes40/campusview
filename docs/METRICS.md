@@ -14,7 +14,7 @@ A hand-checked test, when the views are built, uses the Infinite Campus training
 
 **Who is enrolled on a date.** A student is enrolled at a school on a date when a primary enrollment covers that date: `ic.enrollment."startDate"` is on or before the date, and `"endDate"` is blank or on or after the date. Non-primary enrollments do not create membership and do not count in any denominator.
 
-**Membership day.** An enrolled student on a school day: an `ic.day` row with `instruction` true, not `schoolDay` (Austin, relayed by CampusView Engineer, 2026-11-03). The day's weight is `day_value`. For now, every instruction day counts as 1 day, so every weight is 1, and a half-day absence code has `absence_portion` 1, so it counts as a full day absent (Austin, relayed by CampusView Engineer, 2026-11-03, 10:32 AM ET). The formulas below still accept other values in case half days are counted as half later.
+**Membership day.** An enrolled student on a school day: an `ic.day` row with `schoolDay` true, not `instruction` (Austin, relayed by CampusView Engineer, 2026-11-05; provisional: answered from Infinite Campus training data, re-check against live extracts). This replaces the 2026-11-03 choice of `instruction`. No built code reads either flag yet. The day's weight is `day_value`. Half instructional days are full days, so every weight is 1, and a half-day absence code has `absence_portion` 1, so it counts as a full day absent (Austin, relayed by CampusView Engineer, 2026-11-03, 10:32 AM ET). The formulas below still accept other values in case half days are counted as half later.
 
 **No calendar days.** A school with enrollments but no calendar days in the year loads with a warning on the load report. Its students have no membership days there, so they add nothing to any rate until calendar days arrive.
 
@@ -22,7 +22,9 @@ A hand-checked test, when the views are built, uses the Infinite Campus training
 
 - If there is an attendance row, `absence_portion` comes from that code's map, and `present_portion` is `1 - absence_portion`.
 - If there is no attendance row, the working proposal counts the day as present: `absence_portion` 0, `present_portion` 1.
-- A tardy adds 1 to the tardy count. It changes the portions only when its mapped `absence_portion` is greater than 0.
+- A tardy adds 1 to the tardy count. Tardies count as present, so tardy codes map to `absence_portion` 0 (Austin, relayed by CampusView Engineer, 2026-11-05).
+- Early-dismissal codes (for example ED, EED, NUR, UED, RTS) count as present: `absence_portion` 0. They keep their own codes so reports can still count them (Austin, relayed by CampusView Engineer, 2026-11-05).
+- The rule: a student who was at school at all that day is present (Austin, relayed by CampusView Engineer, 2026-11-05; provisional: answered from Infinite Campus training data, re-check against live extracts).
 
 **This district's daily rule** (Austin, relayed by CampusView Engineer, 2026-11-03). A student counts present for the day when marked present in homeroom, even if they leave during homeroom. Tardies come from Infinite Campus's overnight attendance calculation. CampusView does not recompute them. It maps the codes that calculation produces.
 
@@ -47,14 +49,14 @@ The views read `ic`, not `raw`, and use the Infinite Campus names (PR #14). Each
 | School (`school_id`) | `ic.school."schoolID"`, reached through `ic.calendar."schoolID"` | TO CONFIRM 4. |
 | School year (`school_year`) | `ic.calendar."endYear"` and `ic.enrollment."endYear"`, integers | The view turns the end year into `YYYY-YYYY` (TO CONFIRM 5). |
 | Enrollment and grade | `ic.enrollment` (`personID`, `calendarID`, `grade`, `serviceType`, `startDate`, `endDate`) | Which `serviceType` value is primary is TO CONFIRM. `grade` stays text. |
-| School day | `ic.day` (`calendarID`, `date`, `instruction`) | `day_value` has no column. It is 1 for now. |
+| School day | `ic.day` (`calendarID`, `date`, `schoolDay`) | `day_value` has no column. It is 1 for now. |
 | Attendance mark and code | `ic.attendance` (`personID`, `calendarID`, `date`, `excuseID`, `status`), `ic.attendance_excuse` (`code`), `ic.att_day_aggregation` | Which columns carry the homeroom mark is open in DATA_CONTRACT. |
 | Referral (incident) | `ic.behavior_incident` (`incidentID`, `calendarID`, `location`, `status`, `timestamp`) | The student is `ic.behavior_role."personID"`, through `ic.behavior_event`. |
 | Behavior label | `ic.behavior_event."typeID"` to `ic.behavior_type` (`code`, `name`) | |
 | Consequence and action date | `ic.behavior_resolution` (`roleID`, `typeID`, `discassignDate`) to `ic.behavior_res_type` | |
 | 504 plan | `ic.program_participation` with `ic.program` | |
 | IEP | Probably `ic.plan` with `ic.plan_type` | TO CONFIRM 15. |
-| Incident date and time, plan review date | No column in today's contract | Open. `behavior_incident.timestamp` is the entry time, not the incident time. |
+| Incident date and time, plan review date | No column in today's contract | Open for the plan review date. `behavior_incident.timestamp` is when the incident occurred, per the Infinite Campus docs, not the entry time (Austin, relayed by CampusView Engineer, 2026-11-05). Whether the date and hour charts use it is not decided yet. |
 
 Every date and time column in `ic` is a `timestamp`. A time-only value, such as `ic.period."startTime"`, is stored on a placeholder date such as 1900-01-01. Compare times of day with `::time`, for example `"startTime"::time`, never the whole timestamp. Compare calendar days with `::date`.
 
@@ -129,7 +131,7 @@ The view is an ordinary view, because the date depends on today. No attendance r
 | --- | --- |
 | Shows | A count of plans, plus a second count expiring in 30 days. |
 | View | `reporting.v_plan`, rows with `plan_type` `504` and `is_active` true. |
-| Active | Status maps to active, `startDate` is on or before today, and `endDate` is blank or on or after today (`ic.program_participation` for a 504). |
+| Active | `startDate` is on or before today, and `endDate` is blank or on or after today (`ic.program_participation` for a 504). For `ic.plan`: ignore `status`, which Infinite Campus leaves empty; `locked` true only (false is a draft, about 1 in 5); `archive` true is left out; amended plans (`amendedFromPlanID`, `endDatePreAmend`) use the same date rule; students are counted with DISTINCT `personID` (Austin, relayed by CampusView Engineer, 2026-11-05; provisional: answered from Infinite Campus training data, re-check against live extracts). |
 | School | The school of the student's primary enrollment in the selected year. A plan whose student has no primary enrollment in that year is not on the view. |
 | Expiring | Among the active rows, the review due date falls from today through the next 30 days, including today. If the review due date is blank, `endDate` is used the same way. No file in `loader/contract.py` has a review-date column today. If both are blank, the plan is not expiring. |
 | Denominator | None. Two active 504s for one student count as two. |
@@ -317,7 +319,7 @@ Working proposals are in the body above. Each item below is the choice that woul
 
 9. **Two referral lists.** "Not yet processed" means the status map says there has been no action. "Open" means the status map says the referral is not closed, including ones already acted on. The overview headline number counts the first. The list shows the second. Confirm these are two different lists in your office, or say they should be the same list.
 
-10. **Days to action.** *Start date answered (Austin, 2026-11-03, 1:16 PM ET): the clock starts at `behavior_incident.timestamp`, when the referral was entered into Infinite Campus, not on the incident date. Days open counts from the same timestamp.* The average is calendar days from that timestamp to the first action date. Referrals with no action yet are left out. Same-day action is 0. A negative span is flagged on the load report and the row still counts (Austin, 2026-11-03, 12:56 PM ET). Still open: whether the clock should stop on the closed date instead, and whether referrals that are still waiting should count.
+10. **Days to action.** *Corrected (Austin, relayed by CampusView Engineer, 2026-11-05): `behavior_incident.timestamp` is when the incident occurred, not when it was entered. The clock still starts at that column, so it now counts from the incident. Austin's 2026-11-03 wish to count from entry has no column today; open for Austin.* *Start date answered (Austin, 2026-11-03, 1:16 PM ET): the clock starts at `behavior_incident.timestamp`, when the referral was entered into Infinite Campus, not on the incident date. Days open counts from the same timestamp.* The average is calendar days from that timestamp to the first action date. Referrals with no action yet are left out. Same-day action is 0. A negative span is flagged on the load report and the row still counts (Austin, 2026-11-03, 12:56 PM ET). Still open: whether the clock should stop on the closed date instead, and whether referrals that are still waiting should count.
 
 11. **Days-open colors.** The open list colors days at 18 and at 30, matching the approved preview. Confirm those cutoffs, or give different ones, or say no color until you choose.
 
@@ -333,7 +335,7 @@ Working proposals are in the body above. Each item below is the choice that woul
 
 17. **Which school a plan counts at.** An active plan counts at the school of the student's primary enrollment for the selected year. A plan for a student with no primary enrollment in that year is hidden. Confirm.
 
-18. **Two active plans.** A plan is active when its status maps to active, it has started, and it has not ended. Two active plans of the same type for one student count as two. Confirm.
+18. **Two active plans.** *The active rule changed (Austin, relayed by CampusView Engineer, 2026-11-05): dates plus `locked`, not status; see Active 504 plans. Whether "count DISTINCT personid" replaces "two plans count as two" below is for Austin to confirm.* A plan is active when it is locked, not archived, has started, and has not ended. Two active plans of the same type for one student count as two. Confirm.
 
 19. **Grade native filter.** The Superset native filter for grade offers All, or one grade (K, 1, 2, and so on through 12), read from the `grade` column on each view. The preview's bands (K-5, 6-8, 9-12) are not in v1. A student may have only one grade per school per year; otherwise the enrollment file is rejected. Confirm a single-grade native filter is enough, and confirm that a mid-year grade change does not need to be represented.
 
