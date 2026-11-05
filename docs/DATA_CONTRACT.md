@@ -36,7 +36,7 @@ The three cross-row checks warn and keep the row. Each gives the file and the nu
 
 - Two grades for the same student, school, and year: `enrollment` rows with the same `personID`, the calendar's `schoolID`, and `endYear`, and more than one `grade`.
 - Attendance outside enrollment: an `attendance` row with no `enrollment` for the same person at the same school (matched through each calendar's `schoolID`) whose `startDate` is on or before the date and whose `endDate` is blank or on or after it. Any enrollment counts, not only a primary one.
-- An action date before the incident (the loader's message still says "was entered"): a `behavior_resolution` whose `discassignDate` falls on an earlier calendar day than its incident's `timestamp`, joined through `behavior_role` and `behavior_event`. A same-day action does not warn. `timestamp` is when the incident occurred, so a real action before it should be impossible (Austin, relayed by CampusView Engineer, 2026-11-05). The roughly 69,000 rows this flags on Austin's dev server are more likely a flaw in this comparison than bad entry. Re-check the comparison before treating them as real.
+- An action date before the incident's occurred time (the loader's message still says "was entered"): a `behavior_resolution` whose `discassignDate` falls on an earlier calendar day than its incident's `timestamp`, joined through `behavior_role` and `behavior_event`. A same-day action does not warn. `timestamp` is when the incident occurred, not when it was logged/entered (Austin, relayed by CampusView Engineer, 2026-11-05). This check is against occurred-time, not entry time; the roughly 69,000 rows it flags on Austin's dev server are more likely a comparison artifact than a real data-quality failure. Re-check the comparison and wording before treating them as real. Days-to-action / days-open use entry time and are parked until that field is exported.
 
 **Not built yet:** duplicate-key checks on the extracts, foreign-key checks, and the impossible referral-flag check.
 
@@ -164,7 +164,7 @@ One referral, one student. If the source system records several students on one 
 | `incident_time` | time | no | Blank if the time was not recorded. |
 | `location_code` | text | no | If present, must exist in `map_locations.csv`. |
 | `status_code` | text | yes | Must exist in `map_referral_statuses.csv`. |
-| `action_date` | date | no | Date of the first action or consequence. Blank if there is no action yet. Must be on or after `behavior_incident.timestamp`, when set. That column is when the incident occurred, not the entry date (Austin, relayed by CampusView Engineer, 2026-11-05). Earlier wording, now corrected: the date the referral was entered into Infinite Campus (Austin, 2026-11-03, 12:55 PM ET; the column per Austin, 2026-11-03, 1:16 PM ET). An earlier date is a warning; the row is kept and still counts (Austin, 2026-11-03, 12:56 PM ET). |
+| `action_date` | date | no | Date of the first action or consequence. Blank if there is no action yet. The loader currently warns when this falls before `behavior_incident.timestamp` (occurred time, not entry). That comparison is under re-check and should not be treated as a real data-quality failure against occurred-time (Austin, relayed by CampusView Engineer, 2026-11-05). Days-to-action uses entry/logged time once Infinite Campus exports it; until then that metric is parked. An earlier date still keeps the row and still counts (Austin, 2026-11-03, 12:56 PM ET). |
 
 No narrative, participant notes, or victim names.
 
@@ -370,4 +370,4 @@ Raised from the Day table rules above (2026-11-03). Ask the district's Infinite 
 1. `instruction` or `schoolDay`: which Day table flag is right for counting attendance days? CampusView uses `instruction` for now.
 2. Are there half-day, AM, or PM schedules, and how are half days marked in the Day table? Should a half day, or a half-day absence, ever count as half? For now, CampusView counts every instruction day as 1 day and every half-day absence as a full day absent.
 3. Should a calendar ever have enrollments but no Day rows? CampusView loads it with a warning for now.
-4. Confirm `behavior_incident.timestamp` is the entry date (Austin believes it is, Austin, 2026-11-03, 1:16 PM ET). Days to action and days open count from it.
+4. ~~Confirm `behavior_incident.timestamp` is the entry date.~~ Answered 2026-11-05: `timestamp` is when the incident occurred. Days-to-action and days-open clocks are entry/logged time; no entry column in extracts → those metrics are parked (Austin, relayed by CampusView Engineer, 2026-11-05 about 4:23 PM ET).

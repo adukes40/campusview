@@ -11,7 +11,7 @@ Open metric questions are not listed here. They are the Decisions for Austin lis
 1. The 05:00 nightly pull is safely after Infinite Campus finishes `att_day_aggregation` (about 3:45 AM). This confirms the 05:00 decision in PR #29; the timer change is PR #30.
 2. Half instructional days count as full days. Early-dismissal codes (ED, EED, NUR, UED, RTS and similar) and tardies count as present in the attendance rollup. The rule: if the student was here at all during the day, they are present. Early-dismissal and tardy codes are still kept for reporting.
 3. Membership days use the Day table's `schoolDay` flag, not `instruction`. This amends 2026-11-03 "Day table rules for attendance".
-4. `behavior_incident.timestamp` is when the incident occurred (Infinite Campus docs: "Date and time incident occurred"), not when it was entered. An action dated before the incident should be impossible. The roughly 69,000 "action before incident" warnings are more likely a flaw in the comparison than bad entry. The comparison is to be re-checked before they are treated as real. This corrects the column meaning in 2026-11-03 "Days to action and days open start when the referral is entered"; whether the clock should start at the incident or at entry is open for Austin.
+4. `behavior_incident.timestamp` is when the incident occurred (Infinite Campus docs: "Date and time incident occurred"), not when it was logged/entered. The days-to-action and days-open clocks still start at logged/entry time (Austin, 2026-11-03). There is no entry-time column in today's extracts, so those two metrics are parked until Infinite Campus exports that field. Do not use `timestamp` as a stand-in for entry time. The roughly 69,000 "action before incident" warnings compare an action date to occurred-time; they are more likely a comparison artifact than bad entry, and the loader wording/comparison is to be re-checked before they are treated as a real data-quality failure. This amends 2026-11-03 "Days to action and days open start when the referral is entered".
 5. Two grades for one student, school, and year can both be legitimate. Before treating them as mid-year promotions, rule out a back-to-back grade change, a same-day correction, and overlapping service types (P plus S or N, sometimes on another calendar in the same building). `noShow` rows add to all three.
 6. A calendar with enrollments and no Day rows is not always an error. Four patterns: a next-year roll-forward calendar (days not expected yet), a shell calendar for alternative, out-of-district, or homebound tracking (no days expected), a test or demo calendar (exclude), and a current-year attended calendar (missing days are an extract or setup gap). Calendars 370 and 375 get classified on Austin's server.
 7. Ignore `plan.status`; Infinite Campus leaves it empty. A plan is active on date d when `startDate` is on or before d and `endDate` is blank or on or after d. `locked` true is finalized; `locked` false is a draft (about 1 in 5) and is left out. `archive` true is left out. Amendments (`amendedFromPlanID`, `endDatePreAmend`) use the same date rule. Count DISTINCT `personID`.
@@ -22,7 +22,26 @@ Open metric questions are not listed here. They are the Decisions for Austin lis
 
 **Who:** Austin, relayed by CampusView Engineer, 2026-11-05, about 4:18 PM ET.
 
-**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed when he merges this pull request. Built code is unchanged by this entry. The loader's action-before-incident check (`loader/typed.py`) needs a code change by CampusView Engineer; see the pull request.
+**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed when he merges this pull request. Built code is unchanged by this entry. Days-to-action and days-open stay parked (no entry-time column). The loader's action-before-incident check (`loader/typed.py`) needs a wording/comparison fix by CampusView Engineer so it is not framed as a real data error against occurred-time.
+
+## 2026-11-05 — Days-to-action and days-open clocks are entry time; metrics parked
+
+**What:** The days-to-action and days-open clocks are based on when the incident was *logged* in Infinite Campus by a person (entry time), not on `behavior_incident.timestamp` (when the incident occurred). That confirms the 2026-11-03 clock choice and settles the open question left in the earlier 2026-11-05 SIS item 4. `timestamp` stays the occurred time. Today's extracts have no entry-time column, so days-to-action and days-open are parked until Infinite Campus exports that field. Do not ship metrics that treat `timestamp` as entry time. The loader may still re-check the "action before incident timestamp" comparison so it is not treated as a real data-quality failure against occurred-time.
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-05 about 4:23 PM ET.
+
+**Status:** Decided. Metrics parked in [FEATURES.md](../FEATURES.md#parking-lot). METRICS item 18 (DISTINCT personid / one of each vs students with either) is answered in the next entry.
+
+**Builds on:** 2026-11-03 "Days to action and days open start when the referral is entered"; 2026-11-05 SIS answers item 4.
+
+## 2026-11-05 — 504 and IEP cards: one of each vs students with either
+
+**What:** Cards that count how many 504s and IEPs there are: one student can have one of each, so those cards total 2. Cards that mean "students with either" use DISTINCT `personID` — one student with both is not two students.
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-05 about 4:25 PM ET.
+
+**Status:** Decided. Updates METRICS.md Decisions for Austin item 18.
+
 ## 2026-11-05 — Nightly pull moves to 05:00, and the remote folder holds only the contract files
 
 **What:** The one nightly pull moves from 02:00 to 05:00 in the district time zone. There is still one timer and one full pull of every contract file. Austin chose that over a second, later job for attendance alone. Reason: Infinite Campus finishes `att_day_aggregation.csv` around 3:45 AM; the other extracts export at 1:00 AM. A 05:00 run gets a fresh attendance rollup with the rest.
@@ -136,7 +155,7 @@ Austin then picked how long drop files are kept (Austin, relayed by CampusView E
 
 **Who:** Austin, 2026-11-03, 12:55 PM ET, in his words: "discipline actions count from the time that they are entered into the system, not when the incident occurred. It's whenever the person or the referee put it in the system, not when the incidents took place." Then Austin, 2026-11-03, 1:16 PM ET, on the column and on days open: "I do believe that's the date it was entered. No, you would use the timestamp from the first question because that's when it was entered. Yes, I should count from the same timestamp."
 
-**Status:** Decided by Austin; confirmed by merging PR #11. **Amended 2026-11-05:** `timestamp` is when the incident occurred, not the entry date (see the 2026-11-05 entry).
+**Status:** Decided by Austin; confirmed by merging PR #11. **Amended 2026-11-05:** `timestamp` is when the incident occurred, not the entry date. The clock remains entry/logged time; with no entry column in the extracts, days-to-action and days-open are parked (see the 2026-11-05 entries).
 
 ## 2026-11-03 — The typed layer keeps the Infinite Campus names
 
