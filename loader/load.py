@@ -8,6 +8,7 @@ from pathlib import Path
 import psycopg
 from psycopg import sql
 
+from loader import reporting
 from loader.contract import FILES
 from loader.maps import read_maps, replace_maps
 from loader.typed import replace_ic
@@ -89,7 +90,14 @@ def load_drop(folder: Path, district: Path) -> tuple[bool, bool, str]:
         return False, False, render(False, phrase, lines, [])
     copy_name = None
     warnings = []
+    phase = "copy"
     try:
+        if not fault and not reporting.SQL_PATH.is_file():
+            fault, lines, phrase = (
+                "server",
+                ["reporting.sql is missing from the product checkout."],
+                "the server",
+            )
         if not fault:
             with conn.transaction():
                 locked = conn.execute("SELECT pg_try_advisory_xact_lock(%s)", (LOCK,)).fetchone()[0]
@@ -98,6 +106,11 @@ def load_drop(folder: Path, district: Path) -> tuple[bool, bool, str]:
                     phrase = "the server"
                 else:
                     conn.execute("CREATE SCHEMA IF NOT EXISTS raw")
+                    # Drop reporting views before ic and ref are rebuilt. Those
+                    # rebuilds drop tables without CASCADE.
+                    phase = "views"
+                    reporting.drop_views(conn)
+                    phase = "copy"
                     lines = []
                     for name, path, columns, header, _has_data in ready:
                         copy_name = name
@@ -116,11 +129,25 @@ def load_drop(folder: Path, district: Path) -> tuple[bool, bool, str]:
                     passed, notes = replace_maps(conn, maps)
                     lines.extend(passed)
                     warnings.extend(notes)
+                    phase = "views"
+                    reporting.apply_views(conn)
+                    phase = "copy"
                     fault = None
         ok = fault is None
         report = render(ok, phrase, lines, warnings)
         return ok, save_report(conn, report, ok, fault, started), report
+    except reporting.MissingReader:
+        report = render(False, "the server", ["campusview_reader is missing."], [])
+        return False, save_report(conn, report, False, "server", started), report
     except psycopg.Error as exc:
+        if phase == "views":
+            report = render(
+                False,
+                "the server",
+                ["reporting.sql: fail. The reporting views could not be replaced."],
+                [],
+            )
+            return False, save_report(conn, report, False, "server", started), report
         report = render(False, "the extract", [copy_failure(exc, copy_name)], [])
         return False, save_report(conn, report, False, "extract", started), report
     finally:
