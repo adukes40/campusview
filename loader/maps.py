@@ -65,6 +65,24 @@ def _check(kind, text):
     return number, None
 
 
+def _referral_warning(filename, line_no, columns, values):
+    if filename != "map_referral_statuses.csv":
+        return None
+    flags = {name: value for (name, kind), value in zip(columns, values) if kind == "bool"}
+    is_processed = flags.get("is_processed")
+    is_open = flags.get("is_open")
+    is_cancelled = flags.get("is_cancelled")
+    if not all(isinstance(flag, bool) for flag in (is_processed, is_open, is_cancelled)):
+        return None
+    if is_cancelled and (is_processed or is_open):
+        rule = "cancelled with another flag true"
+    elif not is_processed and not is_open and not is_cancelled:
+        rule = "all three flags false"
+    else:
+        return None
+    return f"Warning: {filename}: Line {line_no}: {rule}."
+
+
 def read_maps(district: Path, check_header):
     if not district.is_dir():
         text = (
@@ -72,8 +90,8 @@ def read_maps(district: Path, check_header):
             if district.exists()
             else "The district config folder is not on this machine."
         )
-        return [text], None
-    problems, loaded = [], []
+        return [text], [], None
+    problems, warnings, loaded = [], [], []
     for spec in MAPS:
         filename, columns = spec[0], _columns(spec)
         path = district / filename
@@ -90,14 +108,15 @@ def read_maps(district: Path, check_header):
         except csv.Error:
             problems.append(f"{filename}: fail. The file is not valid CSV.")
             continue
-        rows, row_problems = _rows(filename, columns, header, raw_rows)
+        rows, row_problems, row_warnings = _rows(filename, columns, header, raw_rows)
         problems.extend(row_problems)
+        warnings.extend(row_warnings)
         loaded.append((spec, rows))
-    return (problems, None) if problems else ([], loaded)
+    return (problems, warnings, None) if problems else ([], warnings, loaded)
 
 
 def _rows(filename, columns, header, raw_rows):
-    problems, parsed, seen_keys, seen_sorts = [], [], set(), set()
+    problems, warnings, parsed, seen_keys, seen_sorts = [], [], [], set(), set()
     key_name = next(name for name, kind in columns if kind == "key")
     sort_name = next((name for name, kind in columns if kind == "sort"), None)
     for line_no, raw in enumerate(raw_rows[1:], start=2):
@@ -126,9 +145,12 @@ def _rows(filename, columns, header, raw_rows):
             bad = True
         elif sort_value is not None:
             seen_sorts.add(sort_value)
+        warning = _referral_warning(filename, line_no, columns, values)
+        if warning:
+            warnings.append(warning)
         if not bad:
             parsed.append(tuple(values))
-    return parsed, problems
+    return parsed, problems, warnings
 
 
 def replace_maps(conn, loaded):

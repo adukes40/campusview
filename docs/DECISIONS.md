@@ -12,7 +12,7 @@ Open metric questions are not listed here. They are the Decisions for Austin lis
 - Step 2 is now the current build: Overview reporting views in PostgreSQL, then the Overview dashboard in Apache Superset, modeled on screenshots of Austin's current overview page, with the three starter roles and school row-level security.
 - Leftovers are tabled, not cancelled. They are picked up one at a time during downtime or a gap in a long work session, and they must not block Step 2.
 - Tabled leftovers:
-  1. Impossible / all-false referral-flag check (named in Step 1, not built).
+  1. Impossible / all-false referral-flag check (named in Step 1). Built later on 2026-11-06: a map row with all three flags false, or cancelled with another flag true, warns on the load report and is still loaded.
   2. Prove that a failed load keeps the previous warehouse data.
   3. Control-character load warnings: `campus_dictionary.csv` column `name` (4 rows) and `identity.csv` column `firstName` (1 row). Fake data only.
   4. Enrollment rows with two grades for the same student, school, and year (mid-year change, same-day correction, or overlap) — Austin to look at in DBeaver.

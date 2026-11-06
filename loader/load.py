@@ -64,7 +64,7 @@ def _phrase(fault, map_lines, district: Path) -> str:
 def load_drop(folder: Path, district: Path) -> tuple[bool, bool, str]:
     started = datetime.now(UTC)
     fault, lines, ready = check_folder(folder)
-    map_lines, maps = read_maps(district, check_header)
+    map_lines, map_warnings, maps = read_maps(district, check_header)
     cutoff, cutoff_problem = read_cutoff(district)
     phrase = _phrase(fault, map_lines, district)
     if cutoff_problem and not map_lines and district.is_dir():
@@ -80,15 +80,15 @@ def load_drop(folder: Path, district: Path) -> tuple[bool, bool, str]:
     if not os.environ.get("CV_OWNER_DB_PASSWORD"):
         if not fault:
             fault, lines = "server", ["CV_OWNER_DB_PASSWORD is not set."]
-        return False, False, render(False, phrase, lines, [])
+        return False, False, render(False, phrase, lines, map_warnings)
     try:
         conn = connect()
     except psycopg.Error:
         if not fault:
             fault, lines = "server", ["The database could not be reached."]
-        return False, False, render(False, phrase, lines, [])
+        return False, False, render(False, phrase, lines, map_warnings)
     copy_name = None
-    warnings = []
+    warnings = list(map_warnings)
     try:
         if not fault:
             with conn.transaction():
@@ -103,11 +103,11 @@ def load_drop(folder: Path, district: Path) -> tuple[bool, bool, str]:
                         copy_name = name
                         lines.append(copy_file(conn, name, path, columns, header))
                     copy_name = None
-                    warnings = [
+                    warnings.extend(
                         f"Warning: {name} has no data rows."
                         for name, _path, _columns, _header, has_data in ready
                         if not has_data
-                    ]
+                    )
                     warnings.extend(replace_ic(conn))
                     warnings.extend(
                         f"Warning: calendar {calendar_id} has enrollments and no Day rows."
@@ -121,7 +121,7 @@ def load_drop(folder: Path, district: Path) -> tuple[bool, bool, str]:
         report = render(ok, phrase, lines, warnings)
         return ok, save_report(conn, report, ok, fault, started), report
     except psycopg.Error as exc:
-        report = render(False, "the extract", [copy_failure(exc, copy_name)], [])
+        report = render(False, "the extract", [copy_failure(exc, copy_name)], map_warnings)
         return False, save_report(conn, report, False, "extract", started), report
     finally:
         conn.close()
@@ -304,13 +304,12 @@ def day_warnings(conn, cutoff: str) -> list[str]:
 def render(ok: bool, phrase, lines, warnings) -> str:
     if ok:
         head = ["Load passed."]
-        lines = [*lines, *warnings]
     else:
         head = [
             f"Load failed. This looks like a problem with {phrase}.",
             "Nothing was loaded. The previous data is still in place.",
         ]
-    return "\n".join([*head, *lines]) + "\n"
+    return "\n".join([*head, *lines, *warnings]) + "\n"
 
 
 def save_report(conn, report: str, ok: bool, fault, started: datetime) -> bool:
