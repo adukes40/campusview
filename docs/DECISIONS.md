@@ -58,7 +58,7 @@ The remote SFTP folder CampusView pulls from must hold only the 24 contract CSV 
 
 **Confirmed 2026-11-05 (Austin, relayed by CampusView Engineer, about 4:18 PM ET):** 05:00 is safely after `att_day_aggregation` finishes.
 
-**Status:** Decided. This change writes the 05:00 timer. Mark Built/Settled when Austin merges it. The six Proposed items in the 2026-11-03 SFTP entry stay Proposed; this entry does not confirm them.
+**Status:** Built/Settled (PR #30, merged by Austin 2026-11-05). A full `install.sh` run writes `OnCalendar=*-*-* 05:00:00`. The six Proposed items in the 2026-11-03 SFTP entry stay Proposed; this entry does not confirm them.
 
 **Builds on:** 2026-11-03 "CampusView pulls extracts over SFTP, and the nightly timer is built".
 
