@@ -40,7 +40,7 @@ So far: the CSV loader for the Infinite Campus extracts (PR #10, commit 2f21b49)
 3. Control-character load warnings: `campus_dictionary.csv` column `name` (4 rows) and `identity.csv` column `firstName` (1 row). Fake data only.
 4. Enrollment rows with two grades for the same student, school, and year (mid-year change, same-day correction, or overlap) — Austin to look at in DBeaver.
 5. Attendance-outside-enrollment rows — Austin to look at in DBeaver.
-6. Calendars 370 and 375 have enrollments and no Day rows.
+6. Calendars 370 and 375 have enrollments and no Day rows. **Explained 2026-11-06:** they are `endYear` 2028 (2027-28), not the current year — case (a), a next-year roll-forward before its days are generated. No longer tabled.
 7. Dictionary location names (spot-check).
 
 Done when a bad file leaves the previous data in place, and a good file set replaces the snapshot in one transaction.
