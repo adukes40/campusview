@@ -53,6 +53,7 @@ Done when a bad file leaves the previous data in place, and a good file set repl
 - The three starter roles in Superset, with row-level security on `school_id`.
 - The Overview dashboard in Superset on those views, with native filters.
 - Checked in a browser as a school admin, a district admin, and a system admin.
+- Custom Django pages and filters stay parked; the default Django install is left alone (Austin, relayed by CampusView Engineer, 2026-11-06).
 
 Done when each role sees exactly its schools on that dashboard, and each view's numbers match the hand-checked answer.
 

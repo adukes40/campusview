@@ -21,8 +21,9 @@ Open metric questions are not listed here. They are the Decisions for Austin lis
   7. Dictionary location names (spot-check).
 - Days-to-action and days-open stay parked until Infinite Campus exports an entry/log-time column. `behavior_incident.timestamp` is occurred time. Do not ship the Overview's "average days to resolve or action" number or color-by-days-open on the open list until that column exists.
 - The [FEATURES.md](../FEATURES.md) parking-lot item "Deploy the reporting views with each load" is promoted into Step 2 as the first slice. A view on `ic` cannot survive the next load until that plumbing exists (`loader/typed.py` drops `ic` tables without CASCADE; `install.sh --update` never runs the warehouse block; `campusview_reader` needs SELECT on new views). Austin starting Step 2 is what moves this item out of the parking lot, because Step 2 cannot finish without it.
+- Django stays out of the Overview. Leave the default Django install alone. Build reporting views, reusable Superset datasets, and native filters only. Do not bring custom Django pages or filters into Step 2. This confirms the 2026-11-01/02 plan (plain Apache Superset; Django has no role in v1 features). The parked custom Django pages and filter bar stay parked. This is not a scope change.
 
-**Who:** Austin, relayed by CampusView Engineer, 2026-11-06 about 10:27 AM ET.
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-06 about 10:27 AM ET. Django confirmation Austin, relayed by CampusView Engineer, 2026-11-06 about 10:35 AM ET.
 
 **Status:** Decided.
 
