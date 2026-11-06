@@ -1,0 +1,5 @@
+-- Reporting views for schema reporting.
+-- The loader runs this file as campusview_owner inside each successful load,
+-- after it rebuilds ic and ref. A failed load leaves the previous views in place.
+-- install.sh --update checks this file out. The next successful load applies it.
+-- Each statement ends with a semicolon. No views are defined here yet.

@@ -40,14 +40,14 @@ So far: the CSV loader for the Infinite Campus extracts (PR #10, commit 2f21b49)
 3. Control-character load warnings: `campus_dictionary.csv` column `name` (4 rows) and `identity.csv` column `firstName` (1 row). Fake data only.
 4. Enrollment rows with two grades for the same student, school, and year (mid-year change, same-day correction, or overlap) — Austin to look at in DBeaver.
 5. Attendance-outside-enrollment rows — Austin to look at in DBeaver.
-6. Calendars 370 and 375 have enrollments and no Day rows.
+6. Calendars 370 and 375 have enrollments and no Day rows. **Explained 2026-11-06:** they are `endYear` 2028 (2027-28), not the current year — case (a), a next-year roll-forward before its days are generated. No longer tabled.
 7. Dictionary location names (spot-check).
 
 Done when a bad file leaves the previous data in place, and a good file set replaces the snapshot in one transaction.
 
 ## Step 2 — First view and first dashboard (**current build** as of 2026-11-06)
 
-- Deploy the reporting views with each load: the loader, as `campusview_owner` and inside the load transaction, drops the `reporting` views, rebuilds `ic`, recreates the views from one `reporting.sql` in the product checkout, and grants SELECT to `campusview_reader`. Promoted from the parking lot on 2026-11-06; first slice of Step 2.
+- Deploy the reporting views with each load. Built: on each successful load the loader, as `campusview_owner` and inside the load transaction, drops the `reporting` views, rebuilds `ic` and `ref`, runs `reporting.sql` from the product checkout, and grants `SELECT` to `campusview_reader`. The file defines no views until the Overview views are added, and a load still passes. A failed load leaves the previous views in place. `install.sh --update` checks out a new `reporting.sql`; the next successful load applies it.
 - The first dashboard is an Overview, modeled on screenshots of Austin's current overview page (Austin, relayed by CampusView Engineer, 2026-11-03). Overview omits parked days-to-action and days-open (see parking lot and METRICS).
 - The reporting views it needs from [docs/METRICS.md](docs/METRICS.md), as SQL in this repo, each with a hand-checked test on the training extracts.
 - The three starter roles in Superset, with row-level security on `school_id`.

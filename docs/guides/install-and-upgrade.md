@@ -61,7 +61,7 @@ All passwords and the key are saved in `/etc/campusview/campusview.env`. Read th
 | `raw`, loaded data | `campusview_owner` | `campusview_owner` only |
 | `ic`, the typed copy of each `raw` table. The installer creates the empty schema. The loader rebuilds the tables | `campusview_owner` | `campusview_owner` only |
 | `ref`, reference and lookup data | `campusview_owner` | `campusview_owner` only |
-| `reporting`, views for reports | `campusview_owner` | `campusview_owner`, and `campusview_reader` with read only access. Anything the owner adds here later is readable by `campusview_reader` automatically. |
+| `reporting`, views for reports. The loader recreates them from `reporting.sql` on each successful load | `campusview_owner` | `campusview_owner`, and `campusview_reader` with read only access. The loader grants that access on each load. |
 | `ops`, the load report table `load_batch` | `campusview_owner` | `campusview_owner` only. The installer does not create it. The loader creates it on its first run. |
 
 The schemas start empty. `raw` fills up when you run the loader ([sftp-and-extracts.md](sftp-and-extracts.md)). Earlier installs called `ref` by the name `mapping`. A second run renames `mapping` to `ref` when `ref` does not exist yet. No other account can connect to `campusview_data`.
@@ -69,7 +69,7 @@ The schemas start empty. `raw` fills up when you run the loader ([sftp-and-extra
 ### Connect with DBeaver
 
 - Host `127.0.0.1`. Port `5432`, or the port you chose. Database `campusview_data`.
-- User `campusview_reader` for safe browsing. It sees the reporting views only, and they are empty until Step 1. Use `campusview_owner` only when you need full access.
+- User `campusview_reader` for safe browsing. It sees the reporting views only. Those views show up after a successful load applies a `reporting.sql` that defines them. Use `campusview_owner` only when you need full access.
 - The password is the `CV_READER_DB_PASSWORD` line, or the `CV_OWNER_DB_PASSWORD` line, in `/etc/campusview/campusview.env`.
 - The database only listens on the server itself. For either account, turn on DBeaver's SSH tunnel to the server. On the SSH tab, use the server address and your Linux login. Or run `ssh -L 5432:127.0.0.1:5432 you@server` first, then connect to `127.0.0.1` port `5432` on your computer.
 - `django_app` and `superset_meta` belong to the apps. Do not edit them by hand.
@@ -231,7 +231,7 @@ After you save that line, run the same update command. To go back to an older ta
 sudo bash /opt/campusview/install.sh --update --allow-downgrade
 ```
 
-The update installs the Superset and Django versions pinned by the release it just checked out. If that install fails, the previous checkout is put back and the services are not restarted. A failed database update puts the previous checkout back and restarts it. If only the district repo changed, the command pulls that and does not restart. The command does not change the password file, the SFTP drop, or the database data. It does not rewrite `superset_config.py`, the Django settings, the units, or nginx, so `install.sh --update` does not install the nightly timer and does not change when it runs. A release that changes any of those needs a full `install.sh` run.
+The update installs the Superset and Django versions pinned by the release it just checked out. If that install fails, the previous checkout is put back and the services are not restarted. A failed database update puts the previous checkout back and restarts it. If only the district repo changed, the command pulls that and does not restart. The command does not change the password file, the SFTP drop, or the database data. It checks out a new `reporting.sql` and does not apply it. The views stay as they are until the next successful load. That load reads the file it just checked out. It does not rewrite `superset_config.py`, the Django settings, the units, or nginx, so `install.sh --update` does not install the nightly timer and does not change when it runs. A release that changes any of those needs a full `install.sh` run.
 
 A full `install.sh` run writes `cv-nightly.timer` with `OnCalendar=*-*-* 05:00:00` and `Persistent=true`. The service runs as `CV_RUN_USER`. A server whose timer still says 02:00 stays at 02:00 after `--update`, because the update leaves the unit file alone. Run a full `install.sh` to replace the units. To change only that time, set `OnCalendar=*-*-* 05:00:00` in `/etc/systemd/system/cv-nightly.timer`, then run `systemctl daemon-reload` and `systemctl restart cv-nightly.timer`. Restarting the timer does not run the load.
 

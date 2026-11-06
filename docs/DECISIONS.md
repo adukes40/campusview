@@ -4,6 +4,16 @@ Dated log of decisions already made. The plan of record is [PLAN.md](PLAN.md). N
 
 Open metric questions are not listed here. They are the Decisions for Austin list in [METRICS.md](METRICS.md). Open extract questions are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md). Both lists are deferred for now and do not block step 0.
 
+## 2026-11-06 — Calendars 370 and 375 are next-year calendars (endYear 2028)
+
+**What:** Calendars 370 and 375 have enrollments and no Day rows because they are `endYear` 2028 (school year 2027-28), not the current year. That is case (a) in the 2026-11-05 SIS answers and in DATA_CONTRACT: a next-year roll-forward calendar before its days are generated. They are not a current-year extract or setup gap (case d). Students on those calendars have no membership days until Day rows arrive (METRICS "No calendar days"). The loader still warns (`loader/load.py` `day_warnings`) when a calendar has enrollments on or after `cutoff_date` and no Day rows; that warning is expected until those calendars get days. Tabled leftover 6 is explained and no longer open.
+
+**Who:** Austin, 2026-11-06 about 10:39 AM ET.
+
+**Status:** Decided.
+
+**Amends:** the 2026-11-06 "Step 2 is the current build; Step 1 leftovers are tabled" leftover 6; and the 2026-11-05 SIS answers item 6 sentence that said calendars 370 and 375 get classified on Austin's server.
+
 ## 2026-11-06 — Step 2 is the current build; Step 1 leftovers are tabled
 
 **What:**
@@ -17,7 +27,7 @@ Open metric questions are not listed here. They are the Decisions for Austin lis
   3. Control-character load warnings: `campus_dictionary.csv` column `name` (4 rows) and `identity.csv` column `firstName` (1 row). Fake data only.
   4. Enrollment rows with two grades for the same student, school, and year (mid-year change, same-day correction, or overlap) — Austin to look at in DBeaver.
   5. Attendance-outside-enrollment rows — Austin to look at in DBeaver.
-  6. Calendars 370 and 375 have enrollments and no Day rows.
+  6. Calendars 370 and 375 have enrollments and no Day rows. **Explained 2026-11-06:** they are `endYear` 2028 (2027-28), not the current year — case (a), a next-year roll-forward before its days are generated. No longer tabled.
   7. Dictionary location names (spot-check).
 - Days-to-action and days-open stay parked until Infinite Campus exports an entry/log-time column. `behavior_incident.timestamp` is occurred time. Do not ship the Overview's "average days to resolve or action" number or color-by-days-open on the open list until that column exists.
 - The [FEATURES.md](../FEATURES.md) parking-lot item "Deploy the reporting views with each load" is promoted into Step 2 as the first slice. A view on `ic` cannot survive the next load until that plumbing exists (`loader/typed.py` drops `ic` tables without CASCADE; `install.sh --update` never runs the warehouse block; `campusview_reader` needs SELECT on new views). Austin starting Step 2 is what moves this item out of the parking lot, because Step 2 cannot finish without it.
@@ -46,7 +56,7 @@ Open metric questions are not listed here. They are the Decisions for Austin lis
 3. Membership days use the Day table's `schoolDay` flag, not `instruction`. This amends 2026-11-03 "Day table rules for attendance".
 4. `behavior_incident.timestamp` is when the incident occurred (Infinite Campus docs: "Date and time incident occurred"), not when it was logged/entered. The days-to-action and days-open clocks still start at logged/entry time (Austin, 2026-11-03). There is no entry-time column in today's extracts, so those two metrics are parked until Infinite Campus exports that field. Do not use `timestamp` as a stand-in for entry time. The roughly 69,000 "action before incident" warnings compare an action date to occurred-time; they are more likely a comparison artifact than bad entry, and the loader wording/comparison is to be re-checked before they are treated as a real data-quality failure. This amends 2026-11-03 "Days to action and days open start when the referral is entered".
 5. Two grades for one student, school, and year can both be legitimate. Before treating them as mid-year promotions, rule out a back-to-back grade change, a same-day correction, and overlapping service types (P plus S or N, sometimes on another calendar in the same building). `noShow` rows add to all three.
-6. A calendar with enrollments and no Day rows is not always an error. Four patterns: a next-year roll-forward calendar (days not expected yet), a shell calendar for alternative, out-of-district, or homebound tracking (no days expected), a test or demo calendar (exclude), and a current-year attended calendar (missing days are an extract or setup gap). Calendars 370 and 375 get classified on Austin's server.
+6. A calendar with enrollments and no Day rows is not always an error. Four patterns: a next-year roll-forward calendar (days not expected yet), a shell calendar for alternative, out-of-district, or homebound tracking (no days expected), a test or demo calendar (exclude), and a current-year attended calendar (missing days are an extract or setup gap). Calendars 370 and 375 get classified on Austin's server. *Amended 2026-11-06: calendars 370 and 375 are `endYear` 2028 (2027-28), not the current year — case (a). See the entry above.*
 7. Ignore `plan.status`; Infinite Campus leaves it empty. A plan is active on date d when `startDate` is on or before d and `endDate` is blank or on or after d. `locked` true is finalized; `locked` false is a draft (about 1 in 5) and is left out. `archive` true is left out. Amendments (`amendedFromPlanID`, `endDatePreAmend`) use the same date rule. Count DISTINCT `personID`.
 8. Location names are cross-checked against the Infinite Campus dictionary table.
 9. Roster, section, term and other extra tables will be used later. The 24-file set stays as is, and the contract is not expanded yet.

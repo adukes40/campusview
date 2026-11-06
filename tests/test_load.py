@@ -7,6 +7,7 @@ import psycopg
 import pytest
 from psycopg import sql
 
+from loader import reporting
 from loader.contract import FILES
 from loader.load import check_folder, load_drop, main, read_cutoff
 
@@ -44,6 +45,7 @@ def loadable(folder: Path, **extra) -> None:
 @pytest.fixture
 def db(monkeypatch):
     role = f"cv_loader_{os.getpid()}"
+    reader = f"cv_rpt_{os.getpid()}"
     name = f"{role}_db"
     try:
         admin = psycopg.connect(user=os.environ.get("USER", "postgres"), dbname="postgres", host="/var/run/postgresql", autocommit=True)
@@ -51,8 +53,10 @@ def db(monkeypatch):
         pytest.skip("cannot create a throwaway database")
     admin.execute(sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(name)))
     admin.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(role)))
+    admin.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(reader)))
     try:
         admin.execute(sql.SQL("CREATE ROLE {} LOGIN PASSWORD {}").format(sql.Identifier(role), sql.Literal(PASSWORD)))
+        admin.execute(sql.SQL("CREATE ROLE {} LOGIN PASSWORD {}").format(sql.Identifier(reader), sql.Literal(PASSWORD)))
         admin.execute(sql.SQL("CREATE DATABASE {} OWNER {}").format(sql.Identifier(name), sql.Identifier(role)))
     except psycopg.Error:
         admin.close()
@@ -60,12 +64,15 @@ def db(monkeypatch):
     monkeypatch.setenv("CV_OWNER_DB_PASSWORD", PASSWORD)
     monkeypatch.setenv("CV_PG_USER", role)
     monkeypatch.setenv("CV_PG_DATABASE", name)
+    # The loader grants this role. Production uses campusview_reader; tests use a throwaway name.
+    monkeypatch.setattr(reporting, "READER", reader)
     assert name != "campusview_data"
     try:
-        yield
+        yield reader
     finally:
         admin.execute(sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(name)))
         admin.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(role)))
+        admin.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(reader)))
         admin.close()
 
 
@@ -688,6 +695,191 @@ def test_reader_cannot_see_ref_or_ic(db, tmp_path):
         )
         admin.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(reader)))
         admin.close()
+
+
+SCHOOL_VIEW = (
+    "CREATE VIEW reporting.v_loader_school AS\n"
+    'SELECT "schoolID" AS school_id, name FROM ic.school WHERE name LIKE \'%\';\n'
+    "CREATE VIEW reporting.v_loader_school_n AS\n"
+    "SELECT count(*)::int AS schools FROM ic.school;\n"
+)
+
+
+def view_names():
+    return [
+        row[0]
+        for row in stored(
+            """
+            SELECT c.relname
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'reporting' AND c.relkind = 'v'
+            ORDER BY 1
+            """
+        )
+    ]
+
+
+def grant_connect(reader: str) -> None:
+    with psycopg.connect(
+        host="127.0.0.1",
+        port=os.environ.get("CV_PG_PORT", "5432"),
+        dbname=os.environ["CV_PG_DATABASE"],
+        user=os.environ["CV_PG_USER"],
+        password=os.environ["CV_OWNER_DB_PASSWORD"],
+    ) as conn:
+        assert conn.info.dbname != "campusview_data"
+        conn.execute(
+            sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(
+                sql.Identifier(os.environ["CV_PG_DATABASE"]), sql.Identifier(reader)
+            )
+        )
+
+
+def test_reporting_sql_ships_with_the_checkout():
+    assert reporting.READER == "campusview_reader"
+    assert reporting.SQL_PATH.name == "reporting.sql"
+    assert reporting.SQL_PATH.is_file()
+    assert "create view" not in reporting.SQL_PATH.read_text(encoding="utf-8").lower()
+
+
+def test_reporting_sql_with_no_views_still_loads(db, tmp_path, monkeypatch):
+    loadable(tmp_path)
+    ok, saved, report = load_drop(tmp_path, EXAMPLES)
+    assert ok and saved
+    assert "reporting.sql" not in report
+    assert view_names() == []
+    empty = tmp_path / "empty.sql"
+    empty.write_text("\n-- nothing to build\n")
+    monkeypatch.setattr(reporting, "SQL_PATH", empty)
+    ok, saved, _report = load_drop(tmp_path, EXAMPLES)
+    assert ok and saved
+    assert view_names() == []
+    view = tmp_path / "view.sql"
+    view.write_text(SCHOOL_VIEW)
+    monkeypatch.setattr(reporting, "SQL_PATH", view)
+    assert load_drop(tmp_path, EXAMPLES)[0]
+    assert view_names() == ["v_loader_school", "v_loader_school_n"]
+    monkeypatch.setattr(reporting, "SQL_PATH", empty)
+    ok, saved, _report = load_drop(tmp_path, EXAMPLES)
+    assert ok and saved
+    assert view_names() == []
+    assert stored("SELECT name FROM ic.school") == [("School A",)]
+
+
+def test_reporting_view_survives_reload_and_reader_can_select(db, tmp_path, monkeypatch):
+    reader = db
+    sql_file = tmp_path / "reporting.sql"
+    sql_file.write_text(SCHOOL_VIEW)
+    monkeypatch.setattr(reporting, "SQL_PATH", sql_file)
+    loadable(tmp_path)
+    ok, saved, _report = load_drop(tmp_path, EXAMPLES)
+    assert ok and saved
+    assert stored("SELECT school_id, name FROM reporting.v_loader_school") == [("1", "School A")]
+    loadable(tmp_path, **{"school.csv": [cells("school.csv", schoolID="1", name="School B")]})
+    ok, saved, _report = load_drop(tmp_path, EXAMPLES)
+    assert ok and saved
+    assert stored("SELECT school_id, name FROM reporting.v_loader_school") == [("1", "School B")]
+    assert view_names() == ["v_loader_school", "v_loader_school_n"]
+    grant_connect(reader)
+    with psycopg.connect(
+        host="127.0.0.1",
+        port=os.environ.get("CV_PG_PORT", "5432"),
+        dbname=os.environ["CV_PG_DATABASE"],
+        user=reader,
+        password=PASSWORD,
+        autocommit=True,
+    ) as conn:
+        assert conn.info.dbname != "campusview_data"
+        assert conn.execute("SELECT school_id, name FROM reporting.v_loader_school").fetchall() == [("1", "School B")]
+        assert conn.execute("SELECT schools FROM reporting.v_loader_school_n").fetchall() == [(1,)]
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            conn.execute("SELECT 1 FROM ic.school")
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            conn.execute("SELECT 1 FROM raw.school")
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            conn.execute("SELECT 1 FROM ref.map_grades")
+
+
+def test_failed_load_keeps_previous_views(db, tmp_path, monkeypatch):
+    sql_file = tmp_path / "reporting.sql"
+    sql_file.write_text(SCHOOL_VIEW)
+    monkeypatch.setattr(reporting, "SQL_PATH", sql_file)
+    loadable(tmp_path, **{"school.csv": [cells("school.csv", schoolID="1", name="School A")]})
+    assert load_drop(tmp_path, EXAMPLES)[0]
+    loadable(tmp_path, **{"school.csv": [cells("school.csv", schoolID="1", name="School B")]})
+    assert load_drop(tmp_path, EXAMPLES)[0]
+    sql_file.write_text(
+        "CREATE VIEW reporting.v_loader_other AS\n"
+        'SELECT "schoolID" AS school_id, name FROM ic.school;\n'
+    )
+    loadable(tmp_path, **{"school.csv": [cells("school.csv", schoolID="1", name="School C")]})
+    header = ",".join(FILES["person.csv"])
+    (tmp_path / "person.csv").write_text(header + "\nSTU-9,ONLY\n")
+    ok, saved, report = load_drop(tmp_path, EXAMPLES)
+    assert not ok and saved
+    assert "Nothing was loaded. The previous data is still in place." in report
+    assert "STU-9" not in report
+    assert "School C" not in report
+    assert view_names() == ["v_loader_school", "v_loader_school_n"]
+    assert stored("SELECT school_id, name FROM reporting.v_loader_school") == [("1", "School B")]
+    assert stored("SELECT name FROM ic.school") == [("School B",)]
+    assert stored("SELECT name FROM raw.school") == [("School B",)]
+
+
+def test_bad_reporting_sql_keeps_previous_views(db, tmp_path, monkeypatch):
+    sql_file = tmp_path / "reporting.sql"
+    sql_file.write_text(SCHOOL_VIEW)
+    monkeypatch.setattr(reporting, "SQL_PATH", sql_file)
+    loadable(tmp_path)
+    assert load_drop(tmp_path, EXAMPLES)[0]
+    sql_file.write_text("CREATE VIEW reporting.v_loader_school AS SELECT nope FROM ic.school;\n")
+    ok, saved, report = load_drop(tmp_path, EXAMPLES)
+    assert not ok and saved
+    assert report == (
+        "Load failed. This looks like a problem with the server.\n"
+        "Nothing was loaded. The previous data is still in place.\n"
+        "reporting.sql: fail. The reporting views could not be replaced.\n"
+    )
+    assert "nope" not in report
+    assert view_names() == ["v_loader_school", "v_loader_school_n"]
+    assert stored("SELECT name FROM ic.school") == [("School A",)]
+
+
+def test_missing_reporting_sql_keeps_previous_views(db, tmp_path, monkeypatch):
+    sql_file = tmp_path / "reporting.sql"
+    sql_file.write_text(SCHOOL_VIEW)
+    monkeypatch.setattr(reporting, "SQL_PATH", sql_file)
+    loadable(tmp_path)
+    assert load_drop(tmp_path, EXAMPLES)[0]
+    monkeypatch.setattr(reporting, "SQL_PATH", tmp_path / "missing.sql")
+    ok, saved, report = load_drop(tmp_path, EXAMPLES)
+    assert not ok and saved
+    assert report == (
+        "Load failed. This looks like a problem with the server.\n"
+        "Nothing was loaded. The previous data is still in place.\n"
+        "reporting.sql is missing from the product checkout.\n"
+    )
+    assert view_names() == ["v_loader_school", "v_loader_school_n"]
+    assert stored("SELECT name FROM ic.school") == [("School A",)]
+
+
+def test_missing_reader_keeps_previous_views(db, tmp_path, monkeypatch):
+    sql_file = tmp_path / "reporting.sql"
+    sql_file.write_text(SCHOOL_VIEW)
+    monkeypatch.setattr(reporting, "SQL_PATH", sql_file)
+    loadable(tmp_path)
+    assert load_drop(tmp_path, EXAMPLES)[0]
+    monkeypatch.setattr(reporting, "READER", "cv_no_such_reader")
+    ok, saved, report = load_drop(tmp_path, EXAMPLES)
+    assert not ok and saved
+    assert report == (
+        "Load failed. This looks like a problem with the server.\n"
+        "Nothing was loaded. The previous data is still in place.\n"
+        "campusview_reader is missing.\n"
+    )
+    assert view_names() == ["v_loader_school", "v_loader_school_n"]
+    assert stored("SELECT name FROM ic.school") == [("School A",)]
 
 
 def test_usage_needs_both_paths(capsys):

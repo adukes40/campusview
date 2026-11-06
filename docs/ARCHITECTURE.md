@@ -65,25 +65,27 @@ Filters only narrow what row-level security already allows. A filter is never a 
 
 ## Module map
 
-Later code is expected to split along these lines. Only the `loader` package exists today. It reads the Infinite Campus CSV files and the district code maps, and writes `raw`, `ic`, `ref`, and `ops.load_batch`.
+Later code is expected to split along these lines. Only the `loader` package exists today. It reads the Infinite Campus CSV files, the district code maps, and `reporting.sql`, and writes `raw`, `ic`, `ref`, `reporting`, and `ops.load_batch`.
 
 | Module | Responsibility | Reads | Writes |
 | --- | --- | --- | --- |
 | `nightly.sh` (built) | Pull the remote CSV files, run the loader, delete drop folders older than 7 nights | District `settings`, the SFTP server | `/var/lib/campusview/drop` |
-| `loader` (built) | Validate, then load all or nothing | Infinite Campus CSV and the district code maps | `raw`, `ic`, `ref`, `ops.load_batch` |
+| `loader` (built) | Validate, then load all or nothing | Infinite Campus CSV, the district code maps, and `reporting.sql` | `raw`, `ic`, `ref`, `reporting`, `ops.load_batch` |
 | `loader/typed.py` (built) | Rebuild each `ic` table from `raw` in the load transaction. Bad values become NULL and warn. The two cross-row checks warn and keep the row. An action date before `behavior_incident.timestamp` is not a warning | `raw` | `ic` |
+| `loader/reporting.py` (built) | Inside the load transaction, drop the `reporting` views before `ic` and `ref` are rebuilt, then run `reporting.sql` and grant `SELECT` to `campusview_reader` | `reporting.sql` | `reporting` |
 | `warehouse.ic` | Typed copy tables. The installer creates the empty schema. The loader creates the schema if it is missing and rebuilds the tables | | |
 | `warehouse.raw` | Snapshot tables, all text | | |
 | `warehouse.ref` | Code-mapping tables. The loader creates the schema if it is missing and replaces the ten tables on each load. No grant to `campusview_reader` | | |
-| `warehouse.reporting` | Views only, as SQL files in this repo | The typed copy, `ref` | |
+| `warehouse.reporting` | Views only. One file, `reporting.sql`, in the product checkout. The loader drops these views and runs that file on each successful load | The typed copy, `ref` | |
 
 Dashboards, charts, filters, roles, and row-level security are Superset settings, not code in this repo. Dashboards are exported to the district repo.
 
 ## Loader interface
 
-**Built today:** `python -m loader FOLDER DISTRICT`, which calls `load_drop(folder, district)` in `loader/load.py` and returns whether the load passed, whether the report was saved, and the report text. Exit code 0 means it passed and the report was saved, 1 means anything else, and 2 means the command did not have both paths. It checks the 24 extract file names and the headers in `loader/contract.py`, and the ten code-mapping files in the district directory. It loads all or nothing in one transaction, rebuilds `ic` in that same transaction, and replaces the ten `ref` tables there too. The loader creates `ic` and `ref` if either is missing, and it grants nothing. The installer creates those empty schemas, owned by `campusview_owner`, with no grant to `campusview_reader`. It stores the report text in `ops.load_batch`. It takes a lock, and a second load fails at once instead of waiting. `nightly.sh` pulls the extracts, runs that command, and deletes drop folders older than 7 nights. A full `install.sh` run installs `cv-nightly.timer` when systemd is in use. The guide is [guides/sftp-and-extracts.md](guides/sftp-and-extracts.md).
+**Built today:** `python -m loader FOLDER DISTRICT`, which calls `load_drop(folder, district)` in `loader/load.py` and returns whether the load passed, whether the report was saved, and the report text. Exit code 0 means it passed and the report was saved, 1 means anything else, and 2 means the command did not have both paths. It checks the 24 extract file names and the headers in `loader/contract.py`, and the ten code-mapping files in the district directory. It loads all or nothing in one transaction, rebuilds `ic` in that same transaction, replaces the ten `ref` tables there too, and then runs `reporting.sql`. The loader creates `ic`, `ref`, and `reporting` if any is missing. It grants `campusview_reader` use of `reporting` and `SELECT` on the views there, and nothing on `raw`, `ic`, `ref`, or `ops`. The installer creates the empty schemas, owned by `campusview_owner`. It stores the report text in `ops.load_batch`. It takes a lock, and a second load fails at once instead of waiting. `nightly.sh` pulls the extracts, runs that command, and deletes drop folders older than 7 nights. A full `install.sh` run installs `cv-nightly.timer` when systemd is in use. The guide is [guides/sftp-and-extracts.md](guides/sftp-and-extracts.md).
 
 - On success, the raw snapshot is replaced inside one transaction and committed. The warehouse is not purged by school year (Austin, relayed by CampusView Engineer, 2026-11-03 7:30 PM ET).
+- On that same success the loader drops the views in `reporting`, rebuilds `ic` and `ref`, runs `reporting.sql` from the product checkout, and grants `campusview_reader` `SELECT` on those views. A failed load leaves the previous views in place with the previous data. `reporting.sql` defines no views until the Overview views are added, and a load still passes. `install.sh --update` checks out a new `reporting.sql` and does not apply it. The next successful load does.
 - The drop is a full copy, not a file of changes (Austin, relayed by CampusView Engineer, 2026-11-03 7:30 PM ET). Running the same files twice leaves the same warehouse.
 - The warehouse keeps data dated on or after the cutoff date. That date is the `cutoff_date` line in the district folder's `settings` file. The loader uses it for the calendar warning and does not drop rows. The extract is capped at the source.
 - After a successful load, the nightly run deletes dated drop folders older than 7 nights. The date is the `YYYY-MM-DD` at the start of the folder name. A failed fetch or load deletes nothing. 7 is a fixed product value. `ops.load_batch` keeps every row.
@@ -97,7 +99,7 @@ Logs and `ops.load_batch` may include file names, row counts, row numbers, and r
 
 These schemas live in the `campusview_data` database. Superset's own settings are in `superset_meta`, and Django's default tables are in `django_app`. Neither of those holds student data.
 
-**Resolved 2026-11-02:** the installer creates two accounts for `campusview_data`. `campusview_owner` owns the database and the schemas `raw`, `ref`, and `reporting` (and `ic`, since PR #14); the loader writes as it in step 1. `campusview_reader` can connect and `SELECT` from `reporting` only, including anything added there later. Superset's data connection should use `campusview_reader`; the installer does not create that connection. `superset_user` owns only `superset_meta` and cannot connect to `campusview_data`. Upgrades rename an old `mapping` schema to `ref`. See [ACCESS.md](ACCESS.md) and [DECISIONS.md](DECISIONS.md).
+**Resolved 2026-11-02:** the installer creates two accounts for `campusview_data`. `campusview_owner` owns the database and the schemas `raw`, `ref`, and `reporting` (and `ic`, since PR #14); the loader writes as it in step 1. `campusview_reader` can connect and `SELECT` from `reporting` only. The loader grants that `SELECT` when it recreates the views on each successful load. Superset's data connection should use `campusview_reader`; the installer does not create that connection. `superset_user` owns only `superset_meta` and cannot connect to `campusview_data`. Upgrades rename an old `mapping` schema to `ref`. See [ACCESS.md](ACCESS.md) and [DECISIONS.md](DECISIONS.md).
 
 Schemas in `campusview_data`:
 
@@ -106,7 +108,7 @@ Schemas in `campusview_data`:
 | `raw` | One table per Infinite Campus file, every column text, no load metadata columns | Loader (`campusview_owner`). Not Superset. |
 | `ic` | The typed copy: one table per raw table, same names, real dates and numbers, for example `ic.enrollment`. The installer creates the empty schema. The loader creates the schema if it is missing | Loader (`campusview_owner`). Reporting views read it as their owner. Not Superset. Same owner as `raw`, and no grant to `campusview_reader` |
 | `ref` | The ten code-mapping tables. The table name is the map file name without `.csv`, for example `ref.map_grades`. The installer creates the empty schema. The loader creates the schema if it is missing and replaces the tables on each load. No grant to `campusview_reader` | Loader (`campusview_owner`). Reporting views read it as their owner. Not Superset. |
-| `reporting` | Views | `campusview_reader` (Superset's data connection), `SELECT` only |
+| `reporting` | Views. `reporting.sql` in the product checkout is the whole list. The loader drops and recreates them on each successful load | `campusview_reader` (Superset's data connection), `SELECT` only |
 | `ops` | `load_batch`: `batch_id`, `started_at`, `finished_at`, `outcome`, `fault`, `report`. The loader creates the schema and the table on its first run | `campusview_owner` only. No grant is made to `campusview_reader` |
 | `scratch` | Empty on a normal install | Testing install only, and only the sandbox database user |
 
@@ -124,7 +126,7 @@ Only a primary enrollment creates membership days. A second, non-primary enrollm
 
 ## Reporting views
 
-Each dashboard number reads one of these views. The SQL for every view is kept in this repo. A Superset chart may sum, count, average, or divide columns the view already computed. It may not re-code attendance or behavior. Superset datasets point only at these views, never at raw tables.
+Each dashboard number reads one of these views. The SQL for every view is kept in `reporting.sql` in this repo. The loader applies that file on each successful load, inside the same transaction that replaces `raw`, `ic`, and `ref`. It drops the `reporting` views first, rebuilds `ic` and `ref`, runs the file, and grants `SELECT` to `campusview_reader`. A failed load leaves the previous views in place. `install.sh --update` checks out a new `reporting.sql`. The next successful load applies it. The file defines no views until the Overview views are added. A Superset chart may sum, count, average, or divide columns the view already computed. It may not re-code attendance or behavior. Superset datasets point only at these views, never at raw tables.
 
 | View | One row is | Used by |
 | --- | --- | --- |
@@ -213,7 +215,7 @@ The product repo builds a release only as a tag such as `v1.3.0`, cut from `main
 
 The update does not rewrite `superset_config.py`, Django's settings, the systemd units, `start.sh` and `stop.sh`, or nginx, and it does not touch the password file, the SFTP drop, or the database data. A release that changes any of those needs a full `install.sh` run. To change only the nightly time, edit `/etc/systemd/system/cv-nightly.timer`. Set `OnCalendar=*-*-* 05:00:00`, then run `systemctl daemon-reload` and `systemctl restart cv-nightly.timer`. Restarting the timer does not run the load. A server installed before PR #12 has no checkout and needs one run of the new installer first. Steps are in [guides/install-and-upgrade.md](guides/install-and-upgrade.md#update-the-server).
 
-The testing database has one extra user for the AI sandbox: it can read `raw`, `ic`, and `reporting`, and it can create objects only in `scratch`. Production and the dev server do not have this user. A view that is ready to keep is added as SQL in the product repo, with a hand-checked test, and arrives through a release.
+The testing database has one extra user for the AI sandbox: it can read `raw`, `ic`, and `reporting`, and it can create objects only in `scratch`. Production and the dev server do not have this user. A view that is ready to keep is added to `reporting.sql`, with a hand-checked test. `install.sh --update` checks that file out. The next successful load creates the view.
 
 ## Dashboards, in product terms
 
