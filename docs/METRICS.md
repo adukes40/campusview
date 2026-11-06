@@ -95,7 +95,7 @@ Mid-year enrollment: days before `ic.enrollment."startDate"` and after `"endDate
 | --- | --- |
 | Shows | A count of students. The chart title names the day, for example the weekday and date, when every selected school shares one last day. When the schools differ, the title says that each school uses its own last day. |
 | View | `reporting.v_last_school_day_absence` |
-| Last school day | For each school, the latest `ic.day` date with `instruction` true in the selected year that is on or before today. Schools with different calendars can have different dates. |
+| Last school day | For each school, the latest `ic.day` date with `schoolDay` true in the selected year that is on or before today. Schools with different calendars can have different dates. Matches Shared rules (Membership day) and DECISIONS 2026-11-05 item 3 (`schoolDay`, not `instruction`). |
 | Who counts | A student enrolled on that school's last day whose `absence_portion` that day is 0.5 or greater. |
 | Denominator | None. This is a headcount. |
 | Table columns | Student id, name, school, grade, the date counted, absence portion. |
