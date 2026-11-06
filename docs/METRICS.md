@@ -56,7 +56,7 @@ The views read `ic`, not `raw`, and use the Infinite Campus names (PR #14). Each
 | Consequence and action date | `ic.behavior_resolution` (`roleID`, `typeID`, `discassignDate`) to `ic.behavior_res_type` | |
 | 504 plan | `ic.program_participation` with `ic.program` | |
 | IEP | Probably `ic.plan` with `ic.plan_type` | TO CONFIRM 15. |
-| Incident date and time, plan review date | No entry-time column in today's contract | Open for the plan review date. `behavior_incident.timestamp` is when the incident occurred, not the entry/logged time (Austin, relayed by CampusView Engineer, 2026-11-05). Days-to-action and days-open need entry time and are parked until Infinite Campus exports it. Whether date and hour charts use `timestamp` (occurred) is not decided yet. |
+| Incident date and time, plan review date | No entry-time column in today's contract | Open for the plan review date. `behavior_incident.timestamp` is when the incident occurred, not the entry/logged time (Austin, relayed by CampusView Engineer, 2026-11-05). Days-to-action and days-open need entry time and are parked until Infinite Campus exports it. Whether date and hour charts use `timestamp` (occurred) is not decided yet. The loader does not warn when an action date falls before that timestamp. |
 
 Every date and time column in `ic` is a `timestamp`. A time-only value, such as `ic.period."startTime"`, is stored on a placeholder date such as 1900-01-01. Compare times of day with `::time`, for example `"startTime"::time`, never the whole timestamp. Compare calendar days with `::date`.
 
@@ -122,7 +122,7 @@ The view is an ordinary view, because the date depends on today. No attendance r
 | View | `reporting.v_incident`, rows where `days_to_action` is not null. |
 | Formula | **Parked.** Average of `days_to_action` once an Infinite Campus entry/logged-time column is in the extracts. The clock is entry time (Austin, 2026-11-03; confirmed Austin, relayed by CampusView Engineer, 2026-11-05 about 4:23 PM ET), not `behavior_incident.timestamp` (occurred time). Do not use `timestamp` as a stand-in. Until that field exists, this number is not shipped. |
 | Denominator | The count of referrals in the filter that have an action date. Referrals with no action yet are excluded, not treated as still running. (Applies when unparked.) |
-| Edge | Same-day action is 0. A negative span against entry time would be flagged when the field exists. Comparing an action date to occurred-time (`timestamp`) is not a real data-quality failure; re-check the loader comparison (Austin, relayed by CampusView Engineer, 2026-11-05). |
+| Edge | Same-day action is 0. A negative span against entry time would be flagged when the field exists. Comparing an action date to occurred-time (`timestamp`) is not a real data-quality failure. The loader does not warn on that comparison (Austin, relayed by CampusView Engineer, 2026-11-05). |
 | Table columns | Student id, name, school, incident date, action date, days. |
 
 ### Active 504 plans
@@ -319,7 +319,7 @@ Working proposals are in the body above. Each item below is the choice that woul
 
 9. **Two referral lists.** "Not yet processed" means the status map says there has been no action. "Open" means the status map says the referral is not closed, including ones already acted on. The overview headline number counts the first. The list shows the second. Confirm these are two different lists in your office, or say they should be the same list.
 
-10. **Days to action / days open.** *Settled and parked (Austin, relayed by CampusView Engineer, 2026-11-05 about 4:23 PM ET): the clock is when the incident was logged/entered in Infinite Campus, not `behavior_incident.timestamp` (occurred time). No entry-time column is in today's extracts, so both metrics are parked until Infinite Campus exports that field. Do not use `timestamp` as a stand-in.* Earlier: Austin, 2026-11-03, wanted entry time; a 2026-11-05 SIS note first mistook `timestamp` for entry and left the clock open. When unparked: average calendar days from entry time to the first action date; referrals with no action yet left out; same-day action is 0. Still open then: whether the clock should stop on the closed date instead, and whether referrals that are still waiting should count.
+10. **Days to action / days open.** *Settled and parked (Austin, relayed by CampusView Engineer, 2026-11-05 about 4:23 PM ET): the clock is when the incident was logged/entered in Infinite Campus, not `behavior_incident.timestamp` (occurred time). No entry-time column is in today's extracts, so both metrics are parked until Infinite Campus exports that field. Do not use `timestamp` as a stand-in. The loader does not flag an action date before that timestamp.* Earlier: Austin, 2026-11-03, wanted entry time; a 2026-11-05 SIS note first mistook `timestamp` for entry and left the clock open. When unparked: average calendar days from entry time to the first action date; referrals with no action yet left out; same-day action is 0. Still open then: whether the clock should stop on the closed date instead, and whether referrals that are still waiting should count.
 
 11. **Days-open colors.** The open list colors days at 18 and at 30, matching the approved preview. Confirm those cutoffs, or give different ones, or say no color until you choose.
 

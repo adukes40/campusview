@@ -4,6 +4,16 @@ Dated log of decisions already made. The plan of record is [PLAN.md](PLAN.md). N
 
 Open metric questions are not listed here. They are the Decisions for Austin list in [METRICS.md](METRICS.md). Open extract questions are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md). Both lists are deferred for now and do not block step 0.
 
+## 2026-11-06 — The loader does not warn when an action date is before the incident timestamp
+
+**What:** The loader no longer warns when `behavior_resolution.discassignDate` falls on an earlier calendar day than `behavior_incident.timestamp`. That column is when the incident occurred, and the extract has no entry/log-time column, so the comparison is not an entry-order error. The other two cross-row warnings stay. Days-to-action and days-open stay parked. No entry-time column is added.
+
+**Who:** Follows Austin, relayed by CampusView Engineer, 2026-11-05 (the entries below).
+
+**Amends:** the "re-check the loader" lines in 2026-11-05 "Answers from the SIS questions" and "Days-to-action and days-open clocks are entry time".
+
+**Status:** Decided. The check is removed in this pull request.
+
 ## 2026-11-05 — Answers from the SIS questions: school days, present, behavior time, grades, calendars, plans, locations, extra tables
 
 **What:**
@@ -22,15 +32,15 @@ Open metric questions are not listed here. They are the Decisions for Austin lis
 
 **Who:** Austin, relayed by CampusView Engineer, 2026-11-05, about 4:18 PM ET.
 
-**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed when he merges this pull request. Built code is unchanged by this entry. Days-to-action and days-open stay parked (no entry-time column). The loader's action-before-incident check (`loader/typed.py`) needs a wording/comparison fix by CampusView Engineer so it is not framed as a real data error against occurred-time.
+**Status:** Decided by Austin (relayed by CampusView Engineer); confirmed when he merges this pull request. Built code is unchanged by this entry. Days-to-action and days-open stay parked (no entry-time column). The loader's action-before-incident check (`loader/typed.py`) needs a wording/comparison fix by CampusView Engineer so it is not framed as a real data error against occurred-time. *Amended 2026-11-06: the loader no longer warns. See "The loader does not warn when an action date is before the incident timestamp" above.*
 
 ## 2026-11-05 — Days-to-action and days-open clocks are entry time; metrics parked
 
-**What:** The days-to-action and days-open clocks are based on when the incident was *logged* in Infinite Campus by a person (entry time), not on `behavior_incident.timestamp` (when the incident occurred). That confirms the 2026-11-03 clock choice and settles the open question left in the earlier 2026-11-05 SIS item 4. `timestamp` stays the occurred time. Today's extracts have no entry-time column, so days-to-action and days-open are parked until Infinite Campus exports that field. Do not ship metrics that treat `timestamp` as entry time. The loader may still re-check the "action before incident timestamp" comparison so it is not treated as a real data-quality failure against occurred-time.
+**What:** The days-to-action and days-open clocks are based on when the incident was *logged* in Infinite Campus by a person (entry time), not on `behavior_incident.timestamp` (when the incident occurred). That confirms the 2026-11-03 clock choice and settles the open question left in the earlier 2026-11-05 SIS item 4. `timestamp` stays the occurred time. Today's extracts have no entry-time column, so days-to-action and days-open are parked until Infinite Campus exports that field. Do not ship metrics that treat `timestamp` as entry time. The loader may still re-check the "action before incident timestamp" comparison so it is not treated as a real data-quality failure against occurred-time. *Amended 2026-11-06: the loader does not warn on that comparison. See "The loader does not warn when an action date is before the incident timestamp" above.*
 
 **Who:** Austin, relayed by CampusView Engineer, 2026-11-05 about 4:23 PM ET.
 
-**Status:** Decided. Metrics parked in [FEATURES.md](../FEATURES.md#parking-lot). METRICS item 18 (DISTINCT personid / one of each vs students with either) is answered in the next entry.
+**Status:** Decided. Metrics parked in [FEATURES.md](../FEATURES.md#parking-lot). METRICS item 18 (DISTINCT personid / one of each vs students with either) is answered in the next entry. The loader no longer warns when an action date falls before `behavior_incident.timestamp`.
 
 **Builds on:** 2026-11-03 "Days to action and days open start when the referral is entered"; 2026-11-05 SIS answers item 4.
 
@@ -157,7 +167,7 @@ Austin then picked how long drop files are kept (Austin, relayed by CampusView E
 
 **Who:** Austin, 2026-11-03, 12:55 PM ET, in his words: "discipline actions count from the time that they are entered into the system, not when the incident occurred. It's whenever the person or the referee put it in the system, not when the incidents took place." Then Austin, 2026-11-03, 1:16 PM ET, on the column and on days open: "I do believe that's the date it was entered. No, you would use the timestamp from the first question because that's when it was entered. Yes, I should count from the same timestamp."
 
-**Status:** Decided by Austin; confirmed by merging PR #11. **Amended 2026-11-05:** `timestamp` is when the incident occurred, not the entry date. The clock remains entry/logged time; with no entry column in the extracts, days-to-action and days-open are parked (see the 2026-11-05 entries).
+**Status:** Decided by Austin; confirmed by merging PR #11. **Amended 2026-11-05:** `timestamp` is when the incident occurred, not the entry date. The clock remains entry/logged time; with no entry column in the extracts, days-to-action and days-open are parked (see the 2026-11-05 entries). *Amended 2026-11-06: the loader does not flag an action date before that timestamp.*
 
 ## 2026-11-03 — The typed layer keeps the Infinite Campus names
 
@@ -168,7 +178,7 @@ Austin then picked how long drop files are kept (Austin, relayed by CampusView E
 - It stores real dates and numbers.
 - It lives in schema `ic`, with the same owner and permissions as `raw`. For example, `raw.enrollment` becomes `ic.enrollment` (Austin, relayed by CampusView Engineer, 2026-11-03, 12:43 PM ET: "Call the schema ic.").
 - Bad keys and unknown codes only warn on the load report, and loading continues. Header and column problems, missing files, and unexpected files still fail the whole batch (Austin, relayed by CampusView Engineer, 2026-11-03, 12:43 PM ET: "Bad keys or unknown codes only warn on the load report and keep loading.").
-- Bad values warn. A cell with a wrong id character, a bad date, time, boolean, or decimal, a bad school year, a blank required value, or a control character in text is stored as NULL in `ic`, and the load report lists the problem. Cross-row problems also warn: two grades for one student, school, and year; an attendance date outside an enrollment; an action date before the incident date; and an impossible referral flag combination (Austin, relayed by CampusView Engineer, 2026-11-03, 12:47 PM ET: "Go with your recommendation: bad values and cross-row problems warn; empty files and bad district mapping codes stop the load.").
+- Bad values warn. A cell with a wrong id character, a bad date, time, boolean, or decimal, a bad school year, a blank required value, or a control character in text is stored as NULL in `ic`, and the load report lists the problem. Cross-row problems also warn: two grades for one student, school, and year; an attendance date outside an enrollment; an action date before the incident date; and an impossible referral flag combination (Austin, relayed by CampusView Engineer, 2026-11-03, 12:47 PM ET: "Go with your recommendation: bad values and cross-row problems warn; empty files and bad district mapping codes stop the load."). *Amended 2026-11-06: an action date before `behavior_incident.timestamp` is not a warning. That column is when the incident occurred, and the extract has no entry-time column. See "The loader does not warn when an action date is before the incident timestamp" above.*
 - A row that fails a cross-row check stays as it is in `ic`, still counts in the metrics, and is listed on the load report (Austin, 2026-11-03, 12:56 PM ET, picked on a card: "Keep the row and flag it on the load report.").
 - These fail the whole load: header and column problems, missing or unexpected files, a row PostgreSQL rejects when loading `raw`, an empty `school.csv` or `calendar.csv` (zero data rows), and a bad district code-mapping file (header problem or bad code) (same answer, 12:47 PM ET).
 - Only `school.csv` and `calendar.csv` stop the load when they arrive with zero data rows. Every other file, including `day.csv`, `person.csv`, and `enrollment.csv`, warns on the load report when empty, and loading continues (Austin, 2026-11-03, 1:05 to 1:13 PM ET: "day matters, but only for attendance, so it goes in the second tier, not with school and calendar. An empty school or calendar blanks every card. An empty day would blank the attendance cards and leave behavior untouched."). This replaces the earlier four-file rule. Decided by Austin; confirmed by merging PR #11.

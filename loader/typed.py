@@ -98,6 +98,10 @@ def _value_warnings(conn, filename, columns):
 
 
 def _cross_warnings(conn):
+    # behavior_incident.timestamp is when the incident occurred (Infinite Campus;
+    # Austin, 2026-11-05). The extract has no column for when a person logged the
+    # entry. Do not warn that discassignDate is before that timestamp: it is not
+    # an entry-order error.
     checks = (
         (
             "enrollment.csv",
@@ -132,20 +136,6 @@ def _cross_warnings(conn):
                     AND e."startDate" IS NOT NULL AND a."date" >= e."startDate"
                     AND (e."endDate" IS NULL OR a."date" <= e."endDate")
               )
-            """,
-        ),
-        (
-            "behavior_resolution.csv",
-            "action date before the incident was entered",
-            """
-            SELECT count(*)::int FROM ic.behavior_resolution res
-            WHERE res."discassignDate" IS NOT NULL AND EXISTS (
-                SELECT 1 FROM ic.behavior_role role
-                JOIN ic.behavior_event ev ON ev."eventID" = role."eventID"
-                JOIN ic.behavior_incident inc ON inc."incidentID" = ev."incidentID"
-                WHERE role."roleID" = res."roleID" AND inc."timestamp" IS NOT NULL
-                  AND res."discassignDate"::date < inc."timestamp"::date
-            )
             """,
         ),
     )

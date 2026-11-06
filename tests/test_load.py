@@ -296,7 +296,7 @@ def test_two_grades(db, tmp_path):
     assert "two grades" not in report
 
 
-def test_action_date_before_incident(db, tmp_path):
+def test_action_date_before_incident_timestamp_is_not_an_entry_error(db, tmp_path):
     loadable(
         tmp_path,
         **{
@@ -310,15 +310,10 @@ def test_action_date_before_incident(db, tmp_path):
     )
     ok, saved, report = load_drop(tmp_path, EXAMPLES)
     assert ok and saved
-    assert "Warning: behavior_resolution.csv: 1 row, action date before the incident was entered." in report
-    write_csv(
-        tmp_path / "behavior_resolution.csv",
-        FILES["behavior_resolution.csv"],
-        [cells("behavior_resolution.csv", resolutionID="1", roleID="1", discassignDate="2026-01-02 08:00:00.000")],
-    )
-    ok, saved, report = load_drop(tmp_path, EXAMPLES)
-    assert ok and saved
-    assert "action date before the incident was entered" not in report
+    assert stored('SELECT "timestamp" FROM ic.behavior_incident') == [(datetime(2026, 1, 2, 9, 0),)]
+    assert stored('SELECT "discassignDate" FROM ic.behavior_resolution') == [(datetime(2026, 1, 1),)]
+    assert "action date" not in report
+    assert "was entered" not in report
 
 
 def test_attendance_outside_enrollment(db, tmp_path):
