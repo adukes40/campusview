@@ -4,6 +4,28 @@ Dated log of decisions already made. The plan of record is [PLAN.md](PLAN.md). N
 
 Open metric questions are not listed here. They are the Decisions for Austin list in [METRICS.md](METRICS.md). Open extract questions are the TO CONFIRM list in [DATA_CONTRACT.md](DATA_CONTRACT.md). Both lists are deferred for now and do not block step 0.
 
+## 2026-11-06 — Step 2 is the current build; Step 1 leftovers are tabled
+
+**What:**
+
+- Austin tabled the leftover Step 1 checks and asked to start Step 2.
+- Step 2 is now the current build: Overview reporting views in PostgreSQL, then the Overview dashboard in Apache Superset, modeled on screenshots of Austin's current overview page, with the three starter roles and school row-level security.
+- Leftovers are tabled, not cancelled. They are picked up one at a time during downtime or a gap in a long work session, and they must not block Step 2.
+- Tabled leftovers:
+  1. Impossible / all-false referral-flag check (named in Step 1, not built).
+  2. Prove that a failed load keeps the previous warehouse data.
+  3. Control-character load warnings: `campus_dictionary.csv` column `name` (4 rows) and `identity.csv` column `firstName` (1 row). Fake data only.
+  4. Enrollment rows with two grades for the same student, school, and year (mid-year change, same-day correction, or overlap) — Austin to look at in DBeaver.
+  5. Attendance-outside-enrollment rows — Austin to look at in DBeaver.
+  6. Calendars 370 and 375 have enrollments and no Day rows.
+  7. Dictionary location names (spot-check).
+- Days-to-action and days-open stay parked until Infinite Campus exports an entry/log-time column. `behavior_incident.timestamp` is occurred time. Do not ship the Overview's "average days to resolve or action" number or color-by-days-open on the open list until that column exists.
+- The [FEATURES.md](../FEATURES.md) parking-lot item "Deploy the reporting views with each load" is promoted into Step 2 as the first slice. A view on `ic` cannot survive the next load until that plumbing exists (`loader/typed.py` drops `ic` tables without CASCADE; `install.sh --update` never runs the warehouse block; `campusview_reader` needs SELECT on new views). Austin starting Step 2 is what moves this item out of the parking lot, because Step 2 cannot finish without it.
+
+**Who:** Austin, relayed by CampusView Engineer, 2026-11-06 about 10:27 AM ET.
+
+**Status:** Decided.
+
 ## 2026-11-06 — The loader does not warn when an action date is before the incident timestamp
 
 **What:** The loader no longer warns when `behavior_resolution.discassignDate` falls on an earlier calendar day than `behavior_incident.timestamp`. That column is when the incident occurred, and the extract has no entry/log-time column, so the comparison is not an entry-order error. The other two cross-row warnings stay. Days-to-action and days-open stay parked. No entry-time column is added.
