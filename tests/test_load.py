@@ -513,6 +513,100 @@ def test_duplicate_map_key(tmp_path, monkeypatch):
     assert "FAKE-K" not in report
 
 
+def write_referral(district: Path, rows: list[tuple[str, str, str, str]]) -> None:
+    lines = ["status_code,label,is_processed,is_open,is_cancelled"]
+    for code, is_processed, is_open, is_cancelled in rows:
+        lines.append(f"{code},School A status,{is_processed},{is_open},{is_cancelled}")
+    (district / "map_referral_statuses.csv").write_text("\n".join(lines) + "\n")
+
+
+def test_referral_flag_warning_is_read_with_the_map(tmp_path, monkeypatch):
+    monkeypatch.delenv("CV_OWNER_DB_PASSWORD", raising=False)
+    loadable(tmp_path)
+    (tmp_path / "school.csv").unlink()
+    district = copy_district(tmp_path)
+    write_referral(district, [("FAKE-NONE", "false", "false", "false")])
+    ok, saved, report = load_drop(tmp_path, district)
+    assert not ok and not saved
+    assert "school.csv: fail. The file is missing from the folder." in report
+    assert "Warning: map_referral_statuses.csv: Line 2: all three flags false." in report
+    assert "FAKE-NONE" not in report
+    assert "Nothing was loaded." in report
+    write_referral(
+        district,
+        [
+            ("FAKE-BAD", "TRUE", "false", "false"),
+            ("FAKE-NONE", "false", "false", "false"),
+            ("FAKE-CAN", "true", "false", "YES"),
+        ],
+    )
+    ok, saved, report = load_drop(tmp_path, district)
+    assert not ok and not saved
+    assert "map_referral_statuses.csv: fail. Line 2: is_processed: not true or false." in report
+    assert "map_referral_statuses.csv: fail. Line 4: is_cancelled: not true or false." in report
+    assert "Warning: map_referral_statuses.csv: Line 3: all three flags false." in report
+    assert "cancelled with another flag true" not in report
+    for hidden in ("FAKE-BAD", "FAKE-NONE", "FAKE-CAN", "TRUE", "YES"):
+        assert hidden not in report
+
+
+def test_impossible_referral_flags_warn_and_load(db, tmp_path):
+    loadable(tmp_path)
+    district = copy_district(tmp_path)
+    write_referral(
+        district,
+        [
+            ("FAKE-PROC", "true", "false", "false"),
+            ("FAKE-OPEN", "false", "true", "false"),
+            ("FAKE-CAN", "false", "false", "true"),
+            ("FAKE-ACT", "true", "true", "false"),
+        ],
+    )
+    ok, saved, report = load_drop(tmp_path, district)
+    assert ok and saved
+    assert "map_referral_statuses.csv: pass, 4 rows." in report
+    assert "all three flags false" not in report
+    assert "cancelled with another flag true" not in report
+    write_referral(
+        district,
+        [
+            ("FAKE-PROC", "true", "false", "false"),
+            ("FAKE-OPEN", "false", "true", "false"),
+            ("FAKE-CAN", "false", "false", "true"),
+            ("FAKE-NONE", "false", "false", "false"),
+            ("FAKE-CP", "true", "false", "true"),
+            ("FAKE-CO", "false", "true", "true"),
+            ("FAKE-BOTH", "true", "true", "true"),
+            ("FAKE-ACT", "true", "true", "false"),
+        ],
+    )
+    ok, saved, report = load_drop(tmp_path, district)
+    assert ok and saved
+    assert "Load passed." in report
+    assert "map_referral_statuses.csv: pass, 8 rows." in report
+    assert "Warning: map_referral_statuses.csv: Line 5: all three flags false." in report
+    assert "Warning: map_referral_statuses.csv: Line 6: cancelled with another flag true." in report
+    assert "Warning: map_referral_statuses.csv: Line 7: cancelled with another flag true." in report
+    assert "Warning: map_referral_statuses.csv: Line 8: cancelled with another flag true." in report
+    assert report.count("all three flags false") == 1
+    assert report.count("cancelled with another flag true") == 3
+    for hidden in ("FAKE-NONE", "FAKE-CP", "FAKE-CO", "FAKE-BOTH", "FAKE-PROC", "School A"):
+        assert hidden not in report
+    assert stored(
+        "SELECT status_code, is_processed, is_open, is_cancelled "
+        "FROM ref.map_referral_statuses ORDER BY status_code"
+    ) == [
+        ("FAKE-ACT", True, True, False),
+        ("FAKE-BOTH", True, True, True),
+        ("FAKE-CAN", False, False, True),
+        ("FAKE-CO", False, True, True),
+        ("FAKE-CP", True, False, True),
+        ("FAKE-NONE", False, False, False),
+        ("FAKE-OPEN", False, True, False),
+        ("FAKE-PROC", True, False, False),
+    ]
+
+
 def test_unknown_code_warns_for_codes_that_are_used(db, tmp_path):
     loadable(
         tmp_path,

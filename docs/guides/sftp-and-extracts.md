@@ -24,7 +24,7 @@ The file names in `loader/contract.py`, the rule that this is a full copy of eve
 
 ## Code-mapping files
 
-The ten code-mapping files live in the district directory, not in the SFTP drop. The rules are in [Code-mapping files](../DATA_CONTRACT.md#code-mapping-files). A bad map file says the problem is in the district config folder's map files. A missing district folder says the problem is the district config folder. The all-false referral warning is not built yet.
+The ten code-mapping files live in the district directory, not in the SFTP drop. The rules are in [Code-mapping files](../DATA_CONTRACT.md#code-mapping-files). A bad map file says the problem is in the district config folder's map files. A missing district folder says the problem is the district config folder. An impossible referral-flag combination warns and the map row is still loaded. The rule is in [map_referral_statuses.csv](../DATA_CONTRACT.md#map_referral_statusescsv).
 
 Someone with write access to the district repo edits a file when the district adds an attendance code. Commit it there, then run the loader with that directory.
 
